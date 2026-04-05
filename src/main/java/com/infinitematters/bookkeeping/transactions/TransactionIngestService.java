@@ -76,6 +76,10 @@ public class TransactionIngestService {
         Organization organization = organizationService.get(organizationId);
         FinancialAccount financialAccount = financialAccountService.get(financialAccountId);
 
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is empty. Upload a file with header id,date,merchant,memo,amount,mcc.");
+        }
+
         if (!financialAccount.getOrganization().getId().equals(organization.getId())) {
             throw new IllegalArgumentException("Financial account does not belong to organization " + organizationId);
         }
@@ -84,6 +88,10 @@ public class TransactionIngestService {
                 .stream()
                 .map(normalizer::normalize)
                 .toList();
+
+        if (parsedTransactions.isEmpty()) {
+            throw new IllegalArgumentException("CSV file contained no transaction rows. Expected header id,date,merchant,memo,amount,mcc.");
+        }
 
         List<ImportedTransactionSummary> imported = new ArrayList<>();
         int duplicateCount = 0;

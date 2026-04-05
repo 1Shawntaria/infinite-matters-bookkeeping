@@ -1,0 +1,6 @@
+id,date,merchant,memo,amount,mcc
+txn-r1,2026-03-10,UNKNOWN VENDOR,monthly seat fee,49.99,5734
+txn-r2,2026-03-11,MISC PAYMENT,service charge,127.40,7399
+txn-r3,2026-03-12,ONLINE TRANSFER,owner reimbursement,250.00,4829
+txn-r4,2026-03-13,GENERIC MERCHANT,platform usage,82.15,5734
+txn-r5,2026-03-14,UNMAPPED STORE,project supplies,64.22,5999

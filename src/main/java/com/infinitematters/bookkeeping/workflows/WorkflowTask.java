@@ -77,6 +77,16 @@ public class WorkflowTask {
     @JoinColumn(name = "resolved_by_user_id")
     private AppUser resolvedByUser;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "acknowledged_by_user_id")
+    private AppUser acknowledgedByUser;
+
+    @Column(name = "acknowledged_at")
+    private Instant acknowledgedAt;
+
+    @Column(name = "snoozed_until")
+    private LocalDate snoozedUntil;
+
     @Column(name = "resolved_at")
     private Instant resolvedAt;
 
@@ -217,6 +227,30 @@ public class WorkflowTask {
 
     public void setResolvedByUser(AppUser resolvedByUser) {
         this.resolvedByUser = resolvedByUser;
+    }
+
+    public AppUser getAcknowledgedByUser() {
+        return acknowledgedByUser;
+    }
+
+    public void setAcknowledgedByUser(AppUser acknowledgedByUser) {
+        this.acknowledgedByUser = acknowledgedByUser;
+    }
+
+    public Instant getAcknowledgedAt() {
+        return acknowledgedAt;
+    }
+
+    public void setAcknowledgedAt(Instant acknowledgedAt) {
+        this.acknowledgedAt = acknowledgedAt;
+    }
+
+    public LocalDate getSnoozedUntil() {
+        return snoozedUntil;
+    }
+
+    public void setSnoozedUntil(LocalDate snoozedUntil) {
+        this.snoozedUntil = snoozedUntil;
     }
 
     public Instant getResolvedAt() {

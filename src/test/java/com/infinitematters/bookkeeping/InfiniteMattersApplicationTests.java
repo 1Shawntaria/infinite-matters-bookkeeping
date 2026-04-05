@@ -2,7 +2,21 @@ package com.infinitematters.bookkeeping;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.infinitematters.bookkeeping.audit.AuditService;
+import com.infinitematters.bookkeeping.notifications.Notification;
+import com.infinitematters.bookkeeping.notifications.NotificationCategory;
+import com.infinitematters.bookkeeping.notifications.NotificationChannel;
+import com.infinitematters.bookkeeping.notifications.NotificationDeliveryState;
 import com.infinitematters.bookkeeping.notifications.NotificationDispatchService;
+import com.infinitematters.bookkeeping.notifications.NotificationRepository;
+import com.infinitematters.bookkeeping.notifications.NotificationStatus;
+import com.infinitematters.bookkeeping.organization.OrganizationService;
+import com.infinitematters.bookkeeping.users.UserService;
+import com.infinitematters.bookkeeping.workflows.WorkflowTask;
+import com.infinitematters.bookkeeping.workflows.WorkflowTaskPriority;
+import com.infinitematters.bookkeeping.workflows.WorkflowTaskRepository;
+import com.infinitematters.bookkeeping.workflows.WorkflowTaskStatus;
+import com.infinitematters.bookkeeping.workflows.WorkflowTaskType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -12,9 +26,12 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.UUID;
+
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasItem;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -39,6 +56,21 @@ class InfiniteMattersApplicationTests {
     @Autowired
     private NotificationDispatchService notificationDispatchService;
 
+    @Autowired
+    private NotificationRepository notificationRepository;
+
+    @Autowired
+    private WorkflowTaskRepository workflowTaskRepository;
+
+    @Autowired
+    private OrganizationService organizationService;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private AuditService auditService;
+
     @Test
     void importsTransactionsAndRoutesAmbiguousItemsIntoReview() throws Exception {
         mockMvc.perform(get("/actuator/health"))
@@ -47,9 +79,79 @@ class InfiniteMattersApplicationTests {
 
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.openapi").exists());
+                .andExpect(jsonPath("$.openapi").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.summary")
+                        .value("Get the versioned home dashboard contract"))
+                .andExpect(jsonPath("$.paths['/api/dashboard/home/versions'].get.summary")
+                        .value("Get supported dashboard home contract versions"))
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.description")
+                        .value(org.hamcrest.Matchers.containsString("dashboard contract of record")))
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.parameters[*].name", hasItem("version")))
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.responses['200'].headers['X-Dashboard-Home-Version']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.responses['200'].headers['X-Dashboard-Home-Requested-Version']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.responses['200'].headers['X-Dashboard-Home-Version-Source']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.responses['200'].headers['X-Dashboard-Home-Recommended-Version']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.responses['200'].headers['X-Dashboard-Home-Latest-Version']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.responses['200'].headers['Deprecation']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home'].get.responses['400'].description")
+                        .value(org.hamcrest.Matchers.containsString("headers are not emitted")))
+                .andExpect(jsonPath("$.paths['/api/dashboard/home/versions'].get.responses['200'].headers['X-Dashboard-Home-Default-Version']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home/versions'].get.responses['200'].headers['X-Dashboard-Home-Recommended-Version']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home/versions'].get.responses['200'].headers['X-Dashboard-Home-Latest-Version']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home/versions'].get.responses['200'].headers['X-Dashboard-Home-Supported-Versions']").exists())
+                .andExpect(jsonPath("$.paths['/api/dashboard/home/versions'].get.description")
+                        .value(org.hamcrest.Matchers.containsString("version lifecycle headers")));
 
-        String userId = createUser();
+        mockMvc.perform(get("/api/dashboard/home/versions"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Dashboard-Home-Default-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Recommended-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Latest-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Supported-Versions", "v1"))
+                .andExpect(jsonPath("$.defaultVersion").value("v1"))
+                .andExpect(jsonPath("$.recommendedVersion").value("v1"))
+                .andExpect(jsonPath("$.latestVersion").value("v1"))
+                .andExpect(jsonPath("$.negotiationPolicy")
+                        .value("If the client omits a version, the server returns the default version. If the client requests an unsupported version, the server returns 400 Bad Request."))
+                .andExpect(jsonPath("$.headerPolicy")
+                        .value("X-Dashboard-Home-Default-Version is the server default, X-Dashboard-Home-Recommended-Version is the preferred client target, X-Dashboard-Home-Latest-Version is the newest available contract, and X-Dashboard-Home-Supported-Versions lists all supported versions."))
+                .andExpect(jsonPath("$.supportedVersions[0]").value("v1"))
+                .andExpect(jsonPath("$.versions[0].version").value("v1"))
+                .andExpect(jsonPath("$.versions[0].defaultVersion").value(true))
+                .andExpect(jsonPath("$.versions[0].notes").value("Current stable home dashboard contract."))
+                .andExpect(jsonPath("$.versions[0].intendedUse").value("Recommended for all current clients."))
+                .andExpect(jsonPath("$.versions[0].deprecated").value(false))
+                .andExpect(jsonPath("$.versions[0].deprecationDate").doesNotExist())
+                .andExpect(jsonPath("$.versions[0].sunsetDate").doesNotExist());
+
+        MvcResult duplicateSeedUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Duplicate Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(OWNER_EMAIL, OWNER_PASSWORD)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Duplicate Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(OWNER_EMAIL, OWNER_PASSWORD)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("A user with email '" + OWNER_EMAIL + "' already exists"))
+                .andExpect(jsonPath("$.path").value("/api/users"))
+                .andExpect(jsonPath("$.requestId").isString());
+
+        String userId = objectMapper.readTree(duplicateSeedUserResult.getResponse().getContentAsString()).get("id").asText();
         String memberUserId = createMemberUser();
         String organizationId = createOrganization(userId);
         AuthTokens ownerTokens = issueToken(OWNER_EMAIL, OWNER_PASSWORD);
@@ -391,6 +493,64 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.staleAccounts.length()").value(0))
                 .andExpect(jsonPath("$.recentNotifications[0].workflowTaskId").value(exceptionTaskId));
 
+        mockMvc.perform(get("/api/dashboard/home")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(memberToken))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Dashboard-Home-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Requested-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Version-Source", "default"))
+                .andExpect(header().string("X-Dashboard-Home-Default-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Recommended-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Latest-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Supported-Versions", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Deprecated", "false"))
+                .andExpect(header().doesNotExist("Deprecation"))
+                .andExpect(header().doesNotExist("Sunset"))
+                .andExpect(jsonPath("$.version").value("v1"))
+                .andExpect(jsonPath("$.contract.version").value("v1"))
+                .andExpect(jsonPath("$.contract.requestedVersion").value("v1"))
+                .andExpect(jsonPath("$.contract.versionSource").value("default"));
+
+        mockMvc.perform(get("/api/dashboard/home")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(memberToken))
+                        .param("organizationId", organizationId)
+                        .param("version", "v1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Dashboard-Home-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Requested-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Version-Source", "requested"))
+                .andExpect(header().string("X-Dashboard-Home-Default-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Recommended-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Latest-Version", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Supported-Versions", "v1"))
+                .andExpect(header().string("X-Dashboard-Home-Deprecated", "false"))
+                .andExpect(header().doesNotExist("Deprecation"))
+                .andExpect(header().doesNotExist("Sunset"))
+                .andExpect(jsonPath("$.version").value("v1"))
+                .andExpect(jsonPath("$.contract.version").value("v1"))
+                .andExpect(jsonPath("$.contract.requestedVersion").value("v1"))
+                .andExpect(jsonPath("$.contract.versionSource").value("requested"))
+                .andExpect(jsonPath("$.focusMonth").value("2026-03"))
+                .andExpect(jsonPath("$.cashBalance").value(128.43))
+                .andExpect(jsonPath("$.workflowInbox.cardId").value("workflow-inbox"))
+                .andExpect(jsonPath("$.period.cardId").value("period-close"))
+                .andExpect(jsonPath("$.supportPerformance.cardId").value("support-performance"))
+                .andExpect(jsonPath("$.expenseCategories[0].itemId").value("expense-category-software"))
+                .andExpect(jsonPath("$.staleAccounts.length()").value(0))
+                .andExpect(jsonPath("$.recentNotifications[0].workflowTaskId").value(exceptionTaskId));
+
+        mockMvc.perform(get("/api/dashboard/home")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(memberToken))
+                        .param("organizationId", organizationId)
+                        .param("version", "v2"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Unsupported dashboard home version 'v2'. Supported versions: v1."));
+
         mockMvc.perform(post("/api/reviews/tasks/{taskId}/resolve-exception", exceptionTaskId)
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(memberToken))
@@ -649,6 +809,634 @@ class InfiniteMattersApplicationTests {
                                 """.formatted(OWNER_EMAIL)))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.message").value("Too many authentication attempts. Please wait and try again."));
+    }
+
+    @Test
+    void rejectsCsvImportsWithNoTransactionRows() throws Exception {
+        String emptyCsvOwnerEmail = "empty-csv-owner@acme.test";
+        String emptyCsvOwnerPassword = "password789";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Empty Csv Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(emptyCsvOwnerEmail, emptyCsvOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(emptyCsvOwnerEmail, emptyCsvOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "transactions-empty.csv",
+                "text/csv",
+                """
+                id,date,merchant,memo,amount,mcc
+                """.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(file)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV file contained no transaction rows. Expected header id,date,merchant,memo,amount,mcc."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void rejectsCsvImportsWithMissingRequiredColumns() throws Exception {
+        String invalidHeaderOwnerEmail = "invalid-header-owner@acme.test";
+        String invalidHeaderOwnerPassword = "password987";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Invalid Header Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(invalidHeaderOwnerEmail, invalidHeaderOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(invalidHeaderOwnerEmail, invalidHeaderOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "transactions-missing-columns.csv",
+                "text/csv",
+                """
+                id,date,merchant,amount
+                txn-1,2026-03-15,STARBUCKS,18.45
+                """.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(file)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV file is missing required columns: memo, mcc. Expected header id,date,merchant,memo,amount,mcc."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void rejectsCsvImportsWithInvalidDateValues() throws Exception {
+        String invalidDateOwnerEmail = "invalid-date-owner@acme.test";
+        String invalidDateOwnerPassword = "password654";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Invalid Date Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(invalidDateOwnerEmail, invalidDateOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(invalidDateOwnerEmail, invalidDateOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "transactions-invalid-date.csv",
+                "text/csv",
+                """
+                id,date,merchant,memo,amount,mcc
+                txn-1,03/15/2026,STARBUCKS,coffee with client,18.45,5814
+                """.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(file)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV row 1 has invalid value for column 'date': '03/15/2026'. Expected ISO-8601 date like 2026-03-15."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void rejectsCsvImportsWithInvalidAmountValues() throws Exception {
+        String invalidAmountOwnerEmail = "invalid-amount-owner@acme.test";
+        String invalidAmountOwnerPassword = "password321";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Invalid Amount Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(invalidAmountOwnerEmail, invalidAmountOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(invalidAmountOwnerEmail, invalidAmountOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "transactions-invalid-amount.csv",
+                "text/csv",
+                """
+                id,date,merchant,memo,amount,mcc
+                txn-1,2026-03-15,STARBUCKS,coffee with client,eighteen,5814
+                """.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(file)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV row 1 has invalid value for column 'amount': 'eighteen'. Expected numeric amount like 18.45."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void rejectsCsvImportsWithBlankRequiredValues() throws Exception {
+        String blankValueOwnerEmail = "blank-value-owner@acme.test";
+        String blankValueOwnerPassword = "password111";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Blank Value Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(blankValueOwnerEmail, blankValueOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(blankValueOwnerEmail, blankValueOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "transactions-blank-required.csv",
+                "text/csv",
+                """
+                id,date,merchant,memo,amount,mcc
+                txn-1,2026-03-15,,coffee with client,18.45,5814
+                """.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(file)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV row 1 is missing a value for required column 'merchant'."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void rejectsCsvImportsWithDuplicateIdsInSameFile() throws Exception {
+        String duplicateIdOwnerEmail = "duplicate-id-owner@acme.test";
+        String duplicateIdOwnerPassword = "password222";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Duplicate Id Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(duplicateIdOwnerEmail, duplicateIdOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(duplicateIdOwnerEmail, duplicateIdOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "transactions-duplicate-ids.csv",
+                "text/csv",
+                """
+                id,date,merchant,memo,amount,mcc
+                txn-1,2026-03-15,STARBUCKS,coffee with client,18.45,5814
+                txn-1,2026-03-16,COMCAST,office internet bill,89.99,4814
+                """.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(file)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV row 2 duplicates transaction id 'txn-1' within the uploaded file."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void returnsAllCsvRowValidationErrorsAtOnce() throws Exception {
+        String batchErrorOwnerEmail = "batch-error-owner@acme.test";
+        String batchErrorOwnerPassword = "password333";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Batch Error Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(batchErrorOwnerEmail, batchErrorOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(batchErrorOwnerEmail, batchErrorOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "transactions-multi-error.csv",
+                "text/csv",
+                """
+                id,date,merchant,memo,amount,mcc
+                txn-1,03/15/2026,STARBUCKS,coffee with client,18.45,5814
+                txn-1,2026-03-16,,office internet bill,eighteen,4814
+                """.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(file)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV file contains 4 validation errors."))
+                .andExpect(jsonPath("$.details[0]").value("CSV row 1 has invalid value for column 'date': '03/15/2026'. Expected ISO-8601 date like 2026-03-15."))
+                .andExpect(jsonPath("$.details[1]").value("CSV row 2 is missing a value for required column 'merchant'."))
+                .andExpect(jsonPath("$.details[2]").value("CSV row 2 has invalid value for column 'amount': 'eighteen'. Expected numeric amount like 18.45."))
+                .andExpect(jsonPath("$.details[3]").value("CSV row 2 duplicates transaction id 'txn-1' within the uploaded file."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void listsOpenDeadLetterSupportPerformanceTasksForAdminsOnly() throws Exception {
+        String performanceOwnerEmail = "performance-owner@acme.test";
+        String performanceOwnerPassword = "password444";
+        String performanceMemberEmail = "performance-member@acme.test";
+        String performanceMemberPassword = "password555";
+
+        MvcResult ownerUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Performance Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(performanceOwnerEmail, performanceOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(ownerUserResult.getResponse().getContentAsString()).get("id").asText();
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Performance Member",
+                                  "password": "%s"
+                                }
+                                """.formatted(performanceMemberEmail, performanceMemberPassword)))
+                .andExpect(status().isOk());
+
+        AuthTokens ownerTokens = issueToken(performanceOwnerEmail, performanceOwnerPassword);
+        AuthTokens memberTokens = issueToken(performanceMemberEmail, performanceMemberPassword);
+        String organizationId = createOrganization(ownerUserId);
+        UUID organizationUuid = UUID.fromString(organizationId);
+        UUID ownerUserUuid = userService.getByEmail(performanceOwnerEmail).getId();
+        UUID memberUserUuid = userService.getByEmail(performanceMemberEmail).getId();
+        addMembership(organizationId, memberUserUuid.toString(), ownerTokens.accessToken());
+
+        WorkflowTask task = new WorkflowTask();
+        task.setOrganization(organizationService.get(organizationUuid));
+        task.setTaskType(WorkflowTaskType.DEAD_LETTER_SUPPORT_PERFORMANCE);
+        task.setStatus(WorkflowTaskStatus.OPEN);
+        task.setPriority(WorkflowTaskPriority.CRITICAL);
+        task.setTitle("Dead-letter support performance at risk");
+        task.setDescription("Support performance risk needs attention");
+        task.setAssignedToUser(userService.get(ownerUserUuid));
+        task.setDueDate(java.time.LocalDate.now());
+        workflowTaskRepository.save(task);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].taskId").value(task.getId().toString()))
+                .andExpect(jsonPath("$[0].taskType").value("DEAD_LETTER_SUPPORT_PERFORMANCE"))
+                .andExpect(jsonPath("$[0].title").value("Dead-letter support performance at risk"))
+                .andExpect(jsonPath("$[0].assignedToUserId").value(ownerUserUuid.toString()));
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(memberTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+    }
+
+    @Test
+    void filtersAndSummarizesDeadLetterSupportPerformanceTasksForAdmins() throws Exception {
+        String ownerEmail = "performance-summary-owner@acme.test";
+        String ownerPassword = "password666";
+
+        MvcResult ownerUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Performance Summary Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(ownerEmail, ownerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(ownerUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(ownerEmail, ownerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        UUID organizationUuid = UUID.fromString(organizationId);
+        UUID ownerUserUuid = userService.getByEmail(ownerEmail).getId();
+
+        WorkflowTask acknowledgedTask = new WorkflowTask();
+        acknowledgedTask.setOrganization(organizationService.get(organizationUuid));
+        acknowledgedTask.setTaskType(WorkflowTaskType.DEAD_LETTER_SUPPORT_PERFORMANCE);
+        acknowledgedTask.setStatus(WorkflowTaskStatus.OPEN);
+        acknowledgedTask.setPriority(WorkflowTaskPriority.CRITICAL);
+        acknowledgedTask.setTitle("Acknowledged performance risk");
+        acknowledgedTask.setDescription("Owner is already working this");
+        acknowledgedTask.setAssignedToUser(userService.get(ownerUserUuid));
+        acknowledgedTask.setAcknowledgedAt(java.time.Instant.now());
+        acknowledgedTask.setAcknowledgedByUser(userService.get(ownerUserUuid));
+        acknowledgedTask.setDueDate(java.time.LocalDate.now().minusDays(1));
+        workflowTaskRepository.save(acknowledgedTask);
+
+        WorkflowTask unassignedTask = new WorkflowTask();
+        unassignedTask.setOrganization(organizationService.get(organizationUuid));
+        unassignedTask.setTaskType(WorkflowTaskType.DEAD_LETTER_SUPPORT_PERFORMANCE);
+        unassignedTask.setStatus(WorkflowTaskStatus.OPEN);
+        unassignedTask.setPriority(WorkflowTaskPriority.CRITICAL);
+        unassignedTask.setTitle("Unassigned performance risk");
+        unassignedTask.setDescription("Needs ownership");
+        unassignedTask.setDueDate(java.time.LocalDate.now().plusDays(1));
+        workflowTaskRepository.save(unassignedTask);
+        auditService.record(
+                organizationUuid,
+                "DEAD_LETTER_SUPPORT_PERFORMANCE_TASK_REACTIVATED",
+                "workflow_task",
+                unassignedTask.getId().toString(),
+                "Reactivated support performance risk after snooze expired on " + java.time.LocalDate.now().minusDays(1));
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("filter", "ACKNOWLEDGED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].taskId").value(acknowledgedTask.getId().toString()))
+                .andExpect(jsonPath("$[0].acknowledgedByUserId").value(ownerUserUuid.toString()));
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("filter", "REACTIVATED_NEEDS_ATTENTION"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].taskId").value(unassignedTask.getId().toString()))
+                .andExpect(jsonPath("$[0].acknowledgedAt").doesNotExist());
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/summary")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openTaskCount").value(2))
+                .andExpect(jsonPath("$.assignedTaskCount").value(1))
+                .andExpect(jsonPath("$.unassignedTaskCount").value(1))
+                .andExpect(jsonPath("$.acknowledgedTaskCount").value(1))
+                .andExpect(jsonPath("$.unacknowledgedTaskCount").value(1))
+                .andExpect(jsonPath("$.snoozedTaskCount").value(0))
+                .andExpect(jsonPath("$.overdueTaskCount").value(1))
+                .andExpect(jsonPath("$.reactivatedNeedsAttentionCount").value(1))
+                .andExpect(jsonPath("$.reactivatedOverdueCount").value(0));
+    }
+
+    @Test
+    void snoozesDeadLetterSupportPerformanceTaskForAdmins() throws Exception {
+        String ownerEmail = "performance-snooze-owner@acme.test";
+        String ownerPassword = "password777";
+
+        MvcResult ownerUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Performance Snooze Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(ownerEmail, ownerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(ownerUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(ownerEmail, ownerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        UUID organizationUuid = UUID.fromString(organizationId);
+
+        WorkflowTask task = new WorkflowTask();
+        task.setOrganization(organizationService.get(organizationUuid));
+        task.setTaskType(WorkflowTaskType.DEAD_LETTER_SUPPORT_PERFORMANCE);
+        task.setStatus(WorkflowTaskStatus.OPEN);
+        task.setPriority(WorkflowTaskPriority.CRITICAL);
+        task.setTitle("Dead-letter support performance at risk");
+        task.setDescription("Needs monitoring");
+        workflowTaskRepository.save(task);
+
+        String snoozedUntil = java.time.LocalDate.now().plusDays(2).toString();
+        mockMvc.perform(post("/api/workflows/notifications/dead-letter/performance/tasks/{taskId}/snooze", task.getId())
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "snoozedUntil": "%s",
+                                  "note": "Waiting on next staffing check-in"
+                                }
+                                """.formatted(snoozedUntil)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(task.getId().toString()))
+                .andExpect(jsonPath("$.snoozedUntil").value(snoozedUntil))
+                .andExpect(jsonPath("$.acknowledgedAt").isNotEmpty())
+                .andExpect(jsonPath("$.resolutionComment").value("Waiting on next staffing check-in"));
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/summary")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.snoozedTaskCount").value(1))
+                .andExpect(jsonPath("$.acknowledgedTaskCount").value(1))
+                .andExpect(jsonPath("$.ignoredTaskCount").value(0));
+    }
+
+    @Test
+    void listsHighPriorityDeadLetterSupportPerformanceTasksForAdminsOnly() throws Exception {
+        String ownerEmail = "performance-priority-owner@acme.test";
+        String ownerPassword = "password888";
+        String memberEmail = "performance-priority-member@acme.test";
+        String memberPassword = "password999";
+
+        MvcResult ownerUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Performance Priority Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(ownerEmail, ownerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(ownerUserResult.getResponse().getContentAsString()).get("id").asText();
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Performance Priority Member",
+                                  "password": "%s"
+                                }
+                                """.formatted(memberEmail, memberPassword)))
+                .andExpect(status().isOk());
+
+        AuthTokens ownerTokens = issueToken(ownerEmail, ownerPassword);
+        AuthTokens memberTokens = issueToken(memberEmail, memberPassword);
+        String organizationId = createOrganization(ownerUserId);
+        UUID organizationUuid = UUID.fromString(organizationId);
+        UUID memberUserUuid = userService.getByEmail(memberEmail).getId();
+        addMembership(organizationId, memberUserUuid.toString(), ownerTokens.accessToken());
+
+        WorkflowTask ignoredTask = new WorkflowTask();
+        ignoredTask.setOrganization(organizationService.get(organizationUuid));
+        ignoredTask.setTaskType(WorkflowTaskType.DEAD_LETTER_SUPPORT_PERFORMANCE);
+        ignoredTask.setStatus(WorkflowTaskStatus.OPEN);
+        ignoredTask.setPriority(WorkflowTaskPriority.CRITICAL);
+        ignoredTask.setTitle("Ignored performance risk");
+        ignoredTask.setDescription("Has already been escalated");
+        ignoredTask.setDueDate(java.time.LocalDate.now().plusDays(1));
+        workflowTaskRepository.save(ignoredTask);
+
+        Notification escalation = new Notification();
+        escalation.setOrganization(organizationService.get(organizationUuid));
+        escalation.setWorkflowTask(ignoredTask);
+        escalation.setCategory(NotificationCategory.WORKFLOW);
+        escalation.setChannel(NotificationChannel.IN_APP);
+        escalation.setStatus(NotificationStatus.SENT);
+        escalation.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        escalation.setReferenceType("dead_letter_support_performance_escalation");
+        escalation.setReferenceId(ignoredTask.getId().toString());
+        escalation.setRecipientEmail(ownerEmail);
+        escalation.setScheduledFor(java.time.Instant.now());
+        escalation.setSentAt(java.time.Instant.now());
+        escalation.setAttemptCount(0);
+        escalation.setMessage("Escalated ignored performance risk");
+        notificationRepository.save(escalation);
+
+        WorkflowTask reactivatedOverdueTask = new WorkflowTask();
+        reactivatedOverdueTask.setOrganization(organizationService.get(organizationUuid));
+        reactivatedOverdueTask.setTaskType(WorkflowTaskType.DEAD_LETTER_SUPPORT_PERFORMANCE);
+        reactivatedOverdueTask.setStatus(WorkflowTaskStatus.OPEN);
+        reactivatedOverdueTask.setPriority(WorkflowTaskPriority.CRITICAL);
+        reactivatedOverdueTask.setTitle("Reactivated overdue performance risk");
+        reactivatedOverdueTask.setDescription("Snooze expired and the task is overdue again");
+        reactivatedOverdueTask.setDueDate(java.time.LocalDate.now().minusDays(1));
+        workflowTaskRepository.save(reactivatedOverdueTask);
+        auditService.record(
+                organizationUuid,
+                "DEAD_LETTER_SUPPORT_PERFORMANCE_TASK_REACTIVATED",
+                "workflow_task",
+                reactivatedOverdueTask.getId().toString(),
+                "Reactivated support performance risk after snooze expired on " + java.time.LocalDate.now().minusDays(1));
+
+        WorkflowTask ordinaryTask = new WorkflowTask();
+        ordinaryTask.setOrganization(organizationService.get(organizationUuid));
+        ordinaryTask.setTaskType(WorkflowTaskType.DEAD_LETTER_SUPPORT_PERFORMANCE);
+        ordinaryTask.setStatus(WorkflowTaskStatus.OPEN);
+        ordinaryTask.setPriority(WorkflowTaskPriority.CRITICAL);
+        ordinaryTask.setTitle("Ordinary performance risk");
+        ordinaryTask.setDescription("Still open, but not urgent enough for the priority queue");
+        ordinaryTask.setDueDate(java.time.LocalDate.now().plusDays(2));
+        workflowTaskRepository.save(ordinaryTask);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks/high-priority")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].taskId").value(reactivatedOverdueTask.getId().toString()))
+                .andExpect(jsonPath("$[1].taskId").value(ignoredTask.getId().toString()));
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks/high-priority")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(memberTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
     }
 
     private String createUser() throws Exception {

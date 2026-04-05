@@ -18,6 +18,8 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     Optional<Notification> findByIdAndOrganizationId(UUID id, UUID organizationId);
     Optional<Notification> findByProviderNameAndProviderMessageId(String providerName, String providerMessageId);
     List<Notification> findByOrganizationIdAndReferenceTypeOrderByCreatedAtDesc(UUID organizationId, String referenceType);
+    List<Notification> findByWorkflowTaskIdAndReferenceTypeOrderByCreatedAtAsc(UUID workflowTaskId, String referenceType);
+    long countByWorkflowTaskIdAndReferenceType(UUID workflowTaskId, String referenceType);
 
     boolean existsByWorkflowTaskIdAndStatusAndScheduledForAfter(UUID workflowTaskId,
                                                                 NotificationStatus status,

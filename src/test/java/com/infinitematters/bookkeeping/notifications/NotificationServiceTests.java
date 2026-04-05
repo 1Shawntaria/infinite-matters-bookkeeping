@@ -460,11 +460,164 @@ class NotificationServiceTests {
         assertThat(queue.recentlyResolved().get(0).recommendedAction()).isEqualTo(DeadLetterRecommendedAction.NONE);
     }
 
+    @Test
+    void hidesResolvedAndAcknowledgedPerformanceNotificationsFromActiveViews() {
+        UUID organizationId = UUID.randomUUID();
+
+        WorkflowTask acknowledgedTask = new WorkflowTask();
+        setId(acknowledgedTask, UUID.randomUUID());
+        acknowledgedTask.setStatus(WorkflowTaskStatus.OPEN);
+        acknowledgedTask.setAcknowledgedAt(Instant.now());
+
+        WorkflowTask resolvedTask = new WorkflowTask();
+        setId(resolvedTask, UUID.randomUUID());
+        resolvedTask.setStatus(WorkflowTaskStatus.COMPLETED);
+
+        Notification initialAcknowledged = new Notification();
+        setId(initialAcknowledged, UUID.randomUUID());
+        initialAcknowledged.setReferenceType("dead_letter_support_performance");
+        initialAcknowledged.setWorkflowTask(acknowledgedTask);
+        initialAcknowledged.setStatus(NotificationStatus.SENT);
+        initialAcknowledged.setChannel(NotificationChannel.IN_APP);
+        initialAcknowledged.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        initialAcknowledged.setMessage("Initial risk");
+
+        Notification escalationAcknowledged = new Notification();
+        setId(escalationAcknowledged, UUID.randomUUID());
+        escalationAcknowledged.setReferenceType("dead_letter_support_performance_escalation");
+        escalationAcknowledged.setWorkflowTask(acknowledgedTask);
+        escalationAcknowledged.setStatus(NotificationStatus.SENT);
+        escalationAcknowledged.setChannel(NotificationChannel.IN_APP);
+        escalationAcknowledged.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        escalationAcknowledged.setMessage("Escalated risk");
+
+        Notification resolvedInitial = new Notification();
+        setId(resolvedInitial, UUID.randomUUID());
+        resolvedInitial.setReferenceType("dead_letter_support_performance");
+        resolvedInitial.setWorkflowTask(resolvedTask);
+        resolvedInitial.setStatus(NotificationStatus.SENT);
+        resolvedInitial.setChannel(NotificationChannel.IN_APP);
+        resolvedInitial.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        resolvedInitial.setMessage("Resolved risk");
+
+        when(notificationRepository.findByOrganizationIdOrderByCreatedAtDesc(organizationId))
+                .thenReturn(List.of(initialAcknowledged, escalationAcknowledged, resolvedInitial));
+
+        List<NotificationSummary> notifications = notificationService.listForOrganization(organizationId);
+
+        assertThat(notifications).hasSize(1);
+        assertThat(notifications.get(0).id()).isEqualTo(initialAcknowledged.getId());
+    }
+
+    @Test
+    void includesOnlyUnacknowledgedPerformanceRiskNotificationsInAttentionSummary() {
+        UUID organizationId = UUID.randomUUID();
+
+        WorkflowTask openUnacknowledgedTask = new WorkflowTask();
+        setId(openUnacknowledgedTask, UUID.randomUUID());
+        openUnacknowledgedTask.setStatus(WorkflowTaskStatus.OPEN);
+
+        WorkflowTask acknowledgedTask = new WorkflowTask();
+        setId(acknowledgedTask, UUID.randomUUID());
+        acknowledgedTask.setStatus(WorkflowTaskStatus.OPEN);
+        acknowledgedTask.setAcknowledgedAt(Instant.now());
+
+        Notification activeRisk = new Notification();
+        setId(activeRisk, UUID.randomUUID());
+        activeRisk.setReferenceType("dead_letter_support_performance");
+        activeRisk.setWorkflowTask(openUnacknowledgedTask);
+        activeRisk.setStatus(NotificationStatus.SENT);
+        activeRisk.setChannel(NotificationChannel.IN_APP);
+        activeRisk.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        activeRisk.setMessage("Open risk");
+        setCreatedAt(activeRisk, Instant.now());
+
+        Notification acknowledgedRisk = new Notification();
+        setId(acknowledgedRisk, UUID.randomUUID());
+        acknowledgedRisk.setReferenceType("dead_letter_support_performance");
+        acknowledgedRisk.setWorkflowTask(acknowledgedTask);
+        acknowledgedRisk.setStatus(NotificationStatus.SENT);
+        acknowledgedRisk.setChannel(NotificationChannel.IN_APP);
+        acknowledgedRisk.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        acknowledgedRisk.setMessage("Acknowledged risk");
+        setCreatedAt(acknowledgedRisk, Instant.now().minusSeconds(60));
+
+        when(notificationRepository.countByOrganizationIdAndStatus(organizationId, NotificationStatus.PENDING)).thenReturn(0L);
+        when(notificationRepository.countByOrganizationIdAndStatus(organizationId, NotificationStatus.FAILED)).thenReturn(0L);
+        when(notificationRepository.countByOrganizationIdAndDeliveryState(organizationId, NotificationDeliveryState.BOUNCED)).thenReturn(0L);
+        when(notificationRepository.countByOrganizationIdAndDeliveryState(organizationId, NotificationDeliveryState.COMPLAINED)).thenReturn(0L);
+        when(notificationRepository.findByOrganizationIdAndStatusOrderByCreatedAtDesc(organizationId, NotificationStatus.FAILED))
+                .thenReturn(List.of());
+        when(notificationRepository.findTop10ByOrganizationIdAndStatusInOrderByCreatedAtDesc(
+                organizationId,
+                List.of(NotificationStatus.PENDING, NotificationStatus.FAILED)))
+                .thenReturn(List.of());
+        when(notificationRepository.findByOrganizationIdAndReferenceTypeOrderByCreatedAtDesc(
+                organizationId,
+                "dead_letter_support_performance"))
+                .thenReturn(List.of(activeRisk, acknowledgedRisk));
+        when(suppressionService.activeSuppressionCount()).thenReturn(0L);
+
+        NotificationOperationsSummary summary = notificationService.operationsSummary(organizationId);
+
+        assertThat(summary.attentionNotifications()).hasSize(1);
+        assertThat(summary.attentionNotifications().get(0).id()).isEqualTo(activeRisk.getId());
+    }
+
+    @Test
+    void hidesSnoozedPerformanceNotificationsFromAttentionSummary() {
+        UUID organizationId = UUID.randomUUID();
+
+        WorkflowTask snoozedTask = new WorkflowTask();
+        setId(snoozedTask, UUID.randomUUID());
+        snoozedTask.setStatus(WorkflowTaskStatus.OPEN);
+        snoozedTask.setSnoozedUntil(LocalDate.now().plusDays(2));
+
+        Notification snoozedRisk = new Notification();
+        setId(snoozedRisk, UUID.randomUUID());
+        snoozedRisk.setReferenceType("dead_letter_support_performance");
+        snoozedRisk.setWorkflowTask(snoozedTask);
+        snoozedRisk.setStatus(NotificationStatus.SENT);
+        snoozedRisk.setChannel(NotificationChannel.IN_APP);
+        snoozedRisk.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        setCreatedAt(snoozedRisk, Instant.now());
+
+        when(notificationRepository.countByOrganizationIdAndStatus(organizationId, NotificationStatus.PENDING)).thenReturn(0L);
+        when(notificationRepository.countByOrganizationIdAndStatus(organizationId, NotificationStatus.FAILED)).thenReturn(0L);
+        when(notificationRepository.countByOrganizationIdAndDeliveryState(organizationId, NotificationDeliveryState.BOUNCED)).thenReturn(0L);
+        when(notificationRepository.countByOrganizationIdAndDeliveryState(organizationId, NotificationDeliveryState.COMPLAINED)).thenReturn(0L);
+        when(notificationRepository.findByOrganizationIdAndStatusOrderByCreatedAtDesc(organizationId, NotificationStatus.FAILED))
+                .thenReturn(List.of());
+        when(notificationRepository.findTop10ByOrganizationIdAndStatusInOrderByCreatedAtDesc(
+                organizationId,
+                List.of(NotificationStatus.PENDING, NotificationStatus.FAILED)))
+                .thenReturn(List.of());
+        when(notificationRepository.findByOrganizationIdAndReferenceTypeOrderByCreatedAtDesc(
+                organizationId,
+                "dead_letter_support_performance"))
+                .thenReturn(List.of(snoozedRisk));
+        when(suppressionService.activeSuppressionCount()).thenReturn(0L);
+
+        NotificationOperationsSummary summary = notificationService.operationsSummary(organizationId);
+
+        assertThat(summary.attentionNotifications()).isEmpty();
+    }
+
     private void setId(Object target, UUID id) {
         try {
             var field = target.getClass().getDeclaredField("id");
             field.setAccessible(true);
             field.set(target, id);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private void setCreatedAt(Notification notification, Instant createdAt) {
+        try {
+            var field = Notification.class.getDeclaredField("createdAt");
+            field.setAccessible(true);
+            field.set(notification, createdAt);
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException(exception);
         }

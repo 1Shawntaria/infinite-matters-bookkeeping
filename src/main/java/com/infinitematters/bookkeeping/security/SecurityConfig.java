@@ -28,6 +28,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/api/dashboard/home/versions").permitAll()
                         .requestMatchers("/api/providers/notifications/events", "/api/providers/notifications/events/*").permitAll()
                         .requestMatchers("/api/users", "/api/organizations",
                                 "/api/auth/token", "/api/auth/refresh", "/api/auth/logout",

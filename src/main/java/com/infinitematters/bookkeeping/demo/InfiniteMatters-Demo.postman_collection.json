@@ -1,0 +1,863 @@
+{
+  "info": {
+    "_postman_id": "d57b2e8f-7b2e-4b84-9c93-1f6fc6b6a001",
+    "name": "Infinite Matters Demo",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Happy-path demo collection for the current Infinite Matters bookkeeping backend. Run requests top to bottom. Collection variables are populated automatically from responses where possible."
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "ownerEmail", "value": "" },
+    { "key": "ownerFullName", "value": "Acme Owner" },
+    { "key": "ownerPassword", "value": "password123" },
+    { "key": "memberEmail", "value": "" },
+    { "key": "memberFullName", "value": "Acme Member" },
+    { "key": "memberPassword", "value": "password456" },
+    { "key": "organizationName", "value": "Acme Books Demo" },
+    { "key": "organizationTimezone", "value": "America/Los_Angeles" },
+    { "key": "organizationPlanTier", "value": "GROWTH" },
+    { "key": "financialAccountName", "value": "Operating Checking" },
+    { "key": "financialAccountType", "value": "BANK" },
+    { "key": "financialInstitutionName", "value": "Demo Bank" },
+    { "key": "currency", "value": "USD" },
+    { "key": "focusMonth", "value": "2026-03" },
+    { "key": "openingBalance", "value": "1000.00" },
+    { "key": "statementEndingBalance", "value": "1128.43" },
+    { "key": "accessToken", "value": "" },
+    { "key": "ownerUserId", "value": "" },
+    { "key": "memberUserId", "value": "" },
+    { "key": "organizationId", "value": "" },
+    { "key": "financialAccountId", "value": "" },
+    { "key": "reviewTaskId", "value": "" },
+    { "key": "unknownVendorTaskId", "value": "" },
+    { "key": "deltaAirLinesTaskId", "value": "" },
+    { "key": "comcastTaskId", "value": "" },
+    { "key": "reconciliationSessionId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
+          "name": "OpenAPI Docs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v3/api-docs",
+              "host": ["{{baseUrl}}"],
+              "path": ["v3", "api-docs"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Identity Setup",
+      "item": [
+        {
+          "name": "Create Owner User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const timestamp = Date.now();",
+                  "const ownerEmail = `owner+${timestamp}@acme.test`;",
+                  "pm.collectionVariables.set('ownerEmail', ownerEmail);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('ownerUserId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"fullName\": \"{{ownerFullName}}\",\n  \"password\": \"{{ownerPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "Create Duplicate Owner User (Expect 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('duplicate user returns 409', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('duplicate user response includes clear reason', function () {",
+                  "  pm.expect(json.message).to.eql(`A user with email '${pm.collectionVariables.get('ownerEmail')}' already exists`);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"fullName\": \"{{ownerFullName}}\",\n  \"password\": \"{{ownerPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "Create Member User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const timestamp = Date.now();",
+                  "const memberEmail = `member+${timestamp}@acme.test`;",
+                  "pm.collectionVariables.set('memberEmail', memberEmail);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('memberUserId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{memberEmail}}\",\n  \"fullName\": \"{{memberFullName}}\",\n  \"password\": \"{{memberPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "Create Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('organizationId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{organizationName}}\",\n  \"planTier\": \"{{organizationPlanTier}}\",\n  \"timezone\": \"{{organizationTimezone}}\",\n  \"ownerUserId\": \"{{ownerUserId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "organizations"]
+            }
+          }
+        },
+        {
+          "name": "Login Owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{ownerPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "token"]
+            }
+          }
+        },
+        {
+          "name": "Add Member To Organization",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"userId\": \"{{memberUserId}}\",\n  \"role\": \"MEMBER\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/memberships",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "memberships"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Account Setup",
+      "item": [
+        {
+          "name": "Create Financial Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('financialAccountId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"name\": \"{{financialAccountName}}\",\n  \"accountType\": \"{{financialAccountType}}\",\n  \"institutionName\": \"{{financialInstitutionName}}\",\n  \"currency\": \"{{currency}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Transactions And Review",
+      "item": [
+        {
+          "name": "Import Demo CSV",
+          "request": {
+            "description": "Attach `/Users/shawntariaburden/Development/infinite-matters/src/main/java/com/infinitematters/bookkeeping/demo/demo-transactions.csv` in the `file` field. This is the balanced demo import: you should see some transactions auto-categorize and at least one ambiguous item land in the review queue.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "organizationId", "value": "{{organizationId}}", "type": "text" },
+                { "key": "financialAccountId", "value": "{{financialAccountId}}", "type": "text" },
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/import/csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "import", "csv"]
+            }
+          }
+        },
+        {
+          "name": "Import Review-Heavy Demo CSV",
+          "request": {
+            "description": "Attach `/Users/shawntariaburden/Development/infinite-matters/src/main/java/com/infinitematters/bookkeeping/demo/demo-transactions-review-heavy.csv` in the `file` field. This import is intentionally more ambiguous, so it should create a stronger review-queue demo with multiple items needing manual resolution.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "organizationId", "value": "{{organizationId}}", "type": "text" },
+                { "key": "financialAccountId", "value": "{{financialAccountId}}", "type": "text" },
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/import/csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "import", "csv"]
+            }
+          }
+        },
+        {
+          "name": "List Review Tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.unset('reviewTaskId');",
+                  "pm.collectionVariables.unset('unknownVendorTaskId');",
+                  "pm.collectionVariables.unset('deltaAirLinesTaskId');",
+                  "pm.collectionVariables.unset('comcastTaskId');",
+                  "if (Array.isArray(json) && json.length > 0) {",
+                  "  pm.collectionVariables.set('reviewTaskId', json[0].taskId);",
+                  "  json.forEach(task => {",
+                  "    if (task.merchant === 'UNKNOWN VENDOR') {",
+                  "      pm.collectionVariables.set('unknownVendorTaskId', task.taskId);",
+                  "    }",
+                  "    if (task.merchant === 'DELTA AIR LINES') {",
+                  "      pm.collectionVariables.set('deltaAirLinesTaskId', task.taskId);",
+                  "    }",
+                  "    if (task.merchant === 'COMCAST') {",
+                  "      pm.collectionVariables.set('comcastTaskId', task.taskId);",
+                  "    }",
+                  "  });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/tasks?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "tasks"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve Review Task As SOFTWARE",
+          "request": {
+            "description": "Generic resolver using `{{reviewTaskId}}`. Run `List Review Tasks` first so the first open task is captured automatically.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"finalCategory\": \"SOFTWARE\",\n  \"resolutionComment\": \"Demo override\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/tasks/{{reviewTaskId}}/resolve?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "tasks", "{{reviewTaskId}}", "resolve"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve UNKNOWN VENDOR As SOFTWARE",
+          "request": {
+            "description": "For the balanced demo import, this resolves the `UNKNOWN VENDOR` task using `{{unknownVendorTaskId}}`. Run `List Review Tasks` first.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"finalCategory\": \"SOFTWARE\",\n  \"resolutionComment\": \"Demo override\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/tasks/{{unknownVendorTaskId}}/resolve?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "tasks", "{{unknownVendorTaskId}}", "resolve"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve DELTA AIR LINES As TRAVEL",
+          "request": {
+            "description": "For the balanced demo import, this resolves the `DELTA AIR LINES` task using `{{deltaAirLinesTaskId}}`. Run `List Review Tasks` first.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"finalCategory\": \"TRAVEL\",\n  \"resolutionComment\": \"Demo override\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/tasks/{{deltaAirLinesTaskId}}/resolve?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "tasks", "{{deltaAirLinesTaskId}}", "resolve"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve COMCAST As UTILITIES",
+          "request": {
+            "description": "For the balanced demo import, this resolves the `COMCAST` task using `{{comcastTaskId}}`. Run `List Review Tasks` first.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"finalCategory\": \"UTILITIES\",\n  \"resolutionComment\": \"Demo override\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/tasks/{{comcastTaskId}}/resolve?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "tasks", "{{comcastTaskId}}", "resolve"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Transactions",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Reporting",
+      "item": [
+        {
+          "name": "Ledger Entries",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ledger/entries?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ledger", "entries"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard Snapshot",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/snapshot?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "snapshot"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Audit Events",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/audit/events?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "audit", "events"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Month End",
+      "item": [
+        {
+          "name": "Start Reconciliation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('reconciliationSessionId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": \"{{focusMonth}}\",\n  \"financialAccountId\": \"{{financialAccountId}}\",\n  \"openingBalance\": {{openingBalance}},\n  \"statementEndingBalance\": {{statementEndingBalance}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reconciliations?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reconciliations"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Complete Reconciliation",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/reconciliations/{{reconciliationSessionId}}/complete?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reconciliations", "{{reconciliationSessionId}}", "complete"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Period Checklist",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/periods/checklist?organizationId={{organizationId}}&month={{focusMonth}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "periods", "checklist"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" },
+                { "key": "month", "value": "{{focusMonth}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Force Close Period",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": \"{{focusMonth}}\",\n  \"overrideReason\": \"Demo force close after walkthrough\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/periods/force-close?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "periods", "force-close"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Dead Letter Ops",
+      "item": [
+        {
+          "name": "Dead Letter Queue",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/workflows/notifications/dead-letter/queue?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "workflows", "notifications", "dead-letter", "queue"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dead Letter Support Tasks",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/workflows/notifications/dead-letter/tasks?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "workflows", "notifications", "dead-letter", "tasks"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dead Letter Effectiveness",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/workflows/notifications/dead-letter/effectiveness?organizationId={{organizationId}}&weeks=6",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "workflows", "notifications", "dead-letter", "effectiveness"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" },
+                { "key": "weeks", "value": "6" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Run Support Performance Monitor",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/workflows/notifications/dead-letter/performance/run?organizationId={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "workflows", "notifications", "dead-letter", "performance", "run"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

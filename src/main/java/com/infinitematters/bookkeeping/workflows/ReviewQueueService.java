@@ -1,6 +1,7 @@
 package com.infinitematters.bookkeeping.workflows;
 
 import com.infinitematters.bookkeeping.audit.AuditService;
+import com.infinitematters.bookkeeping.dashboard.DashboardActionUrgency;
 import com.infinitematters.bookkeeping.domain.Category;
 import com.infinitematters.bookkeeping.ledger.LedgerService;
 import com.infinitematters.bookkeeping.organization.Organization;
@@ -100,6 +101,9 @@ public class ReviewQueueService {
                                 0.0,
                                 null,
                                 task.getResolutionComment(),
+                                task.getAcknowledgedByUser() != null ? task.getAcknowledgedByUser().getId() : null,
+                                task.getAcknowledgedAt(),
+                                task.getSnoozedUntil(),
                                 task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
                                 task.getResolvedAt());
                     }
@@ -124,6 +128,9 @@ public class ReviewQueueService {
                             decision.getConfidenceScore(),
                             decision.getRoute(),
                             task.getResolutionComment(),
+                            task.getAcknowledgedByUser() != null ? task.getAcknowledgedByUser().getId() : null,
+                            task.getAcknowledgedAt(),
+                            task.getSnoozedUntil(),
                             task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
                             task.getResolvedAt());
                 })
@@ -194,12 +201,17 @@ public class ReviewQueueService {
                 .toList();
 
         return new WorkflowInboxSummary(
+                "workflow-inbox",
                 openTasks.size(),
                 Math.toIntExact(overdueCount),
                 Math.toIntExact(dueTodayCount),
                 Math.toIntExact(highPriorityCount),
                 Math.toIntExact(unassignedCount),
                 Math.toIntExact(assignedToCurrentUserCount),
+                recommendedInboxAction(overdueCount, highPriorityCount, openTasks.size()),
+                recommendedInboxActionKey(overdueCount, highPriorityCount, openTasks.size()),
+                recommendedInboxActionPath(overdueCount, highPriorityCount, openTasks.size()),
+                recommendedInboxActionUrgency(overdueCount, highPriorityCount, openTasks.size()),
                 attention);
     }
 
@@ -248,7 +260,7 @@ public class ReviewQueueService {
                 task.getStatus());
     }
 
-    private ReviewTaskSummary toSummary(WorkflowTask task) {
+    public ReviewTaskSummary toSummary(WorkflowTask task) {
         if (task.getTransaction() == null) {
             return new ReviewTaskSummary(
                     task.getId(),
@@ -269,6 +281,9 @@ public class ReviewQueueService {
                     0.0,
                     null,
                     task.getResolutionComment(),
+                    task.getAcknowledgedByUser() != null ? task.getAcknowledgedByUser().getId() : null,
+                    task.getAcknowledgedAt(),
+                    task.getSnoozedUntil(),
                     task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
                     task.getResolvedAt());
         }
@@ -293,6 +308,9 @@ public class ReviewQueueService {
                 decision.getConfidenceScore(),
                 decision.getRoute(),
                 task.getResolutionComment(),
+                task.getAcknowledgedByUser() != null ? task.getAcknowledgedByUser().getId() : null,
+                task.getAcknowledgedAt(),
+                task.getSnoozedUntil(),
                 task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
                 task.getResolvedAt());
     }
@@ -330,5 +348,48 @@ public class ReviewQueueService {
             case HIGH -> 3;
             case CRITICAL -> 4;
         };
+    }
+
+    private String recommendedInboxAction(long overdueCount, long highPriorityCount, int openCount) {
+        if (overdueCount > 0) {
+            return "Resolve overdue bookkeeping tasks";
+        }
+        if (highPriorityCount > 0) {
+            return "Review high-priority bookkeeping tasks";
+        }
+        if (openCount > 0) {
+            return "Review pending bookkeeping tasks";
+        }
+        return null;
+    }
+
+    private String recommendedInboxActionKey(long overdueCount, long highPriorityCount, int openCount) {
+        if (overdueCount > 0) {
+            return "RESOLVE_OVERDUE_TASKS";
+        }
+        if (highPriorityCount > 0) {
+            return "REVIEW_HIGH_PRIORITY_TASKS";
+        }
+        if (openCount > 0) {
+            return "REVIEW_PENDING_TASKS";
+        }
+        return null;
+    }
+
+    private String recommendedInboxActionPath(long overdueCount, long highPriorityCount, int openCount) {
+        if (overdueCount > 0 || highPriorityCount > 0 || openCount > 0) {
+            return "/workflows/inbox";
+        }
+        return null;
+    }
+
+    private DashboardActionUrgency recommendedInboxActionUrgency(long overdueCount, long highPriorityCount, int openCount) {
+        if (overdueCount > 0 || highPriorityCount > 0) {
+            return DashboardActionUrgency.HIGH;
+        }
+        if (openCount > 0) {
+            return DashboardActionUrgency.NORMAL;
+        }
+        return null;
     }
 }

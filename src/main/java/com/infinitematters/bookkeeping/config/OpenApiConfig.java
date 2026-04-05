@@ -14,7 +14,8 @@ public class OpenApiConfig {
     OpenAPI bookkeepingOpenApi() {
         return new OpenAPI().info(new Info()
                 .title("Infinite Matters Bookkeeping API")
-                .description("AI-assisted bookkeeping workflow and close management API")
+                .description("AI-assisted bookkeeping workflow and close management API. "
+                        + "For frontend home-screen integrations, use /api/dashboard/home as the versioned dashboard contract boundary.")
                 .version("v1")
                 .contact(new Contact().name("Infinite Matters"))
                 .license(new License().name("Proprietary")));

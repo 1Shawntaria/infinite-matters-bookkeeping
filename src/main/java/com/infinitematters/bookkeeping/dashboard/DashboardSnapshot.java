@@ -11,6 +11,7 @@ public record DashboardSnapshot(
         YearMonth focusMonth,
         BigDecimal cashBalance,
         long postedTransactionCount,
+        DashboardPrimaryAction primaryAction,
         WorkflowInboxSummary workflowInbox,
         DashboardPeriodSnapshot period,
         DashboardNotificationHealthSnapshot notificationHealth,

@@ -28,6 +28,9 @@ public class UserService {
     }
 
     public AppUser create(String email, String fullName, String password) {
+        if (userRepository.findByEmailIgnoreCase(email).isPresent()) {
+            throw new DuplicateUserException(email);
+        }
         AppUser user = new AppUser();
         user.setEmail(email);
         user.setFullName(fullName);

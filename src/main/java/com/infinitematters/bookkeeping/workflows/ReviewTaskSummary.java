@@ -26,6 +26,9 @@ public record ReviewTaskSummary(
         double confidenceScore,
         String route,
         String resolutionComment,
+        UUID acknowledgedByUserId,
+        Instant acknowledgedAt,
+        LocalDate snoozedUntil,
         UUID resolvedByUserId,
         Instant resolvedAt) {
 }

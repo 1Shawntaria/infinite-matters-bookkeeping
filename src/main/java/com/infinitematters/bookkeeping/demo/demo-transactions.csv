@@ -1,0 +1,5 @@
+id,date,merchant,memo,amount,mcc
+txn-1,2026-03-15,STARBUCKS,coffee with client,18.45,5814
+txn-2,2026-03-16,UNKNOWN VENDOR,monthly seat fee,49.99,5734
+txn-3,2026-03-18,DELTA AIR LINES,flight to client meeting,325,4511
+txn-4,2026-03-20,COMCAST,office internet bill,89.99,4814

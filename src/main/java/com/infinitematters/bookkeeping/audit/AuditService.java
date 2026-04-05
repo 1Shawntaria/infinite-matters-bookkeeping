@@ -8,6 +8,7 @@ import com.infinitematters.bookkeeping.users.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -85,6 +86,28 @@ public class AuditService {
                         || event.getEventType().startsWith("PASSWORD_RESET"))
                 .map(this::toSummary)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuditEventSummary> listRecentForOrganizationByEventType(UUID organizationId, String eventType, int limit) {
+        organizationService.get(organizationId);
+        return repository.findTop5ByOrganizationIdAndEventTypeOrderByCreatedAtDesc(organizationId, eventType)
+                .stream()
+                .limit(limit)
+                .map(this::toSummary)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public long countRecentForOrganizationByEventType(UUID organizationId, String eventType, Instant createdAtAfter) {
+        organizationService.get(organizationId);
+        return repository.countByOrganizationIdAndEventTypeAndCreatedAtAfter(organizationId, eventType, createdAtAfter);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasOrganizationEventForEntity(UUID organizationId, String eventType, String entityId) {
+        organizationService.get(organizationId);
+        return repository.existsByOrganizationIdAndEventTypeAndEntityId(organizationId, eventType, entityId);
     }
 
     private AuditEventSummary toSummary(AuditEvent event) {

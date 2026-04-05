@@ -2,5 +2,6 @@ package com.infinitematters.bookkeeping.notifications;
 
 public record DeadLetterSupportPerformanceMonitorRunResult(
         int createdCount,
-        int closedCount) {
+        int closedCount,
+        int escalatedCount) {
 }

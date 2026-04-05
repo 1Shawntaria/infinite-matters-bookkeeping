@@ -10,6 +10,8 @@ import com.infinitematters.bookkeeping.notifications.DeadLetterEscalationRunResu
 import com.infinitematters.bookkeeping.notifications.DeadLetterQueueSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportTaskOperationsSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEffectivenessSummary;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskFilter;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskQueueSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorRunResult;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEscalationService;
@@ -20,7 +22,9 @@ import com.infinitematters.bookkeeping.users.UserRole;
 import com.infinitematters.bookkeeping.web.dto.DeadLetterResolutionRequest;
 import com.infinitematters.bookkeeping.web.dto.ResolveDeadLetterNoResendRequest;
 import com.infinitematters.bookkeeping.web.dto.RetryDeadLetterRequest;
+import com.infinitematters.bookkeeping.web.dto.SnoozeWorkflowTaskRequest;
 import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
+import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
 import com.infinitematters.bookkeeping.workflows.WorkflowInboxSummary;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -102,6 +106,70 @@ public class WorkflowInboxController {
                                                                                 @RequestParam(defaultValue = "6") int weeks) {
         tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
         return deadLetterWorkflowTaskService.effectivenessSummary(organizationId, weeks);
+    }
+
+    @GetMapping("/notifications/dead-letter/performance/tasks")
+    public List<ReviewTaskSummary> deadLetterSupportPerformanceTasks(@RequestParam UUID organizationId,
+                                                                     @RequestParam(defaultValue = "ALL")
+                                                                     DeadLetterSupportPerformanceTaskFilter filter) {
+        tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return deadLetterSupportPerformanceMonitorService.listOpenRiskTasks(organizationId, filter).stream()
+                .map(reviewQueueService::toSummary)
+                .toList();
+    }
+
+    @GetMapping("/notifications/dead-letter/performance/tasks/high-priority")
+    public List<ReviewTaskSummary> highPriorityDeadLetterSupportPerformanceTasks(@RequestParam UUID organizationId) {
+        tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return deadLetterSupportPerformanceMonitorService.listHighPriorityRiskTasks(organizationId).stream()
+                .map(reviewQueueService::toSummary)
+                .toList();
+    }
+
+    @GetMapping("/notifications/dead-letter/performance/summary")
+    public DeadLetterSupportPerformanceTaskQueueSummary deadLetterSupportPerformanceTaskSummary(@RequestParam UUID organizationId) {
+        tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return deadLetterSupportPerformanceMonitorService.queueSummary(organizationId);
+    }
+
+    @PostMapping("/notifications/dead-letter/performance/tasks/{taskId}/acknowledge")
+    public ReviewTaskSummary acknowledgeDeadLetterSupportPerformanceTask(@RequestParam UUID organizationId,
+                                                                         @PathVariable UUID taskId,
+                                                                         @RequestBody(required = false) DeadLetterResolutionRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return reviewQueueService.toSummary(
+                deadLetterSupportPerformanceMonitorService.acknowledgeRiskTask(
+                        organizationId,
+                        taskId,
+                        actorUserId,
+                        request != null ? request.note() : null));
+    }
+
+    @PostMapping("/notifications/dead-letter/performance/tasks/{taskId}/snooze")
+    public ReviewTaskSummary snoozeDeadLetterSupportPerformanceTask(@RequestParam UUID organizationId,
+                                                                    @PathVariable UUID taskId,
+                                                                    @RequestBody SnoozeWorkflowTaskRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return reviewQueueService.toSummary(
+                deadLetterSupportPerformanceMonitorService.snoozeRiskTask(
+                        organizationId,
+                        taskId,
+                        actorUserId,
+                        request.snoozedUntil(),
+                        request.note()));
+    }
+
+    @PostMapping("/notifications/dead-letter/performance/tasks/{taskId}/resolve")
+    public ReviewTaskSummary resolveDeadLetterSupportPerformanceTask(@RequestParam UUID organizationId,
+                                                                     @PathVariable UUID taskId,
+                                                                     @RequestBody(required = false) DeadLetterResolutionRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return reviewQueueService.toSummary(
+                deadLetterSupportPerformanceMonitorService.resolveRiskTask(
+                        organizationId,
+                        taskId,
+                        actorUserId,
+                        request != null ? request.note() : null));
     }
 
     @PostMapping("/notifications/dead-letter/performance/run")

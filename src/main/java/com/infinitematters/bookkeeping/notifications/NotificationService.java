@@ -14,11 +14,17 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Comparator;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Stream;
 import java.util.UUID;
 
 @Service
 public class NotificationService {
+    private static final String PERFORMANCE_REFERENCE_TYPE = "dead_letter_support_performance";
+    private static final String PERFORMANCE_ESCALATION_REFERENCE_TYPE = "dead_letter_support_performance_escalation";
+
     private final NotificationRepository notificationRepository;
     private final WorkflowTaskRepository workflowTaskRepository;
     private final OrganizationService organizationService;
@@ -63,6 +69,7 @@ public class NotificationService {
         organizationService.get(organizationId);
         return notificationRepository.findByOrganizationIdOrderByCreatedAtDesc(organizationId)
                 .stream()
+                .filter(this::isVisibleWorkflowNotification)
                 .map(NotificationSummary::from)
                 .toList();
     }
@@ -99,16 +106,35 @@ public class NotificationService {
                 .limit(5)
                 .map(NotificationSummary::from)
                 .toList();
-        List<NotificationSummary> attentionNotifications = notificationRepository
+        List<NotificationSummary> deliveryAttentionNotifications = notificationRepository
                 .findTop10ByOrganizationIdAndStatusInOrderByCreatedAtDesc(
                         organizationId,
                         List.of(NotificationStatus.PENDING, NotificationStatus.FAILED))
                 .stream()
+                .filter(this::isVisibleWorkflowNotification)
                 .filter(notification -> notification.getStatus() != NotificationStatus.FAILED
                         || notification.getDeadLetterResolutionStatus() != DeadLetterResolutionStatus.RESOLVED)
                 .map(NotificationSummary::from)
                 .toList();
-        long retryingCount = attentionNotifications.stream()
+        List<NotificationSummary> performanceAttentionNotifications = notificationRepository
+                .findByOrganizationIdAndReferenceTypeOrderByCreatedAtDesc(organizationId, PERFORMANCE_REFERENCE_TYPE)
+                .stream()
+                .filter(this::isActiveUnacknowledgedPerformanceNotification)
+                .collect(java.util.stream.Collectors.toMap(
+                        notification -> notification.getWorkflowTask().getId(),
+                        Function.identity(),
+                        (left, right) -> left.getCreatedAt().isAfter(right.getCreatedAt()) ? left : right))
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(Notification::getCreatedAt).reversed())
+                .map(NotificationSummary::from)
+                .toList();
+        List<NotificationSummary> attentionNotifications = Stream.concat(
+                        performanceAttentionNotifications.stream(),
+                        deliveryAttentionNotifications.stream())
+                .limit(10)
+                .toList();
+        long retryingCount = deliveryAttentionNotifications.stream()
                 .filter(notification -> notification.status() == NotificationStatus.PENDING)
                 .filter(notification -> notification.attemptCount() > 0)
                 .count();
@@ -330,6 +356,7 @@ public class NotificationService {
     public List<NotificationSummary> listForUser(UUID userId) {
         return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId)
                 .stream()
+                .filter(this::isVisibleWorkflowNotification)
                 .map(NotificationSummary::from)
                 .toList();
     }
@@ -421,6 +448,43 @@ public class NotificationService {
         notification.setDeadLetterResolutionNote(null);
         notification.setDeadLetterResolvedAt(null);
         notification.setDeadLetterResolvedByUser(null);
+    }
+
+    private boolean isVisibleWorkflowNotification(Notification notification) {
+        if (!isPerformanceNotification(notification)) {
+            return true;
+        }
+        WorkflowTask task = notification.getWorkflowTask();
+        if (task == null) {
+            return true;
+        }
+        if (task.getStatus() != WorkflowTaskStatus.OPEN) {
+            return false;
+        }
+        if (task.getSnoozedUntil() != null && !task.getSnoozedUntil().isBefore(LocalDate.now())) {
+            return !PERFORMANCE_ESCALATION_REFERENCE_TYPE.equals(notification.getReferenceType());
+        }
+        return !isPerformanceEscalationNotification(notification) || task.getAcknowledgedAt() == null;
+    }
+
+    private boolean isActiveUnacknowledgedPerformanceNotification(Notification notification) {
+        if (!PERFORMANCE_REFERENCE_TYPE.equals(notification.getReferenceType())) {
+            return false;
+        }
+        WorkflowTask task = notification.getWorkflowTask();
+        return task != null
+                && task.getStatus() == WorkflowTaskStatus.OPEN
+                && (task.getSnoozedUntil() == null || task.getSnoozedUntil().isBefore(LocalDate.now()))
+                && task.getAcknowledgedAt() == null;
+    }
+
+    private boolean isPerformanceNotification(Notification notification) {
+        return PERFORMANCE_REFERENCE_TYPE.equals(notification.getReferenceType())
+                || isPerformanceEscalationNotification(notification);
+    }
+
+    private boolean isPerformanceEscalationNotification(Notification notification) {
+        return PERFORMANCE_ESCALATION_REFERENCE_TYPE.equals(notification.getReferenceType());
     }
 
     private boolean isDeadLetter(Notification notification) {
