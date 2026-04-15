@@ -33,6 +33,7 @@ import com.infinitematters.bookkeeping.periods.AccountingPeriod;
 import com.infinitematters.bookkeeping.periods.AccountingPeriodRepository;
 import com.infinitematters.bookkeeping.periods.AccountingPeriodStatus;
 import com.infinitematters.bookkeeping.periods.PeriodCloseMethod;
+import com.infinitematters.bookkeeping.reconciliation.ReconciliationService;
 import com.infinitematters.bookkeeping.transactions.BookkeepingTransaction;
 import com.infinitematters.bookkeeping.transactions.BookkeepingTransactionRepository;
 import com.infinitematters.bookkeeping.transactions.CategorizationDecision;
@@ -82,6 +83,8 @@ class DashboardServiceTests {
     private AccountingPeriodRepository accountingPeriodRepository;
     @Mock
     private AuditService auditService;
+    @Mock
+    private ReconciliationService reconciliationService;
 
     private DashboardService dashboardService;
 
@@ -422,7 +425,7 @@ class DashboardServiceTests {
         assertThat(snapshot.staleAccounts().get(0).itemId()).isEqualTo("stale-account-" + staleAccountId);
         assertThat(snapshot.staleAccounts().get(0).accountName()).isEqualTo("Reserve Checking");
         assertThat(snapshot.staleAccounts().get(0).actionKey()).isEqualTo("REVIEW_STALE_ACCOUNT");
-        assertThat(snapshot.staleAccounts().get(0).actionPath()).isEqualTo("/reconciliations?accountId=" + staleAccountId);
+        assertThat(snapshot.staleAccounts().get(0).actionPath()).isEqualTo("/reconciliation?accountId=" + staleAccountId);
         assertThat(snapshot.staleAccounts().get(0).actionUrgency()).isEqualTo(DashboardActionUrgency.NORMAL);
         assertThat(snapshot.staleAccounts().get(0).actionReason()).isEqualTo("No activity for 45 days.");
         assertThat(snapshot.period().cardId()).isEqualTo("period-close");
@@ -430,7 +433,7 @@ class DashboardServiceTests {
         assertThat(snapshot.period().unreconciledAccountCount()).isEqualTo(1);
         assertThat(snapshot.period().recommendedActionLabel()).isEqualTo("Finish account reconciliations");
         assertThat(snapshot.period().recommendedActionKey()).isEqualTo("FINISH_RECONCILIATIONS");
-        assertThat(snapshot.period().recommendedActionPath()).isEqualTo("/reconciliations");
+        assertThat(snapshot.period().recommendedActionPath()).isEqualTo("/reconciliation");
         assertThat(snapshot.period().recommendedActionUrgency()).isEqualTo(DashboardActionUrgency.HIGH);
         assertThat(snapshot.primaryAction()).isNotNull();
         assertThat(snapshot.primaryAction().cardId()).isEqualTo("support-performance");

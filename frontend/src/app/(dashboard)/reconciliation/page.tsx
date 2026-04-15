@@ -8,35 +8,72 @@ import {
     ReconciliationDashboard,
 } from "@/lib/api/reconciliation";
 
+function getStoredOrganizationId() {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("organizationId") ?? "";
+}
+
 export default function ReconciliationPage() {
+    const [organizationId] = useState(getStoredOrganizationId);
     const [data, setData] = useState<ReconciliationDashboard | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => Boolean(organizationId));
     const [error, setError] = useState("");
+    const [openingBalance, setOpeningBalance] = useState("");
+    const [statementEndingBalance, setStatementEndingBalance] = useState("");
+    const [startingReconciliation, setStartingReconciliation] = useState(false);
 
     useEffect(() => {
-        const organizationId = localStorage.getItem("organizationId");
-
-        if (!organizationId) {
-            setError("No organization ID found. Please sign in again.");
-            setLoading(false);
-            return;
-        }
+        if (!organizationId) return;
 
         getReconciliationDashboard(organizationId)
             .then((result) => setData(result))
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
-    }, []);
+    }, [organizationId]);
+
+    async function handleStartReconciliation(accountId: string, actionPath: string) {
+        if (!organizationId || !data?.focusMonth) {
+            setError("No organization ID found. Please sign in again.");
+            return;
+        }
+
+        const parsedOpeningBalance = Number(openingBalance);
+        const parsedStatementEndingBalance = Number(statementEndingBalance);
+
+        if (!Number.isFinite(parsedOpeningBalance) || !Number.isFinite(parsedStatementEndingBalance)) {
+            setError("Enter valid opening and statement ending balances before starting.");
+            return;
+        }
+
+        setError("");
+        setStartingReconciliation(true);
+
+        try {
+            await startReconciliation(organizationId, {
+                financialAccountId: accountId,
+                month: data.focusMonth,
+                openingBalance: parsedOpeningBalance,
+                statementEndingBalance: parsedStatementEndingBalance,
+            });
+            window.location.href = actionPath;
+        } catch (err) {
+            const message =
+                err instanceof Error ? err.message : "Unable to start reconciliation.";
+            setError(message);
+        } finally {
+            setStartingReconciliation(false);
+        }
+    }
 
     if (loading) {
         return <main className="p-6">Loading reconciliation workspace...</main>;
     }
 
-    if (error) {
+    if (!organizationId || error) {
         return (
             <main className="p-6">
                 <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {error}
+                    {error || "No organization ID found. Please sign in again."}
                 </div>
             </main>
         );
@@ -98,27 +135,42 @@ export default function ReconciliationPage() {
                 ) : null}
 
                 {!data?.period?.closeReady && unreconciledAccounts.length > 0 && (
-                    <div className="mt-4">
+                    <div className="mt-4 grid gap-3 md:max-w-xl md:grid-cols-2">
+                        <label className="space-y-2 text-sm text-zinc-300">
+                            <span>Opening Balance</span>
+                            <input
+                                className="w-full rounded-md border border-zinc-700 bg-black px-3 py-2 text-white outline-none"
+                                inputMode="decimal"
+                                type="number"
+                                step="0.01"
+                                value={openingBalance}
+                                onChange={(event) => setOpeningBalance(event.target.value)}
+                            />
+                        </label>
+
+                        <label className="space-y-2 text-sm text-zinc-300">
+                            <span>Statement Ending Balance</span>
+                            <input
+                                className="w-full rounded-md border border-zinc-700 bg-black px-3 py-2 text-white outline-none"
+                                inputMode="decimal"
+                                type="number"
+                                step="0.01"
+                                value={statementEndingBalance}
+                                onChange={(event) => setStatementEndingBalance(event.target.value)}
+                            />
+                        </label>
+
                         <button
-                            onClick={async () => {
-                                const organizationId = localStorage.getItem("organizationId");
-                                if (!organizationId) return;
-
-                                const account = unreconciledAccounts[0];
-
-                                const result = await startReconciliation(organizationId, {
-                                    financialAccountId: account.accountId,
-                                    month: data?.focusMonth!,
-                                    openingBalance: 0, // temporary
-                                    statementEndingBalance: 0, // temporary
-                                });
-                                console.log("Reconciliation session:", result);
-
-                                window.location.href = account.actionPath;
-                            }}
-                            className="inline-block rounded-md bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition"
+                            onClick={() =>
+                                handleStartReconciliation(
+                                    unreconciledAccounts[0].accountId,
+                                    unreconciledAccounts[0].actionPath
+                                )
+                            }
+                            disabled={startingReconciliation}
+                            className="inline-block rounded-md bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition disabled:opacity-50 md:col-span-2"
                         >
-                            Start Reconciliation
+                            {startingReconciliation ? "Starting..." : "Start Reconciliation"}
                         </button>
                     </div>
                 )}

@@ -9,35 +9,35 @@ import {
 import Link from "next/link";
 import { mapBackendActionPathToFrontend } from "@/lib/navigation";
 
+function getStoredOrganizationId() {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("organizationId") ?? "";
+}
+
 export default function DashboardPage() {
+    const [organizationId] = useState(getStoredOrganizationId);
     const [data, setData] = useState<DashboardSnapshot | null>(null);
     const [error, setError] = useState("");
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => Boolean(organizationId));
 
     useEffect(() => {
-        const organizationId = localStorage.getItem("organizationId");
-
-        if (!organizationId) {
-            setError("No organization ID found. Please sign in again.");
-            setLoading(false);
-            return;
-        }
+        if (!organizationId) return;
 
         getDashboardSnapshot(organizationId)
             .then((result) => setData(result))
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
-    }, []);
+    }, [organizationId]);
 
     if (loading) {
         return <main className="p-6">Loading dashboard...</main>;
     }
 
-    if (error) {
+    if (!organizationId || error) {
         return (
             <main className="p-6">
                 <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {error}
+                    {error || "No organization ID found. Please sign in again."}
                 </div>
             </main>
         );
@@ -136,14 +136,6 @@ export default function DashboardPage() {
                 </div>
             ) : null}
 
-            {/* Raw Snapshot (Debug Only) */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-                <p className="text-sm text-zinc-400">System Details (Debug)</p>
-
-                <pre className="mt-3 max-h-[500px] overflow-auto rounded-md bg-black p-4 text-xs leading-6 text-green-200">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-            </div>
         </main>
     );
 }
