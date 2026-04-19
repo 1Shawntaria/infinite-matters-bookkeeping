@@ -1,6 +1,5 @@
 import {
     clearAuthSession,
-    getAccessToken,
     getOrganizationId,
     redirectToLogin,
 } from "@/lib/auth/session";
@@ -25,17 +24,12 @@ export async function apiFetch<T>(
         ...requestOptions
     } = options;
 
-    const token = getAccessToken();
     const organizationId = getOrganizationId();
 
     const headers = new Headers(requestOptions.headers);
 
     if (includeJsonHeader && !headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json");
-    }
-
-    if (includeAuth && token) {
-        headers.set("Authorization", `Bearer ${token}`);
     }
 
     if (includeOrganizationId && organizationId) {
@@ -45,6 +39,7 @@ export async function apiFetch<T>(
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...requestOptions,
         headers,
+        credentials: "include",
     });
 
     if (response.status === 401 && includeAuth) {

@@ -24,10 +24,14 @@ public class BearerTokenAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final AuthTokenService authTokenService;
+    private final AuthCookieService authCookieService;
     private final ObjectMapper objectMapper;
 
-    public BearerTokenAuthenticationFilter(AuthTokenService authTokenService, ObjectMapper objectMapper) {
+    public BearerTokenAuthenticationFilter(AuthTokenService authTokenService,
+                                           AuthCookieService authCookieService,
+                                           ObjectMapper objectMapper) {
         this.authTokenService = authTokenService;
+        this.authCookieService = authCookieService;
         this.objectMapper = objectMapper;
     }
 
@@ -35,8 +39,8 @@ public class BearerTokenAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (header == null || !header.startsWith(BEARER_PREFIX)) {
+        String token = tokenFromRequest(request);
+        if (token == null) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -47,7 +51,6 @@ public class BearerTokenAuthenticationFilter extends OncePerRequestFilter {
         }
 
         try {
-            String token = header.substring(BEARER_PREFIX.length()).trim();
             AuthTokenService.AuthenticatedUser authenticatedUser = authTokenService.authenticate(token);
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
@@ -60,6 +63,14 @@ public class BearerTokenAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.clearContext();
             writeUnauthorizedResponse(request, response, exception.getMessage());
         }
+    }
+
+    private String tokenFromRequest(HttpServletRequest request) {
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (header != null && header.startsWith(BEARER_PREFIX)) {
+            return header.substring(BEARER_PREFIX.length()).trim();
+        }
+        return authCookieService.accessToken(request).orElse(null);
     }
 
     private boolean hasAuthenticatedPrincipal() {

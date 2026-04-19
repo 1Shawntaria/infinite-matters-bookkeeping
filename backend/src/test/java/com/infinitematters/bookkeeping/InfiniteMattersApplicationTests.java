@@ -17,6 +17,7 @@ import com.infinitematters.bookkeeping.workflows.WorkflowTaskPriority;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskRepository;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskStatus;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskType;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -70,6 +71,75 @@ class InfiniteMattersApplicationTests {
 
     @Autowired
     private AuditService auditService;
+
+    @Test
+    void browserCookieSessionsAuthenticateAndEnforceTenantBoundary() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "cookie-owner-" + suffix + "@example.test";
+        String otherEmail = "cookie-other-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Cookie Owner", password);
+        String ownerOrganizationId = createOrganization(ownerUserId);
+        String otherUserId = createUser(otherEmail, "Cookie Other", password);
+        String otherOrganizationId = createOrganization(otherUserId);
+
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "password": "%s"
+                                }
+                                """.formatted(ownerEmail, password)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andReturn();
+
+        Cookie accessCookie = loginResult.getResponse().getCookie("im_access_token");
+        Cookie refreshCookie = loginResult.getResponse().getCookie("im_refresh_token");
+        assertThat(accessCookie).isNotNull();
+        assertThat(accessCookie.isHttpOnly()).isTrue();
+        assertThat(refreshCookie).isNotNull();
+        assertThat(refreshCookie.isHttpOnly()).isTrue();
+
+        mockMvc.perform(get("/api/auth/me")
+                        .cookie(accessCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(ownerEmail));
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .cookie(accessCookie)
+                        .header(ORG_HEADER, otherOrganizationId)
+                        .param("organizationId", otherOrganizationId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("User does not have access to organization " + otherOrganizationId));
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .cookie(accessCookie)
+                        .header(ORG_HEADER, ownerOrganizationId)
+                        .param("organizationId", ownerOrganizationId))
+                .andExpect(status().isOk());
+
+        MvcResult refreshResult = mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(refreshCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andReturn();
+
+        Cookie rotatedRefreshCookie = refreshResult.getResponse().getCookie("im_refresh_token");
+        assertThat(rotatedRefreshCookie).isNotNull();
+        assertThat(rotatedRefreshCookie.isHttpOnly()).isTrue();
+
+        MvcResult logoutResult = mockMvc.perform(post("/api/auth/logout")
+                        .cookie(rotatedRefreshCookie))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(logoutResult.getResponse().getHeaders("Set-Cookie"))
+                .anyMatch(header -> header.contains("im_access_token=") && header.contains("Max-Age=0"))
+                .anyMatch(header -> header.contains("im_refresh_token=") && header.contains("Max-Age=0"));
+    }
 
     @Test
     void importsTransactionsAndRoutesAmbiguousItemsIntoReview() throws Exception {
@@ -1456,15 +1526,19 @@ class InfiniteMattersApplicationTests {
     }
 
     private String createMemberUser() throws Exception {
+        return createUser(MEMBER_EMAIL, "Acme Member", MEMBER_PASSWORD);
+    }
+
+    private String createUser(String email, String fullName, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "email": "%s",
-                                  "fullName": "Acme Member",
+                                  "fullName": "%s",
                                   "password": "%s"
                                 }
-                                """.formatted(MEMBER_EMAIL, MEMBER_PASSWORD)))
+                                """.formatted(email, fullName, password)))
                 .andExpect(status().isOk())
                 .andReturn();
 

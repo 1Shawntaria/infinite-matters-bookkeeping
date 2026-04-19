@@ -13,9 +13,9 @@ function legacyStorage() {
     return window.localStorage;
 }
 
-export function getAccessToken(): string | null {
+export function clearLegacyAccessToken() {
     legacyStorage()?.removeItem(ACCESS_TOKEN_KEY);
-    return browserStorage()?.getItem(ACCESS_TOKEN_KEY) ?? null;
+    browserStorage()?.removeItem(ACCESS_TOKEN_KEY);
 }
 
 export function getOrganizationId(): string {
@@ -24,21 +24,19 @@ export function getOrganizationId(): string {
         ?? "";
 }
 
-export function storeAuthSession(accessToken: string, organizationId: string) {
+export function storeAuthSession(organizationId: string) {
     const storage = browserStorage();
     if (!storage) return;
 
-    storage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    clearLegacyAccessToken();
     storage.setItem(ORGANIZATION_ID_KEY, organizationId);
 
-    legacyStorage()?.removeItem(ACCESS_TOKEN_KEY);
     legacyStorage()?.removeItem(ORGANIZATION_ID_KEY);
 }
 
 export function clearAuthSession() {
-    browserStorage()?.removeItem(ACCESS_TOKEN_KEY);
+    clearLegacyAccessToken();
     browserStorage()?.removeItem(ORGANIZATION_ID_KEY);
-    legacyStorage()?.removeItem(ACCESS_TOKEN_KEY);
     legacyStorage()?.removeItem(ORGANIZATION_ID_KEY);
 }
 

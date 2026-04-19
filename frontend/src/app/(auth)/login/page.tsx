@@ -20,9 +20,9 @@ export default function LoginPage() {
         setIsSubmitting(true);
 
         try {
-            const response = await login({ email, password });
+            await login({ email, password });
 
-            storeAuthSession(response.accessToken, organizationId);
+            storeAuthSession(organizationId);
 
             router.push("/dashboard");
         } catch (err) {

@@ -2,6 +2,7 @@ package com.infinitematters.bookkeeping.web;
 
 import com.infinitematters.bookkeeping.audit.AuditEventSummary;
 import com.infinitematters.bookkeeping.audit.AuditService;
+import com.infinitematters.bookkeeping.security.AuthCookieService;
 import com.infinitematters.bookkeeping.security.AuthTokenService;
 import com.infinitematters.bookkeeping.security.AuthRateLimitService;
 import com.infinitematters.bookkeeping.security.RefreshTokenService;
@@ -21,6 +22,8 @@ import com.infinitematters.bookkeeping.web.dto.RefreshTokenRequest;
 import com.infinitematters.bookkeeping.web.dto.RevokeSessionRequest;
 import com.infinitematters.bookkeeping.web.dto.ResetPasswordRequest;
 import com.infinitematters.bookkeeping.web.dto.UserResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,6 +40,7 @@ import java.util.UUID;
 @RequestMapping("/api/auth")
 public class AuthController {
     private final UserService userService;
+    private final AuthCookieService authCookieService;
     private final AuthTokenService authTokenService;
     private final AuthRateLimitService authRateLimitService;
     private final RefreshTokenService refreshTokenService;
@@ -45,8 +49,10 @@ public class AuthController {
     private final RequestIdentityService requestIdentityService;
     private final AuditService auditService;
     private final boolean exposePasswordResetTokenResponse;
+    private final boolean includeTokensInResponse;
 
     public AuthController(UserService userService,
+                          AuthCookieService authCookieService,
                           AuthTokenService authTokenService,
                           AuthRateLimitService authRateLimitService,
                           RefreshTokenService refreshTokenService,
@@ -55,8 +61,11 @@ public class AuthController {
                           RequestIdentityService requestIdentityService,
                           AuditService auditService,
                           @Value("${bookkeeping.auth.password-reset.expose-token-response:false}")
-                          boolean exposePasswordResetTokenResponse) {
+                          boolean exposePasswordResetTokenResponse,
+                          @Value("${bookkeeping.auth.response-tokens.enabled:true}")
+                          boolean includeTokensInResponse) {
         this.userService = userService;
+        this.authCookieService = authCookieService;
         this.authTokenService = authTokenService;
         this.authRateLimitService = authRateLimitService;
         this.refreshTokenService = refreshTokenService;
@@ -65,10 +74,12 @@ public class AuthController {
         this.requestIdentityService = requestIdentityService;
         this.auditService = auditService;
         this.exposePasswordResetTokenResponse = exposePasswordResetTokenResponse;
+        this.includeTokensInResponse = includeTokensInResponse;
     }
 
     @PostMapping("/token")
-    public AuthTokenResponse token(@Valid @RequestBody LoginRequest request) {
+    public AuthTokenResponse token(@Valid @RequestBody LoginRequest request,
+                                   HttpServletResponse response) {
         authRateLimitService.checkAllowed("login", request.email());
         AppUser user;
         try {
@@ -88,19 +99,25 @@ public class AuthController {
         authRateLimitService.recordSuccess("login", request.email());
         auditService.recordForUser(user.getId(), null, "AUTH_LOGIN_SUCCEEDED",
                 "app_user", user.getId().toString(), "User authenticated");
-        return issueTokenPair(user, refreshTokenService.issue(user));
+        return issueTokenPair(user, refreshTokenService.issue(user), response);
     }
 
     @PostMapping("/refresh")
-    public AuthTokenResponse refresh(@Valid @RequestBody RefreshTokenRequest request) {
+    public AuthTokenResponse refresh(@RequestBody(required = false) RefreshTokenRequest request,
+                                     HttpServletRequest servletRequest,
+                                     HttpServletResponse response) {
+        String refreshToken = requestRefreshToken(request, servletRequest);
         RefreshTokenService.RotatedRefreshToken rotatedRefreshToken =
-                refreshTokenService.rotate(request.refreshToken());
-        return issueTokenPair(rotatedRefreshToken.user(), rotatedRefreshToken.refreshToken());
+                refreshTokenService.rotate(refreshToken);
+        return issueTokenPair(rotatedRefreshToken.user(), rotatedRefreshToken.refreshToken(), response);
     }
 
     @PostMapping("/logout")
-    public void logout(@Valid @RequestBody LogoutRequest request) {
-        refreshTokenService.revoke(request.refreshToken());
+    public void logout(@RequestBody(required = false) LogoutRequest request,
+                       HttpServletRequest servletRequest,
+                       HttpServletResponse response) {
+        optionalLogoutRefreshToken(request, servletRequest).ifPresent(refreshTokenService::revoke);
+        authCookieService.clearAuthCookies(response);
     }
 
     @PostMapping("/forgot-password")
@@ -182,15 +199,37 @@ public class AuthController {
     }
 
     private AuthTokenResponse issueTokenPair(AppUser user,
-                                             RefreshTokenService.IssuedRefreshToken refreshToken) {
+                                             RefreshTokenService.IssuedRefreshToken refreshToken,
+                                             HttpServletResponse response) {
         AuthTokenService.IssuedToken accessToken = authTokenService.issueToken(user);
+        authCookieService.writeAuthCookies(response, accessToken, refreshToken);
         return new AuthTokenResponse(
-                accessToken.value(),
+                includeTokensInResponse ? accessToken.value() : null,
                 "Bearer",
                 accessToken.expiresAt(),
-                refreshToken.value(),
+                includeTokensInResponse ? refreshToken.value() : null,
                 refreshToken.sessionId(),
                 refreshToken.expiresAt(),
                 UserResponse.from(user));
+    }
+
+    private String requestRefreshToken(RefreshTokenRequest request, HttpServletRequest servletRequest) {
+        return optionalRefreshToken(request == null ? null : request.refreshToken(), servletRequest)
+                .orElseThrow(() -> new IllegalArgumentException("Refresh token is required"));
+    }
+
+    private java.util.Optional<String> optionalLogoutRefreshToken(LogoutRequest request,
+                                                                  HttpServletRequest servletRequest) {
+        return optionalRefreshToken(request == null ? null : request.refreshToken(), servletRequest);
+    }
+
+    private java.util.Optional<String> optionalRefreshToken(String requestToken, HttpServletRequest servletRequest) {
+        if (requestToken != null && !requestToken.isBlank()) {
+            if (requestToken.length() < 20 || requestToken.length() > 512) {
+                throw new IllegalArgumentException("Refresh token length is invalid");
+            }
+            return java.util.Optional.of(requestToken);
+        }
+        return authCookieService.refreshToken(servletRequest);
     }
 }
