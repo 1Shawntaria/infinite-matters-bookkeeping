@@ -8,6 +8,7 @@ import com.infinitematters.bookkeeping.dashboard.DashboardHomeContractTestFixtur
 import com.infinitematters.bookkeeping.dashboard.DashboardHomeVersionsResponse;
 import com.infinitematters.bookkeeping.dashboard.DashboardService;
 import com.infinitematters.bookkeeping.security.BearerTokenAuthenticationFilter;
+import com.infinitematters.bookkeeping.security.CsrfProtectionFilter;
 import com.infinitematters.bookkeeping.security.RequestIdentityFilter;
 import com.infinitematters.bookkeeping.security.RequestLoggingFilter;
 import com.infinitematters.bookkeeping.security.TenantAccessService;
@@ -47,6 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         excludeFilters = {
                 @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {
                         BearerTokenAuthenticationFilter.class,
+                        CsrfProtectionFilter.class,
                         RequestIdentityFilter.class,
                         RequestLoggingFilter.class
                 })

@@ -98,10 +98,13 @@ class InfiniteMattersApplicationTests {
 
         Cookie accessCookie = loginResult.getResponse().getCookie("im_access_token");
         Cookie refreshCookie = loginResult.getResponse().getCookie("im_refresh_token");
+        Cookie csrfCookie = loginResult.getResponse().getCookie("im_csrf_token");
         assertThat(accessCookie).isNotNull();
         assertThat(accessCookie.isHttpOnly()).isTrue();
         assertThat(refreshCookie).isNotNull();
         assertThat(refreshCookie.isHttpOnly()).isTrue();
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.isHttpOnly()).isFalse();
 
         mockMvc.perform(get("/api/auth/me")
                         .cookie(accessCookie))
@@ -121,24 +124,44 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", ownerOrganizationId))
                 .andExpect(status().isOk());
 
-        MvcResult refreshResult = mockMvc.perform(post("/api/auth/refresh")
+        mockMvc.perform(post("/api/auth/refresh")
                         .cookie(refreshCookie))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("CSRF token is missing or invalid"));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(refreshCookie, csrfCookie)
+                        .header("X-CSRF-Token", csrfCookie.getValue())
+                        .header("Referer", "https://evil.example.test/accounting"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Request origin is not allowed"));
+
+        MvcResult refreshResult = mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(refreshCookie, csrfCookie)
+                        .header("X-CSRF-Token", csrfCookie.getValue())
+                        .header("Origin", "http://localhost:3000"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andReturn();
 
         Cookie rotatedRefreshCookie = refreshResult.getResponse().getCookie("im_refresh_token");
+        Cookie rotatedCsrfCookie = refreshResult.getResponse().getCookie("im_csrf_token");
         assertThat(rotatedRefreshCookie).isNotNull();
         assertThat(rotatedRefreshCookie.isHttpOnly()).isTrue();
+        assertThat(rotatedCsrfCookie).isNotNull();
+        assertThat(rotatedCsrfCookie.isHttpOnly()).isFalse();
 
         MvcResult logoutResult = mockMvc.perform(post("/api/auth/logout")
-                        .cookie(rotatedRefreshCookie))
+                        .cookie(rotatedRefreshCookie, rotatedCsrfCookie)
+                        .header("X-CSRF-Token", rotatedCsrfCookie.getValue())
+                        .header("Origin", "http://localhost:3000"))
                 .andExpect(status().isOk())
                 .andReturn();
 
         assertThat(logoutResult.getResponse().getHeaders("Set-Cookie"))
                 .anyMatch(header -> header.contains("im_access_token=") && header.contains("Max-Age=0"))
-                .anyMatch(header -> header.contains("im_refresh_token=") && header.contains("Max-Age=0"));
+                .anyMatch(header -> header.contains("im_refresh_token=") && header.contains("Max-Age=0"))
+                .anyMatch(header -> header.contains("im_csrf_token=") && header.contains("Max-Age=0"));
     }
 
     @Test

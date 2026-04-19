@@ -6,6 +6,10 @@ import {
 
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const CSRF_COOKIE_NAME =
+    process.env.NEXT_PUBLIC_CSRF_COOKIE_NAME || "im_csrf_token";
+const CSRF_HEADER_NAME = "X-CSRF-Token";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 
 type ApiFetchOptions = RequestInit & {
     includeAuth?: boolean;
@@ -36,6 +40,13 @@ export async function apiFetch<T>(
         headers.set("X-Organization-Id", organizationId);
     }
 
+    if (!headers.has(CSRF_HEADER_NAME) && isUnsafeMethod(requestOptions.method)) {
+        const csrfToken = getCookie(CSRF_COOKIE_NAME);
+        if (csrfToken) {
+            headers.set(CSRF_HEADER_NAME, csrfToken);
+        }
+    }
+
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...requestOptions,
         headers,
@@ -59,4 +70,20 @@ export async function apiFetch<T>(
     }
 
     return {} as T;
+}
+
+function isUnsafeMethod(method?: string) {
+    return !SAFE_METHODS.has((method ?? "GET").toUpperCase());
+}
+
+function getCookie(name: string) {
+    if (typeof document === "undefined") return "";
+
+    const prefix = `${name}=`;
+    const value = document.cookie
+        .split(";")
+        .map((cookie) => cookie.trim())
+        .find((cookie) => cookie.startsWith(prefix))
+        ?.slice(prefix.length) ?? "";
+    return value ? decodeURIComponent(value) : "";
 }

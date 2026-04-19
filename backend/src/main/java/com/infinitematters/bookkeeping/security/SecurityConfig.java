@@ -19,6 +19,7 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
                                             BearerTokenAuthenticationFilter bearerTokenAuthenticationFilter,
+                                            CsrfProtectionFilter csrfProtectionFilter,
                                             RequestIdentityFilter requestIdentityFilter,
                                             RequestLoggingFilter requestLoggingFilter) throws Exception {
         http
@@ -36,6 +37,7 @@ public class SecurityConfig {
                                 "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(requestLoggingFilter, BasicAuthenticationFilter.class)
+                .addFilterBefore(csrfProtectionFilter, BasicAuthenticationFilter.class)
                 .addFilterBefore(bearerTokenAuthenticationFilter, BasicAuthenticationFilter.class)
                 .addFilterAfter(requestIdentityFilter, BasicAuthenticationFilter.class);
 
