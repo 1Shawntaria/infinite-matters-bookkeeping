@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getReviewTasks, resolveReviewTask, ReviewTask } from "@/lib/api/reviews";
+import { getOrganizationId } from "@/lib/auth/session";
 
 const CATEGORY_OPTIONS = [
     "SOFTWARE",
@@ -24,7 +25,7 @@ export default function ReviewQueuePage() {
     const [successMessage, setSuccessMessage] = useState("");
 
     useEffect(() => {
-        const organizationId = localStorage.getItem("organizationId");
+        const organizationId = getOrganizationId();
 
         if (!organizationId) {
             setError("No organization ID found. Please sign in again.");
@@ -54,7 +55,7 @@ export default function ReviewQueuePage() {
     }
 
     async function handleResolve(taskId: string) {
-        const organizationId = localStorage.getItem("organizationId");
+        const organizationId = getOrganizationId();
 
         if (!organizationId) {
             setError("No organization ID found. Please sign in again.");

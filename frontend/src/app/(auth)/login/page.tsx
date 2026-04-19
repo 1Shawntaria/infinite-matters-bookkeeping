@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/api/auth";
+import { storeAuthSession } from "@/lib/auth/session";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -21,8 +22,7 @@ export default function LoginPage() {
         try {
             const response = await login({ email, password });
 
-            localStorage.setItem("accessToken", response.accessToken);
-            localStorage.setItem("organizationId", organizationId);
+            storeAuthSession(response.accessToken, organizationId);
 
             router.push("/dashboard");
         } catch (err) {

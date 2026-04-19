@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignOutButton } from "@/components/sign-out-button";
 
 export default function DashboardLayout({
                                             children,
@@ -22,6 +23,8 @@ export default function DashboardLayout({
                             Reconciliation
                         </Link>
                     </nav>
+
+                    <SignOutButton />
                 </aside>
 
                 <main className="flex-1 bg-black">{children}</main>

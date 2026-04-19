@@ -7,14 +7,10 @@ import {
     startReconciliation,
     ReconciliationDashboard,
 } from "@/lib/api/reconciliation";
-
-function getStoredOrganizationId() {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem("organizationId") ?? "";
-}
+import { getOrganizationId } from "@/lib/auth/session";
 
 export default function ReconciliationPage() {
-    const [organizationId] = useState(getStoredOrganizationId);
+    const [organizationId] = useState(getOrganizationId);
     const [data, setData] = useState<ReconciliationDashboard | null>(null);
     const [loading, setLoading] = useState(() => Boolean(organizationId));
     const [error, setError] = useState("");

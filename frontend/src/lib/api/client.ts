@@ -1,15 +1,12 @@
+import {
+    clearAuthSession,
+    getAccessToken,
+    getOrganizationId,
+    redirectToLogin,
+} from "@/lib/auth/session";
+
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
-
-function getAccessToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("accessToken");
-}
-
-function getOrganizationId(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("organizationId");
-}
 
 type ApiFetchOptions = RequestInit & {
     includeAuth?: boolean;
@@ -49,6 +46,12 @@ export async function apiFetch<T>(
         ...requestOptions,
         headers,
     });
+
+    if (response.status === 401 && includeAuth) {
+        clearAuthSession();
+        redirectToLogin();
+        throw new Error("Your session expired. Please sign in again.");
+    }
 
     if (!response.ok) {
         const text = await response.text();

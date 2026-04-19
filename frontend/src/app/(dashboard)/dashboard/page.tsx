@@ -8,14 +8,10 @@ import {
 
 import Link from "next/link";
 import { mapBackendActionPathToFrontend } from "@/lib/navigation";
-
-function getStoredOrganizationId() {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem("organizationId") ?? "";
-}
+import { getOrganizationId } from "@/lib/auth/session";
 
 export default function DashboardPage() {
-    const [organizationId] = useState(getStoredOrganizationId);
+    const [organizationId] = useState(getOrganizationId);
     const [data, setData] = useState<DashboardSnapshot | null>(null);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(() => Boolean(organizationId));
