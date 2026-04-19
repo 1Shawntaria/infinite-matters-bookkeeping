@@ -44,6 +44,15 @@ cd frontend
 npm run dev
 ```
 
+## IDE Run Configurations
+
+Shared JetBrains run configurations live in `.run/`:
+
+- `Backend Spring Boot` starts the Spring Boot API from `backend/`.
+- `Frontend Dev` starts the Next.js app from `frontend/`.
+- `Frontend Dev (Backend Ready)` waits for `http://localhost:8080/actuator/health`, then starts the frontend.
+- `Full Stack Dev (Healthy)` starts the backend and the backend-ready frontend together.
+
 ## Continuous Integration
 
 GitHub Actions runs the backend test suite and frontend lint/build checks on pull requests and pushes to `master` when backend, frontend, or workflow files change.
