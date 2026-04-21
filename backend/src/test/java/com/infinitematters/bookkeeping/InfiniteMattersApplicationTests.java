@@ -212,6 +212,52 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void listsOnlyOrganizationsForAuthenticatedUserMemberships() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "workspace-owner-" + suffix + "@example.test";
+        String memberEmail = "workspace-member-" + suffix + "@example.test";
+        String otherOwnerEmail = "workspace-other-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Workspace Owner", password);
+        String memberUserId = createUser(memberEmail, "Workspace Member", password);
+        String otherOwnerUserId = createUser(otherOwnerEmail, "Other Workspace Owner", password);
+
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        AuthTokens memberTokens = issueToken(memberEmail, password);
+        String primaryOrganizationId = createOrganization("Primary Workspace", ownerUserId);
+        String secondaryOrganizationId = createOrganization("Secondary Workspace", ownerUserId);
+        String otherOrganizationId = createOrganization("Other Workspace", otherOwnerUserId);
+        addMembership(secondaryOrganizationId, memberUserId, ownerTokens.accessToken());
+
+        mockMvc.perform(get("/api/users/organizations")
+                        .header("Authorization", bearerToken(ownerTokens.accessToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[*].id", hasItems(primaryOrganizationId, secondaryOrganizationId)));
+
+        mockMvc.perform(get("/api/users/organizations")
+                        .header("Authorization", bearerToken(memberTokens.accessToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(secondaryOrganizationId));
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .header(ORG_HEADER, primaryOrganizationId)
+                        .header("Authorization", bearerToken(memberTokens.accessToken()))
+                        .param("organizationId", primaryOrganizationId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("User does not have access to organization " + primaryOrganizationId));
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .header(ORG_HEADER, otherOrganizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", otherOrganizationId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("User does not have access to organization " + otherOrganizationId));
+    }
+
+    @Test
     void importsTransactionsAndRoutesAmbiguousItemsIntoReview() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
@@ -1682,16 +1728,20 @@ class InfiniteMattersApplicationTests {
     }
 
     private String createOrganization(String ownerUserId) throws Exception {
+        return createOrganization("Acme Design LLC", ownerUserId);
+    }
+
+    private String createOrganization(String organizationName, String ownerUserId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/organizations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "name": "Acme Design LLC",
+                                  "name": "%s",
                                   "planTier": "GROWTH",
                                   "timezone": "America/Los_Angeles",
                                   "ownerUserId": "%s"
                                 }
-                                """.formatted(ownerUserId)))
+                                """.formatted(organizationName, ownerUserId)))
                 .andExpect(status().isOk())
                 .andReturn();
 
