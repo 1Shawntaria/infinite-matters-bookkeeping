@@ -32,8 +32,7 @@
     { "key": "financialAccountId", "value": "" },
     { "key": "reviewTaskId", "value": "" },
     { "key": "unknownVendorTaskId", "value": "" },
-    { "key": "deltaAirLinesTaskId", "value": "" },
-    { "key": "comcastTaskId", "value": "" },
+    { "key": "amazonMarketplaceTaskId", "value": "" },
     { "key": "reconciliationSessionId", "value": "" }
   ],
   "item": [
@@ -425,19 +424,15 @@
                   "const json = pm.response.json();",
                   "pm.collectionVariables.unset('reviewTaskId');",
                   "pm.collectionVariables.unset('unknownVendorTaskId');",
-                  "pm.collectionVariables.unset('deltaAirLinesTaskId');",
-                  "pm.collectionVariables.unset('comcastTaskId');",
+                  "pm.collectionVariables.unset('amazonMarketplaceTaskId');",
                   "if (Array.isArray(json) && json.length > 0) {",
                   "  pm.collectionVariables.set('reviewTaskId', json[0].taskId);",
                   "  json.forEach(task => {",
                   "    if (task.merchant === 'UNKNOWN VENDOR') {",
                   "      pm.collectionVariables.set('unknownVendorTaskId', task.taskId);",
                   "    }",
-                  "    if (task.merchant === 'DELTA AIR LINES') {",
-                  "      pm.collectionVariables.set('deltaAirLinesTaskId', task.taskId);",
-                  "    }",
-                  "    if (task.merchant === 'COMCAST') {",
-                  "      pm.collectionVariables.set('comcastTaskId', task.taskId);",
+                  "    if (task.merchant === 'AMZN MKTP') {",
+                  "      pm.collectionVariables.set('amazonMarketplaceTaskId', task.taskId);",
                   "    }",
                   "  });",
                   "}"
@@ -498,6 +493,19 @@
         },
         {
           "name": "Resolve UNKNOWN VENDOR As SOFTWARE",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('unknownVendorTaskId')) {",
+                  "  throw new Error('Run List Review Tasks first. No UNKNOWN VENDOR review task is currently open.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "description": "For the balanced demo import, this resolves the `UNKNOWN VENDOR` task using `{{unknownVendorTaskId}}`. Run `List Review Tasks` first.",
             "auth": {
@@ -526,38 +534,22 @@
           }
         },
         {
-          "name": "Resolve DELTA AIR LINES As TRAVEL",
-          "request": {
-            "description": "For the balanced demo import, this resolves the `DELTA AIR LINES` task using `{{deltaAirLinesTaskId}}`. Run `List Review Tasks` first.",
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                { "key": "token", "value": "{{accessToken}}", "type": "string" }
-              ]
-            },
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Organization-Id", "value": "{{organizationId}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"finalCategory\": \"TRAVEL\",\n  \"resolutionComment\": \"Demo override\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/reviews/tasks/{{deltaAirLinesTaskId}}/resolve?organizationId={{organizationId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reviews", "tasks", "{{deltaAirLinesTaskId}}", "resolve"],
-              "query": [
-                { "key": "organizationId", "value": "{{organizationId}}" }
-              ]
+          "name": "Resolve AMZN MKTP As OFFICE_SUPPLIES",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('amazonMarketplaceTaskId')) {",
+                  "  throw new Error('Run List Review Tasks first. No AMZN MKTP review task is currently open.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
-        },
-        {
-          "name": "Resolve COMCAST As UTILITIES",
+          ],
           "request": {
-            "description": "For the balanced demo import, this resolves the `COMCAST` task using `{{comcastTaskId}}`. Run `List Review Tasks` first.",
+            "description": "For the balanced demo import, this resolves the `AMZN MKTP` task using `{{amazonMarketplaceTaskId}}`. Run `List Review Tasks` first.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -571,12 +563,12 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"finalCategory\": \"UTILITIES\",\n  \"resolutionComment\": \"Demo override\"\n}"
+              "raw": "{\n  \"finalCategory\": \"OFFICE_SUPPLIES\",\n  \"resolutionComment\": \"Demo override\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/reviews/tasks/{{comcastTaskId}}/resolve?organizationId={{organizationId}}",
+              "raw": "{{baseUrl}}/api/reviews/tasks/{{amazonMarketplaceTaskId}}/resolve?organizationId={{organizationId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "reviews", "tasks", "{{comcastTaskId}}", "resolve"],
+              "path": ["api", "reviews", "tasks", "{{amazonMarketplaceTaskId}}", "resolve"],
               "query": [
                 { "key": "organizationId", "value": "{{organizationId}}" }
               ]
