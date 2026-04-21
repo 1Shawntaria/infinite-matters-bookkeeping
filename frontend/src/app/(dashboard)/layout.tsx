@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SignOutButton } from "@/components/sign-out-button";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 
 export default function DashboardLayout({
                                             children,
@@ -11,6 +12,8 @@ export default function DashboardLayout({
             <div className="flex min-h-screen">
                 <aside className="hidden w-64 border-r border-zinc-800 bg-zinc-950 p-6 lg:block">
                     <h2 className="text-lg font-semibold text-white">Infinite Matters</h2>
+
+                    <WorkspaceSwitcher />
 
                     <nav className="mt-6 space-y-3 text-sm text-zinc-400">
                         <Link href="/dashboard" className="block hover:text-white">

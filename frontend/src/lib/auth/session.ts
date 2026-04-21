@@ -29,9 +29,16 @@ export function storeAuthSession(organizationId: string) {
     if (!storage) return;
 
     clearLegacyAccessToken();
-    storage.setItem(ORGANIZATION_ID_KEY, organizationId);
+    setOrganizationId(organizationId);
 
     legacyStorage()?.removeItem(ORGANIZATION_ID_KEY);
+}
+
+export function setOrganizationId(organizationId: string) {
+    const storage = browserStorage();
+    if (!storage) return;
+
+    storage.setItem(ORGANIZATION_ID_KEY, organizationId);
 }
 
 export function clearAuthSession() {
