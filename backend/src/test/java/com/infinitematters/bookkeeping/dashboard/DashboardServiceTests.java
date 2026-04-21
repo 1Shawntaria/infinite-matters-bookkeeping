@@ -121,7 +121,7 @@ class DashboardServiceTests {
         staleAccount.setName("Reserve Checking");
         staleAccount.setAccountType(AccountType.BANK);
 
-        BookkeepingTransaction marchSoftware = transaction(bankAccountId, account, LocalDate.of(2026, 3, 20), "60.00");
+        BookkeepingTransaction marchSoftware = transaction(bankAccountId, account, LocalDate.of(2026, 3, 21), "60.00");
         BookkeepingTransaction febSoftware = transaction(bankAccountId, account, LocalDate.of(2026, 2, 20), "40.00");
         BookkeepingTransaction staleMeals = transaction(staleAccountId, staleAccount, LocalDate.now().minusDays(45), "20.00");
 

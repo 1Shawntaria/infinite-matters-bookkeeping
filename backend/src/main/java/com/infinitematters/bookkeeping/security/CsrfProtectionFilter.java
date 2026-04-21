@@ -24,7 +24,15 @@ import java.util.stream.Collectors;
 public class CsrfProtectionFilter extends OncePerRequestFilter {
     public static final String CSRF_HEADER = "X-CSRF-Token";
 
+    private static final String BEARER_PREFIX = "Bearer ";
     private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS", "TRACE");
+    private static final Set<String> CSRF_EXEMPT_POST_PATHS = Set.of(
+            "/api/users",
+            "/api/organizations",
+            "/api/auth/token",
+            "/api/auth/forgot-password",
+            "/api/auth/reset-password",
+            "/api/providers/notifications/events");
 
     private final AuthCookieService authCookieService;
     private final ObjectMapper objectMapper;
@@ -43,17 +51,23 @@ public class CsrfProtectionFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        if (isSafeMethod(request)) {
+        if (isSafeMethod(request) || isCsrfExempt(request)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        if (!isAllowedBrowserOrigin(request)) {
+        if (hasBearerToken(request)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        boolean hasAuthCookie = authCookieService.hasAuthCookie(request);
+        if (hasAuthCookie && !isAllowedBrowserOrigin(request)) {
             writeForbiddenResponse(request, response, "Request origin is not allowed");
             return;
         }
 
-        if (authCookieService.hasAuthCookie(request) && !hasValidCsrfToken(request)) {
+        if (hasAuthCookie && !hasValidCsrfToken(request)) {
             writeForbiddenResponse(request, response, "CSRF token is missing or invalid");
             return;
         }
@@ -63,6 +77,21 @@ public class CsrfProtectionFilter extends OncePerRequestFilter {
 
     private boolean isSafeMethod(HttpServletRequest request) {
         return SAFE_METHODS.contains(request.getMethod().toUpperCase(Locale.ROOT));
+    }
+
+    private boolean isCsrfExempt(HttpServletRequest request) {
+        if (!"POST".equalsIgnoreCase(request.getMethod())) {
+            return false;
+        }
+
+        String path = request.getRequestURI();
+        return CSRF_EXEMPT_POST_PATHS.contains(path)
+                || path.startsWith("/api/providers/notifications/events/");
+    }
+
+    private boolean hasBearerToken(HttpServletRequest request) {
+        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        return authorization != null && authorization.startsWith(BEARER_PREFIX);
     }
 
     private boolean isAllowedBrowserOrigin(HttpServletRequest request) {

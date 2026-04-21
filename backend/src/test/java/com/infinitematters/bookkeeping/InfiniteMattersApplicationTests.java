@@ -124,6 +124,52 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", ownerOrganizationId))
                 .andExpect(status().isOk());
 
+        mockMvc.perform(post("/api/accounts")
+                        .cookie(accessCookie)
+                        .header(ORG_HEADER, ownerOrganizationId)
+                        .header("Origin", "http://localhost:3000")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organizationId": "%s",
+                                  "name": "Cookie Missing Csrf Checking",
+                                  "accountType": "BANK",
+                                  "institutionName": "Infinite Matters Bank",
+                                  "currency": "USD"
+                                }
+                                """.formatted(ownerOrganizationId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("CSRF token is missing or invalid"));
+
+        AuthTokens ownerBearerTokens = issueToken(ownerEmail, password);
+        mockMvc.perform(post("/api/accounts")
+                        .cookie(accessCookie, refreshCookie)
+                        .header(ORG_HEADER, ownerOrganizationId)
+                        .header("Authorization", bearerToken(ownerBearerTokens.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organizationId": "%s",
+                                  "name": "Bearer With Stale Cookies Checking",
+                                  "accountType": "BANK",
+                                  "institutionName": "Infinite Matters Bank",
+                                  "currency": "USD"
+                                }
+                                """.formatted(ownerOrganizationId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/users")
+                        .cookie(accessCookie, refreshCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Public Signup With Stale Cookies",
+                                  "password": "%s"
+                                }
+                                """.formatted("stale-cookie-signup-" + suffix + "@example.test", password)))
+                .andExpect(status().isOk());
+
         mockMvc.perform(post("/api/auth/refresh")
                         .cookie(refreshCookie))
                 .andExpect(status().isForbidden())
@@ -376,7 +422,7 @@ class InfiniteMattersApplicationTests {
                 "text/csv",
                 """
                 id,date,merchant,memo,amount,mcc
-                txn-3,2026-03-20,Unknown Vendor,renewal invoice,59.99,5734
+                txn-3,2026-03-21,Unknown Vendor,renewal invoice,59.99,5734
                 """.getBytes());
 
         mockMvc.perform(multipart("/api/transactions/import/csv")
