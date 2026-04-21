@@ -32,8 +32,11 @@ public class TransactionImportController {
     @PostMapping(path = "/import/csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ImportBatchResult importCsv(@RequestParam UUID organizationId,
                                        @RequestParam UUID financialAccountId,
-                                       @RequestPart MultipartFile file) throws IOException {
+                                       @RequestPart(required = false) MultipartFile file) throws IOException {
         tenantAccessService.requireAccess(organizationId);
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is required. Attach a file in multipart field 'file'.");
+        }
         return transactionIngestService.importCsv(organizationId, financialAccountId, file);
     }
 

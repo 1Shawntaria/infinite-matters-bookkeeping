@@ -1074,6 +1074,11 @@ class InfiniteMattersApplicationTests {
                 "transactions.csv",
                 "text/csv",
                 validFile.getBytes());
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "file",
+                "transactions.csv",
+                "text/csv",
+                new byte[0]);
 
         mockMvc.perform(multipart("/api/transactions/import/csv")
                         .file(wrongPartNameFile)
@@ -1082,7 +1087,26 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", organizationId)
                         .param("financialAccountId", accountId))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Missing required multipart field: file"))
+                .andExpect(jsonPath("$.message").value("CSV file is required. Attach a file in multipart field 'file'."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"));
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(emptyFile)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV file is required. Attach a file in multipart field 'file'."))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"));
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("CSV file is required. Attach a file in multipart field 'file'."))
                 .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"));
 
         mockMvc.perform(multipart("/api/transactions/import/csv")
