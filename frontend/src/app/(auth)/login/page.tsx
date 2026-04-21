@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { login } from "@/lib/api/auth";
+import { listOrganizations, login } from "@/lib/api/auth";
 import { storeAuthSession } from "@/lib/auth/session";
 
 export default function LoginPage() {
@@ -10,7 +10,6 @@ export default function LoginPage() {
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [organizationId, setOrganizationId] = useState("");
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -22,7 +21,14 @@ export default function LoginPage() {
         try {
             await login({ email, password });
 
-            storeAuthSession(organizationId);
+            const organizations = await listOrganizations();
+            const organization = organizations[0];
+
+            if (!organization) {
+                throw new Error("No organization is available for this user.");
+            }
+
+            storeAuthSession(organization.id);
 
             router.push("/dashboard");
         } catch (err) {
@@ -77,21 +83,6 @@ export default function LoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="password123"
-                        required
-                    />
-                </div>
-
-                <div className="space-y-2">
-                    <label className="text-sm font-medium" htmlFor="organizationId">
-                        Organization ID
-                    </label>
-                    <input
-                        id="organizationId"
-                        className="w-full rounded-md border px-3 py-2 outline-none"
-                        type="text"
-                        value={organizationId}
-                        onChange={(e) => setOrganizationId(e.target.value)}
-                        placeholder="Paste your organization id"
                         required
                     />
                 </div>

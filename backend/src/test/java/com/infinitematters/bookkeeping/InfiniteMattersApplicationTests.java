@@ -27,6 +27,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasItems;
@@ -422,8 +423,8 @@ class InfiniteMattersApplicationTests {
                 "text/csv",
                 """
                 id,date,merchant,memo,amount,mcc
-                txn-3,2026-03-21,Unknown Vendor,renewal invoice,59.99,5734
-                """.getBytes());
+                txn-3,%s,Unknown Vendor,renewal invoice,59.99,5734
+                """.formatted(LocalDate.now().minusDays(29)).getBytes());
 
         mockMvc.perform(multipart("/api/transactions/import/csv")
                         .file(secondFile)
@@ -990,6 +991,72 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.message").value("CSV file contained no transaction rows. Expected header id,date,merchant,memo,amount,mcc."))
                 .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void returnsBadRequestForMalformedCsvImportRequests() throws Exception {
+        String malformedImportOwnerEmail = "malformed-import-owner@acme.test";
+        String malformedImportOwnerPassword = "password889";
+
+        MvcResult createUserResult = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "fullName": "Malformed Import Owner",
+                                  "password": "%s"
+                                }
+                                """.formatted(malformedImportOwnerEmail, malformedImportOwnerPassword)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String ownerUserId = objectMapper.readTree(createUserResult.getResponse().getContentAsString()).get("id").asText();
+        AuthTokens ownerTokens = issueToken(malformedImportOwnerEmail, malformedImportOwnerPassword);
+        String organizationId = createOrganization(ownerUserId);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MockMultipartFile validFile = new MockMultipartFile(
+                "file",
+                "transactions.csv",
+                "text/csv",
+                """
+                id,date,merchant,memo,amount,mcc
+                txn-1,2026-03-15,STARBUCKS,coffee with client,18.45,5814
+                """.getBytes());
+        MockMultipartFile wrongPartNameFile = new MockMultipartFile(
+                "upload",
+                "transactions.csv",
+                "text/csv",
+                validFile.getBytes());
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(wrongPartNameFile)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Missing required multipart field: file"))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"));
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(validFile)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Missing required request parameter: financialAccountId"))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"));
+
+        mockMvc.perform(multipart("/api/transactions/import/csv")
+                        .file(validFile)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid value for request parameter: financialAccountId"))
+                .andExpect(jsonPath("$.path").value("/api/transactions/import/csv"));
     }
 
     @Test

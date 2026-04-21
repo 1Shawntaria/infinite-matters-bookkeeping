@@ -13,11 +13,25 @@ export type LoginResponse = {
     };
 };
 
+export type OrganizationSummary = {
+    id: string;
+    name: string;
+    planTier: string;
+    timezone: string;
+};
+
 export async function login(payload: LoginRequest): Promise<LoginResponse> {
     return apiFetch<LoginResponse>("/api/auth/token", {
         method: "POST",
         body: JSON.stringify(payload),
         includeAuth: false,
+        includeOrganizationId: false,
+    });
+}
+
+export async function listOrganizations(): Promise<OrganizationSummary[]> {
+    return apiFetch<OrganizationSummary[]>("/api/users/organizations", {
+        method: "GET",
         includeOrganizationId: false,
     });
 }

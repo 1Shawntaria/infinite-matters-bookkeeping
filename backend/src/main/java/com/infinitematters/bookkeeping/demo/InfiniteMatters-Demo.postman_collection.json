@@ -3,7 +3,7 @@
     "_postman_id": "d57b2e8f-7b2e-4b84-9c93-1f6fc6b6a001",
     "name": "Infinite Matters Demo",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Happy-path demo collection for the current Infinite Matters bookkeeping backend. Run requests top to bottom. Collection variables are populated automatically from responses where possible."
+    "description": "Happy-path demo collection for the current Infinite Matters bookkeeping backend in the backend/frontend monorepo. Run requests top to bottom. Collection variables are populated automatically from responses where possible. CSV imports must use multipart form-data with the file field named exactly `file`; let Postman set the Content-Type boundary."
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
@@ -23,6 +23,8 @@
     { "key": "focusMonth", "value": "2026-03" },
     { "key": "openingBalance", "value": "1000.00" },
     { "key": "statementEndingBalance", "value": "1128.43" },
+    { "key": "demoCsvPath", "value": "/Users/shawntariaburden/Development/infinite-matters/backend/src/main/java/com/infinitematters/bookkeeping/demo/demo-transactions.csv" },
+    { "key": "reviewHeavyCsvPath", "value": "/Users/shawntariaburden/Development/infinite-matters/backend/src/main/java/com/infinitematters/bookkeeping/demo/demo-transactions-review-heavy.csv" },
     { "key": "accessToken", "value": "" },
     { "key": "ownerUserId", "value": "" },
     { "key": "memberUserId", "value": "" },
@@ -318,8 +320,26 @@
       "item": [
         {
           "name": "Import Demo CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('import succeeds', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('import response includes counts', function () {",
+                  "  pm.expect(json).to.have.property('postedCount');",
+                  "  pm.expect(json).to.have.property('reviewRequiredCount');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
-            "description": "Attach `/Users/shawntariaburden/Development/infinite-matters/src/main/java/com/infinitematters/bookkeeping/demo/demo-transactions.csv` in the `file` field. This is the balanced demo import: you should see some transactions auto-categorize and at least one ambiguous item land in the review queue.",
+            "description": "Uses `{{demoCsvPath}}`. Keep the multipart field name exactly `file`; do not add a manual Content-Type header. This is the balanced demo import: you should see some transactions auto-categorize and at least one ambiguous item land in the review queue.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -333,22 +353,41 @@
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "organizationId", "value": "{{organizationId}}", "type": "text" },
-                { "key": "financialAccountId", "value": "{{financialAccountId}}", "type": "text" },
-                { "key": "file", "type": "file", "src": "" }
+                { "key": "file", "type": "file", "src": "{{demoCsvPath}}" }
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/transactions/import/csv",
+              "raw": "{{baseUrl}}/api/transactions/import/csv?organizationId={{organizationId}}&financialAccountId={{financialAccountId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "transactions", "import", "csv"]
+              "path": ["api", "transactions", "import", "csv"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" },
+                { "key": "financialAccountId", "value": "{{financialAccountId}}" }
+              ]
             }
           }
         },
         {
           "name": "Import Review-Heavy Demo CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('review-heavy import succeeds', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('review-heavy import response includes transaction results', function () {",
+                  "  pm.expect(json.transactions).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
-            "description": "Attach `/Users/shawntariaburden/Development/infinite-matters/src/main/java/com/infinitematters/bookkeeping/demo/demo-transactions-review-heavy.csv` in the `file` field. This import is intentionally more ambiguous, so it should create a stronger review-queue demo with multiple items needing manual resolution.",
+            "description": "Uses `{{reviewHeavyCsvPath}}`. Keep the multipart field name exactly `file`; do not add a manual Content-Type header. This import is intentionally more ambiguous, so it should create a stronger review-queue demo with multiple items needing manual resolution.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -362,15 +401,17 @@
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "organizationId", "value": "{{organizationId}}", "type": "text" },
-                { "key": "financialAccountId", "value": "{{financialAccountId}}", "type": "text" },
-                { "key": "file", "type": "file", "src": "" }
+                { "key": "file", "type": "file", "src": "{{reviewHeavyCsvPath}}" }
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/transactions/import/csv",
+              "raw": "{{baseUrl}}/api/transactions/import/csv?organizationId={{organizationId}}&financialAccountId={{financialAccountId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "transactions", "import", "csv"]
+              "path": ["api", "transactions", "import", "csv"],
+              "query": [
+                { "key": "organizationId", "value": "{{organizationId}}" },
+                { "key": "financialAccountId", "value": "{{financialAccountId}}" }
+              ]
             }
           }
         },
