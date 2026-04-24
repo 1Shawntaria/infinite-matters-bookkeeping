@@ -27,12 +27,14 @@ export function getOrganizationId(): string {
         ?? "";
 }
 
-export function useOrganizationId() {
+export function useOrganizationSession() {
     const [organizationId, setOrganizationIdState] = useState("");
+    const [hydrated, setHydrated] = useState(false);
 
     useEffect(() => {
         const syncOrganizationId = () => {
             setOrganizationIdState(getOrganizationId());
+            setHydrated(true);
         };
 
         syncOrganizationId();
@@ -43,7 +45,11 @@ export function useOrganizationId() {
         };
     }, []);
 
-    return organizationId;
+    return { organizationId, hydrated };
+}
+
+export function useOrganizationId() {
+    return useOrganizationSession().organizationId;
 }
 
 export function storeAuthSession(organizationId: string) {

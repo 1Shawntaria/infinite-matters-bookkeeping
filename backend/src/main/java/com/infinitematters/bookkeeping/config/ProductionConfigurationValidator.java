@@ -119,6 +119,10 @@ public class ProductionConfigurationValidator {
             throw new IllegalStateException("Unsupported production email provider: " + emailProvider);
         }
 
+        if ("logging".equalsIgnoreCase(emailProvider)) {
+            throw new IllegalStateException("Production email provider must deliver real email");
+        }
+
         if (!"sendgrid".equalsIgnoreCase(emailProvider)) {
             return;
         }

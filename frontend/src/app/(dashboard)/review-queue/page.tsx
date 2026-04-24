@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { getReviewTasks, resolveReviewTask, ReviewTask } from "@/lib/api/reviews";
-import { getOrganizationId } from "@/lib/auth/session";
+import { useOrganizationSession } from "@/lib/auth/session";
 
 const CATEGORY_OPTIONS = [
     "SOFTWARE",
@@ -15,37 +16,30 @@ const CATEGORY_OPTIONS = [
 type PendingSelection = Record<string, string>;
 
 export default function ReviewQueuePage() {
-    const [tasks, setTasks] = useState<ReviewTask[]>([]);
-    const [selectedCategories, setSelectedCategories] = useState<PendingSelection>(
-        {}
-    );
-    const [loading, setLoading] = useState(true);
+    const { organizationId, hydrated } = useOrganizationSession();
+    const [dismissedTaskIdsByOrganization, setDismissedTaskIdsByOrganization] = useState<
+        Record<string, string[]>
+    >({});
+    const [selectedCategories, setSelectedCategories] = useState<PendingSelection>({});
     const [resolvingTaskId, setResolvingTaskId] = useState<string | null>(null);
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
-
-    useEffect(() => {
-        const organizationId = getOrganizationId();
-
-        if (!organizationId) {
-            setError("No organization ID found. Please sign in again.");
-            setLoading(false);
-            return;
-        }
-
-        getReviewTasks(organizationId)
-            .then((result) => {
-                setTasks(result);
-
-                const initialSelections: PendingSelection = {};
-                result.forEach((task) => {
-                    initialSelections[task.taskId] = task.proposedCategory || "OTHER";
-                });
-                setSelectedCategories(initialSelections);
-            })
-            .catch((err: Error) => setError(err.message))
-            .finally(() => setLoading(false));
-    }, []);
+    const reviewTasksQuery = useQuery<ReviewTask[], Error>({
+        queryKey: ["reviewTasks", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: async () => {
+            const result = await getReviewTasks(organizationId);
+            setError("");
+            setSuccessMessage("");
+            return result;
+        },
+    });
+    const dismissedTaskIds = organizationId
+        ? (dismissedTaskIdsByOrganization[organizationId] ?? [])
+        : [];
+    const tasks = (reviewTasksQuery.data ?? []).filter((task) => !dismissedTaskIds.includes(task.taskId));
+    const loading = hydrated && organizationId ? reviewTasksQuery.isLoading : false;
+    const queryError = reviewTasksQuery.error?.message ?? "";
 
     function handleCategoryChange(taskId: string, category: string) {
         setSelectedCategories((prev) => ({
@@ -55,8 +49,6 @@ export default function ReviewQueuePage() {
     }
 
     async function handleResolve(taskId: string) {
-        const organizationId = getOrganizationId();
-
         if (!organizationId) {
             setError("No organization ID found. Please sign in again.");
             return;
@@ -78,7 +70,10 @@ export default function ReviewQueuePage() {
                 resolutionComment: "Resolved from review queue UI",
             });
 
-            setTasks((prev) => prev.filter((task) => task.taskId !== taskId));
+            setDismissedTaskIdsByOrganization((prev) => ({
+                ...prev,
+                [organizationId]: [...(prev[organizationId] ?? []), taskId],
+            }));
             setSuccessMessage("Task resolved successfully.");
         } catch (err) {
             const message =
@@ -89,22 +84,50 @@ export default function ReviewQueuePage() {
         }
     }
 
-    if (loading) {
+    if (!hydrated || loading) {
         return <main className="p-6">Loading review queue...</main>;
     }
 
+    if (!organizationId) {
+        return (
+            <main className="p-6">
+                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
+                    No organization ID found. Please sign in again.
+                </div>
+            </main>
+        );
+    }
+
     return (
-        <main className="space-y-6 p-6">
-            <div>
-                <h1 className="text-2xl font-semibold text-white">Review Queue</h1>
-                <p className="text-sm text-zinc-400">
-                    Review transactions that need human confirmation before the books are finalized.
-                </p>
+        <main className="space-y-8 p-4 sm:p-6 lg:p-8">
+            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
+                            Workflow attention
+                        </p>
+                        <h1 className="mt-2 text-3xl font-semibold text-white">Review Queue</h1>
+                        <p className="mt-2 text-sm text-zinc-400">
+                            Review transactions that need human confirmation before the books are finalized.
+                        </p>
+                    </div>
+
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-4 py-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                            Open items
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-white">{tasks.length}</p>
+                    </div>
+                </div>
             </div>
 
             {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
                     {error}
+                </div>
+            ) : queryError ? (
+                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
+                    {queryError}
                 </div>
             ) : null}
 
@@ -115,7 +138,7 @@ export default function ReviewQueuePage() {
             ) : null}
 
             {tasks.length === 0 ? (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
                     <p className="text-white">No review tasks remaining.</p>
                     <p className="mt-2 text-sm text-zinc-400">
                         Your current review queue is clear.
@@ -126,7 +149,7 @@ export default function ReviewQueuePage() {
                     {tasks.map((task) => (
                         <div
                             key={task.taskId}
-                            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
+                            className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur"
                         >
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                 <div className="space-y-2">
@@ -174,15 +197,12 @@ export default function ReviewQueuePage() {
                                     </label>
 
                                     <select
-                                        value={selectedCategories[task.taskId] || ""}
+                                        value={selectedCategories[task.taskId] || task.proposedCategory || "OTHER"}
                                         onChange={(e) =>
                                             handleCategoryChange(task.taskId, e.target.value)
                                         }
                                         className="rounded-md border border-zinc-700 bg-black px-3 py-2 text-white outline-none"
                                     >
-                                        <option value="" disabled>
-                                            Select category
-                                        </option>
                                         {CATEGORY_OPTIONS.map((category) => (
                                             <option key={category} value={category}>
                                                 {category}

@@ -1,8 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-const appOrigin = "http://127.0.0.1:3000";
-const apiOrigin = appOrigin;
-
 const organizations = [
   {
     id: "org-primary",
@@ -322,11 +319,11 @@ test("login stores organization context and lands on dashboard", async ({ page }
 
   await page.getByLabel("Email").fill("owner@acme.test");
   await page.getByLabel("Password").fill("password123");
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.getByRole("button", { name: "Enter workspace" }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.locator("select")).toHaveValue("org-primary");
+  await expect(page.locator("select:visible").first()).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
 });
 
@@ -334,10 +331,12 @@ test("workspace switching reloads dashboard data for the selected organization",
   await seedOrganization(page);
   await page.goto("/dashboard");
 
-  await expect(page.locator("select")).toHaveValue("org-primary");
+  const workspaceSelect = page.locator("select:visible").first();
+
+  await expect(workspaceSelect).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
 
-  await page.selectOption("select", "org-secondary");
+  await workspaceSelect.selectOption("org-secondary");
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("$8450.55")).toBeVisible();
 });
@@ -368,7 +367,7 @@ test("reconciliation flow starts from the account card and opens real account de
   await page.getByRole("button", { name: "Start Reconciliation" }).click();
 
   await expect(page).toHaveURL(/\/reconciliation\/acct-operating\?month=2026-04$/);
-  await expect(page.getByRole("heading", { name: "Account Reconciliation" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Operating Checking" }).first()).toBeVisible();
   await expect(page.getByText("Resolve outstanding review items, then complete reconciliation.")).toBeVisible();
   await expect(page.getByText("UNKNOWN VENDOR")).toBeVisible();
   await expect(page.getByRole("button", { name: "Complete Reconciliation" })).toBeVisible();

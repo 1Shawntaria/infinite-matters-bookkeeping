@@ -1,6 +1,7 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -9,7 +10,7 @@ import {
     ReconciliationAccountDetail,
     startReconciliation,
 } from "@/lib/api/reconciliation";
-import { useOrganizationId } from "@/lib/auth/session";
+import { useOrganizationSession } from "@/lib/auth/session";
 
 type AccountReconciliationPageProps = {
     params: Promise<{
@@ -23,9 +24,7 @@ export default function AccountReconciliationPage({
     const router = useRouter();
     const searchParams = useSearchParams();
     const { accountId } = use(params);
-    const organizationId = useOrganizationId();
-    const [detail, setDetail] = useState<ReconciliationAccountDetail | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { organizationId, hydrated } = useOrganizationSession();
     const [error, setError] = useState("");
     const [openingBalance, setOpeningBalance] = useState("");
     const [statementEndingBalance, setStatementEndingBalance] = useState("");
@@ -33,31 +32,26 @@ export default function AccountReconciliationPage({
     const [completing, setCompleting] = useState(false);
 
     const focusMonth = searchParams.get("month") || undefined;
-
-    useEffect(() => {
-        if (!organizationId) {
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-
-        getReconciliationAccountDetail(organizationId, accountId, focusMonth)
-            .then((result) => {
-                setDetail(result);
-                if (result.session) {
-                    setOpeningBalance(String(result.session.openingBalance));
-                    setStatementEndingBalance(String(result.session.statementEndingBalance));
-                }
-            })
-            .catch((err: Error) => setError(err.message))
-            .finally(() => setLoading(false));
-    }, [accountId, focusMonth, organizationId]);
+    const detailQuery = useQuery<ReconciliationAccountDetail, Error>({
+        queryKey: ["reconciliationAccountDetail", organizationId, accountId, focusMonth],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: async () => {
+            const result = await getReconciliationAccountDetail(
+                organizationId,
+                accountId,
+                focusMonth
+            );
+            setError("");
+            return result;
+        },
+    });
+    const detail = organizationId ? (detailQuery.data ?? null) : null;
+    const loading = hydrated && organizationId ? detailQuery.isLoading : false;
+    const queryError = detailQuery.error?.message ?? "";
 
     async function refreshDetail() {
         if (!organizationId) return;
-        const result = await getReconciliationAccountDetail(organizationId, accountId, focusMonth);
-        setDetail(result);
+        await detailQuery.refetch();
     }
 
     async function handleStart() {
@@ -108,15 +102,15 @@ export default function AccountReconciliationPage({
         }
     }
 
-    if (loading) {
+    if (!hydrated || loading) {
         return <main className="p-6">Loading reconciliation account...</main>;
     }
 
-    if (!organizationId || error) {
+    if (!organizationId || error || queryError) {
         return (
             <main className="p-6">
                 <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {error || "No organization ID found. Please sign in again."}
+                    {error || queryError || "No organization ID found. Please sign in again."}
                 </div>
             </main>
         );
@@ -133,15 +127,30 @@ export default function AccountReconciliationPage({
     }
 
     return (
-        <main className="space-y-6 p-6">
-            <div>
-                <h1 className="text-2xl font-semibold text-white">Account Reconciliation</h1>
-                <p className="text-sm text-zinc-400">
-                    Reviewing {detail.accountName} for {detail.focusMonth}.
-                </p>
+        <main className="space-y-8 p-4 sm:p-6 lg:p-8">
+            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
+                            Account reconciliation
+                        </p>
+                        <h1 className="mt-2 text-3xl font-semibold text-white">
+                            {detail.accountName}
+                        </h1>
+                        <p className="mt-2 text-sm text-zinc-400">
+                            Reviewing {detail.accountName} for {detail.focusMonth}.
+                        </p>
+                    </div>
+                    <Link
+                        href="/reconciliation"
+                        className="rounded-md border border-zinc-800 px-4 py-2 text-sm text-zinc-300 transition hover:bg-zinc-950 hover:text-white"
+                    >
+                        Back to overview
+                    </Link>
+                </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
@@ -208,14 +217,14 @@ export default function AccountReconciliationPage({
             </div>
 
             <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
                     <p className="text-sm text-zinc-400">Opening Balance</p>
                     <p className="mt-2 text-2xl font-semibold text-white">
                         {detail.session ? `$${Number(detail.session.openingBalance).toFixed(2)}` : "-"}
                     </p>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
                     <p className="text-sm text-zinc-400">Statement Ending Balance</p>
                     <p className="mt-2 text-2xl font-semibold text-white">
                         {detail.session
@@ -224,7 +233,7 @@ export default function AccountReconciliationPage({
                     </p>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
                     <p className="text-sm text-zinc-400">Book Ending Balance</p>
                     <p className="mt-2 text-2xl font-semibold text-white">
                         {detail.bookEndingBalance != null
@@ -233,7 +242,7 @@ export default function AccountReconciliationPage({
                     </p>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
                     <p className="text-sm text-zinc-400">Variance</p>
                     <p className="mt-2 text-2xl font-semibold text-white">
                         {detail.varianceAmount != null
@@ -244,7 +253,7 @@ export default function AccountReconciliationPage({
             </div>
 
             {detail.canStartReconciliation ? (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
                     <p className="text-sm text-zinc-400">Statement Balances</p>
                     <div className="mt-4 grid gap-3 md:max-w-xl md:grid-cols-2">
                         <label className="space-y-2 text-sm text-zinc-300">
@@ -274,7 +283,7 @@ export default function AccountReconciliationPage({
                 </div>
             ) : null}
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-sm text-zinc-400">Period Transactions</p>
@@ -296,7 +305,7 @@ export default function AccountReconciliationPage({
                         {detail.transactions.map((transaction) => (
                             <div
                                 key={transaction.transactionId}
-                                className="rounded-lg border border-zinc-800 bg-black p-5"
+                                className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-5"
                             >
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                     <div className="space-y-2">
@@ -333,15 +342,6 @@ export default function AccountReconciliationPage({
                         ))}
                     </div>
                 )}
-            </div>
-
-            <div>
-                <Link
-                    href="/reconciliation"
-                    className="text-sm text-zinc-400 hover:text-white transition"
-                >
-                    ← Back to Reconciliation Overview
-                </Link>
             </div>
         </main>
     );

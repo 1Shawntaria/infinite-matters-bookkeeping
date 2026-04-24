@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,7 +9,7 @@ import {
     startReconciliation,
     ReconciliationDashboard,
 } from "@/lib/api/reconciliation";
-import { useOrganizationId } from "@/lib/auth/session";
+import { useOrganizationSession } from "@/lib/auth/session";
 
 type BalanceInputs = Record<
     string,
@@ -20,26 +21,22 @@ type BalanceInputs = Record<
 
 export default function ReconciliationPage() {
     const router = useRouter();
-    const organizationId = useOrganizationId();
-    const [data, setData] = useState<ReconciliationDashboard | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { organizationId, hydrated } = useOrganizationSession();
     const [error, setError] = useState("");
     const [balanceInputs, setBalanceInputs] = useState<BalanceInputs>({});
     const [startingAccountId, setStartingAccountId] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (!organizationId) {
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-
-        getReconciliationDashboard(organizationId)
-            .then((result) => setData(result))
-            .catch((err: Error) => setError(err.message))
-            .finally(() => setLoading(false));
-    }, [organizationId]);
+    const reconciliationQuery = useQuery<ReconciliationDashboard, Error>({
+        queryKey: ["reconciliationDashboard", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: async () => {
+            const result = await getReconciliationDashboard(organizationId);
+            setError("");
+            return result;
+        },
+    });
+    const data = organizationId ? (reconciliationQuery.data ?? null) : null;
+    const loading = hydrated && organizationId ? reconciliationQuery.isLoading : false;
+    const queryError = reconciliationQuery.error?.message ?? "";
 
     function updateBalanceInput(accountId: string, field: "openingBalance" | "statementEndingBalance", value: string) {
         setBalanceInputs((current) => ({
@@ -90,15 +87,15 @@ export default function ReconciliationPage() {
         }
     }
 
-    if (loading) {
+    if (!hydrated || loading) {
         return <main className="p-6">Loading reconciliation workspace...</main>;
     }
 
-    if (!organizationId || error) {
+    if (!organizationId || error || queryError) {
         return (
             <main className="p-6">
                 <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {error || "No organization ID found. Please sign in again."}
+                    {error || queryError || "No organization ID found. Please sign in again."}
                 </div>
             </main>
         );
@@ -107,31 +104,47 @@ export default function ReconciliationPage() {
     const unreconciledAccounts = data?.unreconciledAccounts ?? [];
 
     return (
-        <main className="space-y-6 p-6">
-            <div>
-                <h1 className="text-2xl font-semibold text-white">Reconciliation</h1>
-                <p className="text-sm text-zinc-400">
-                    Manage period-close readiness and unresolved account reconciliation
-                    work.
-                </p>
+        <main className="space-y-8 p-4 sm:p-6 lg:p-8">
+            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
+                            Period close readiness
+                        </p>
+                        <h1 className="mt-2 text-3xl font-semibold text-white">Reconciliation</h1>
+                        <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+                            Manage account-level balance checks and keep close blockers visible
+                            before they turn into period-end surprises.
+                        </p>
+                    </div>
+
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-4 py-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                            Focus Month
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-white">
+                            {data?.focusMonth ?? "-"}
+                        </p>
+                    </div>
+                </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
                     <p className="text-sm text-zinc-400">Focus Month</p>
                     <p className="mt-2 text-2xl font-semibold text-white">
                         {data?.focusMonth ?? "-"}
                     </p>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
                     <p className="text-sm text-zinc-400">Unreconciled Accounts</p>
                     <p className="mt-2 text-2xl font-semibold text-white">
                         {data?.period?.unreconciledAccountCount ?? unreconciledAccounts.length}
                     </p>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
                     <p className="text-sm text-zinc-400">Close Ready</p>
                     <p className="mt-2 text-2xl font-semibold text-white">
                         {data?.period?.closeReady ? "Yes" : "No"}
@@ -139,7 +152,7 @@ export default function ReconciliationPage() {
                 </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
                 <p className="text-sm text-zinc-400">Period Close Status</p>
 
                 <h2 className="mt-2 text-lg font-semibold text-white">
@@ -167,7 +180,7 @@ export default function ReconciliationPage() {
                 ) : null}
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-sm text-zinc-400">Unreconciled Accounts</p>
@@ -186,7 +199,7 @@ export default function ReconciliationPage() {
                         unreconciledAccounts.map((account) => (
                             <div
                                 key={account.itemId}
-                                className="rounded-lg border border-zinc-800 bg-black p-5 hover:border-zinc-700 transition"
+                                className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-5 transition hover:border-zinc-700"
                             >
                                 <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                                     <div className="space-y-2">

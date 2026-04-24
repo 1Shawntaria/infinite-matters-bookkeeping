@@ -192,6 +192,27 @@ class ProductionConfigurationValidatorTests {
                 .hasMessageContaining("sendgrid");
     }
 
+    @Test
+    void rejectsLoggingEmailProviderInProduction() {
+        ProductionConfigurationValidator validator = new ProductionConfigurationValidator(
+                prodEnvironment(),
+                "jdbc:postgresql://db.infinitematters.example:5432/bookkeeping",
+                "production-token-secret-with-at-least-32-characters",
+                true,
+                false,
+                "https://app.infinitematters.example",
+                "https://app.infinitematters.example/reset-password",
+                "production-webhook-secret",
+                "logging",
+                "",
+                "",
+                "");
+
+        assertThatThrownBy(validator::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("deliver real email");
+    }
+
     private MockEnvironment prodEnvironment() {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("prod");

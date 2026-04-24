@@ -64,7 +64,7 @@ export function WorkspaceSwitcher() {
 
     if (error) {
         return (
-            <p className="mt-6 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
+            <p className="mt-6 rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
                 Workspace unavailable.
             </p>
         );
@@ -73,8 +73,10 @@ export function WorkspaceSwitcher() {
     if (organizations.length === 0) {
         return (
             <div className="mt-6 space-y-2">
-                <p className="text-xs font-medium uppercase text-zinc-500">Workspace</p>
-                <p className="rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-500">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                    Workspace
+                </p>
+                <p className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-500">
                     Loading...
                 </p>
             </div>
@@ -83,11 +85,13 @@ export function WorkspaceSwitcher() {
 
     return (
         <label className="mt-6 block space-y-2">
-            <span className="text-xs font-medium uppercase text-zinc-500">Workspace</span>
+            <span className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                Workspace
+            </span>
             <select
                 value={activeOrganizationId}
                 onChange={handleChange}
-                className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none"
+                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
             >
                 {organizations.map((organization) => (
                     <option key={organization.id} value={organization.id}>
