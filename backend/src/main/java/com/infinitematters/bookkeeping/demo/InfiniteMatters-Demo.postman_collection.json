@@ -1,12 +1,13 @@
 {
   "info": {
-    "_postman_id": "d57b2e8f-7b2e-4b84-9c93-1f6fc6b6a001",
-    "name": "Infinite Matters Demo",
+    "_postman_id": "7b9e8db2-0b36-4f92-bb9b-8f412855b35f",
+    "name": "Infinite Matters Demo v2",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "description": "Happy-path demo collection for the current Infinite Matters bookkeeping backend in the backend/frontend monorepo. Run requests top to bottom. Collection variables are populated automatically from responses where possible. CSV imports must use multipart form-data with the file field named exactly `file`; let Postman set the Content-Type boundary."
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "demoRunId", "value": "" },
     { "key": "ownerEmail", "value": "" },
     { "key": "ownerFullName", "value": "Acme Owner" },
     { "key": "ownerPassword", "value": "password123" },
@@ -20,7 +21,7 @@
     { "key": "financialAccountType", "value": "BANK" },
     { "key": "financialInstitutionName", "value": "Demo Bank" },
     { "key": "currency", "value": "USD" },
-    { "key": "focusMonth", "value": "2026-03" },
+    { "key": "focusMonth", "value": "2026-04" },
     { "key": "openingBalance", "value": "1000.00" },
     { "key": "statementEndingBalance", "value": "1128.43" },
     { "key": "demoCsvPath", "value": "/Users/shawntariaburden/Development/infinite-matters/backend/src/main/java/com/infinitematters/bookkeeping/demo/demo-transactions.csv" },
@@ -69,15 +70,60 @@
       "name": "1. Identity Setup",
       "item": [
         {
+          "name": "Reset Demo Variables",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const runId = Date.now().toString();",
+                  "pm.collectionVariables.set('demoRunId', runId);",
+                  "pm.collectionVariables.set('ownerEmail', `owner+${runId}@acme.test`);",
+                  "pm.collectionVariables.set('memberEmail', `member+${runId}@acme.test`);",
+                  "[",
+                  "  'accessToken',",
+                  "  'ownerUserId',",
+                  "  'memberUserId',",
+                  "  'organizationId',",
+                  "  'financialAccountId',",
+                  "  'reviewTaskId',",
+                  "  'unknownVendorTaskId',",
+                  "  'amazonMarketplaceTaskId',",
+                  "  'reconciliationSessionId'",
+                  "].forEach((key) => pm.collectionVariables.unset(key));",
+                  "pm.test('demo variables reset', function () {",
+                  "  pm.expect(pm.collectionVariables.get('demoRunId')).to.eql(runId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "description": "Run this first after restarting the backend or before starting a fresh demo. It clears stale ids and creates one run-specific owner/member email pair.",
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
           "name": "Create Owner User",
           "event": [
             {
               "listen": "prerequest",
               "script": {
                 "exec": [
-                  "const timestamp = Date.now();",
-                  "const ownerEmail = `owner+${timestamp}@acme.test`;",
-                  "pm.collectionVariables.set('ownerEmail', ownerEmail);"
+                  "let runId = pm.collectionVariables.get('demoRunId');",
+                  "if (!runId) {",
+                  "  runId = Date.now().toString();",
+                  "  pm.collectionVariables.set('demoRunId', runId);",
+                  "}",
+                  "pm.collectionVariables.set('ownerEmail', `owner+${runId}@acme.test`);",
+                  "pm.collectionVariables.unset('ownerUserId');"
                 ],
                 "type": "text/javascript"
               }
@@ -86,7 +132,11 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('owner user created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
                   "const json = pm.response.json();",
+                  "pm.expect(json.id, 'owner user id').to.be.a('string').and.not.empty;",
                   "pm.collectionVariables.set('ownerUserId', json.id);"
                 ],
                 "type": "text/javascript"
@@ -151,9 +201,13 @@
               "listen": "prerequest",
               "script": {
                 "exec": [
-                  "const timestamp = Date.now();",
-                  "const memberEmail = `member+${timestamp}@acme.test`;",
-                  "pm.collectionVariables.set('memberEmail', memberEmail);"
+                  "let runId = pm.collectionVariables.get('demoRunId');",
+                  "if (!runId) {",
+                  "  runId = Date.now().toString();",
+                  "  pm.collectionVariables.set('demoRunId', runId);",
+                  "}",
+                  "pm.collectionVariables.set('memberEmail', `member+${runId}@acme.test`);",
+                  "pm.collectionVariables.unset('memberUserId');"
                 ],
                 "type": "text/javascript"
               }
@@ -162,7 +216,11 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('member user created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
                   "const json = pm.response.json();",
+                  "pm.expect(json.id, 'member user id').to.be.a('string').and.not.empty;",
                   "pm.collectionVariables.set('memberUserId', json.id);"
                 ],
                 "type": "text/javascript"
@@ -189,10 +247,26 @@
           "name": "Create Organization",
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const ownerUserId = pm.collectionVariables.get('ownerUserId');",
+                  "if (!ownerUserId) {",
+                  "  throw new Error('Run Reset Demo Variables and Create Owner User before Create Organization.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('organization created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
                   "const json = pm.response.json();",
+                  "pm.expect(json.id, 'organization id').to.be.a('string').and.not.empty;",
                   "pm.collectionVariables.set('organizationId', json.id);"
                 ],
                 "type": "text/javascript"
@@ -219,10 +293,25 @@
           "name": "Login Owner",
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('ownerEmail')) {",
+                  "  throw new Error('Run Reset Demo Variables and Create Owner User before Login Owner.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('owner logged in', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
                   "const json = pm.response.json();",
+                  "pm.expect(json.accessToken, 'access token').to.be.a('string').and.not.empty;",
                   "pm.collectionVariables.set('accessToken', json.accessToken);"
                 ],
                 "type": "text/javascript"
@@ -247,6 +336,32 @@
         },
         {
           "name": "Add Member To Organization",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "['accessToken', 'organizationId', 'memberUserId'].forEach((key) => {",
+                  "  if (!pm.collectionVariables.get(key)) {",
+                  "    throw new Error(`Run setup first. Missing collection variable: ${key}`);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('member added to organization', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -279,10 +394,27 @@
           "name": "Create Financial Account",
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "['accessToken', 'organizationId'].forEach((key) => {",
+                  "  if (!pm.collectionVariables.get(key)) {",
+                  "    throw new Error(`Run identity setup first. Missing collection variable: ${key}`);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('financial account created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
                   "const json = pm.response.json();",
+                  "pm.expect(json.id, 'financial account id').to.be.a('string').and.not.empty;",
                   "pm.collectionVariables.set('financialAccountId', json.id);"
                 ],
                 "type": "text/javascript"
@@ -320,6 +452,19 @@
         {
           "name": "Import Demo CSV",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "['accessToken', 'organizationId', 'financialAccountId'].forEach((key) => {",
+                  "  if (!pm.collectionVariables.get(key)) {",
+                  "    throw new Error(`Run identity setup and Create Financial Account first. Missing collection variable: ${key}`);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -369,6 +514,19 @@
         {
           "name": "Import Review-Heavy Demo CSV",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "['accessToken', 'organizationId', 'financialAccountId'].forEach((key) => {",
+                  "  if (!pm.collectionVariables.get(key)) {",
+                  "    throw new Error(`Run identity setup and Create Financial Account first. Missing collection variable: ${key}`);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
             {
               "listen": "test",
               "script": {
