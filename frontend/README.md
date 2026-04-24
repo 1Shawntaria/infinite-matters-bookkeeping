@@ -15,6 +15,8 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 By default, API calls target `http://localhost:8080`. Override that with `NEXT_PUBLIC_API_BASE_URL` when needed.
 
+Example frontend environment variables live in [frontend/.env.example](/Users/shawntariaburden/Development/infinite-matters/frontend/.env.example).
+
 ## Checks
 
 ```bash

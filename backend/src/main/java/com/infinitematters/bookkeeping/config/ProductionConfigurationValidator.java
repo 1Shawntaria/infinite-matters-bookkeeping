@@ -7,32 +7,52 @@ import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.util.Arrays;
+import java.util.Set;
 
 @Component
 public class ProductionConfigurationValidator {
     private static final String PROD_PROFILE = "prod";
     private static final String LOCAL_AUTH_SECRET = "local-development-token-secret-change-me";
+    private static final Set<String> SUPPORTED_EMAIL_PROVIDERS = Set.of("logging", "sendgrid");
 
     private final Environment environment;
+    private final String datasourceUrl;
     private final String authTokenSecret;
     private final boolean cookiesSecure;
     private final boolean responseTokensEnabled;
     private final String allowedOrigins;
     private final String passwordResetBaseUrl;
+    private final String notificationProviderWebhookSecret;
+    private final String emailProvider;
+    private final String sendGridApiKey;
+    private final String sendGridFromEmail;
+    private final String sendGridWebhookPublicKey;
 
     public ProductionConfigurationValidator(
             Environment environment,
+            @Value("${spring.datasource.url:}") String datasourceUrl,
             @Value("${bookkeeping.auth.token.secret:}") String authTokenSecret,
             @Value("${bookkeeping.auth.cookies.secure:false}") boolean cookiesSecure,
             @Value("${bookkeeping.auth.response-tokens.enabled:true}") boolean responseTokensEnabled,
             @Value("${bookkeeping.security.allowed-origins:}") String allowedOrigins,
-            @Value("${bookkeeping.auth.password-reset.base-url:}") String passwordResetBaseUrl) {
+            @Value("${bookkeeping.auth.password-reset.base-url:}") String passwordResetBaseUrl,
+            @Value("${bookkeeping.notifications.provider.webhook-secret:}") String notificationProviderWebhookSecret,
+            @Value("${bookkeeping.notifications.email.provider:logging}") String emailProvider,
+            @Value("${bookkeeping.notifications.email.sendgrid.api-key:}") String sendGridApiKey,
+            @Value("${bookkeeping.notifications.email.sendgrid.from-email:}") String sendGridFromEmail,
+            @Value("${bookkeeping.notifications.webhooks.sendgrid.public-key:}") String sendGridWebhookPublicKey) {
         this.environment = environment;
+        this.datasourceUrl = datasourceUrl;
         this.authTokenSecret = authTokenSecret;
         this.cookiesSecure = cookiesSecure;
         this.responseTokensEnabled = responseTokensEnabled;
         this.allowedOrigins = allowedOrigins;
         this.passwordResetBaseUrl = passwordResetBaseUrl;
+        this.notificationProviderWebhookSecret = notificationProviderWebhookSecret;
+        this.emailProvider = emailProvider;
+        this.sendGridApiKey = sendGridApiKey;
+        this.sendGridFromEmail = sendGridFromEmail;
+        this.sendGridWebhookPublicKey = sendGridWebhookPublicKey;
     }
 
     @PostConstruct
@@ -52,8 +72,10 @@ public class ProductionConfigurationValidator {
             throw new IllegalStateException("Production auth response tokens must be disabled");
         }
 
+        validateDatasource();
         validateAllowedOrigins();
         validateHttpsUrl(passwordResetBaseUrl, "bookkeeping.auth.password-reset.base-url");
+        validateNotifications();
     }
 
     private boolean isProdProfileActive() {
@@ -80,6 +102,35 @@ public class ProductionConfigurationValidator {
                         throw new IllegalStateException("Production allowed origins must not use localhost");
                     }
                 });
+    }
+
+    private void validateDatasource() {
+        require(datasourceUrl, "spring.datasource.url");
+        String normalizedDatasourceUrl = datasourceUrl.trim().toLowerCase();
+        if (normalizedDatasourceUrl.startsWith("jdbc:h2:")) {
+            throw new IllegalStateException("Production datasource must not use H2");
+        }
+    }
+
+    private void validateNotifications() {
+        require(notificationProviderWebhookSecret, "bookkeeping.notifications.provider.webhook-secret");
+
+        if (!SUPPORTED_EMAIL_PROVIDERS.contains(emailProvider.toLowerCase())) {
+            throw new IllegalStateException("Unsupported production email provider: " + emailProvider);
+        }
+
+        if (!"sendgrid".equalsIgnoreCase(emailProvider)) {
+            return;
+        }
+
+        require(sendGridApiKey, "bookkeeping.notifications.email.sendgrid.api-key");
+        require(sendGridFromEmail, "bookkeeping.notifications.email.sendgrid.from-email");
+        require(sendGridWebhookPublicKey, "bookkeeping.notifications.webhooks.sendgrid.public-key");
+
+        if (!sendGridFromEmail.contains("@")) {
+            throw new IllegalStateException(
+                    "Production bookkeeping.notifications.email.sendgrid.from-email must be a valid email");
+        }
     }
 
     private void validateHttpsUrl(String value, String propertyName) {
