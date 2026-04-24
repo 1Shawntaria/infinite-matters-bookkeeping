@@ -1,5 +1,6 @@
 package com.infinitematters.bookkeeping.web;
 
+import com.infinitematters.bookkeeping.reconciliation.ReconciliationAccountDetail;
 import com.infinitematters.bookkeeping.reconciliation.ReconciliationService;
 import com.infinitematters.bookkeeping.reconciliation.ReconciliationSummary;
 import com.infinitematters.bookkeeping.security.TenantAccessService;
@@ -36,6 +37,17 @@ public class ReconciliationController {
                                             @RequestParam(required = false) String month) {
         tenantAccessService.requireAccess(organizationId);
         return reconciliationService.list(organizationId, month != null ? YearMonth.parse(month) : null);
+    }
+
+    @GetMapping("/accounts/{accountId}")
+    public ReconciliationAccountDetail accountDetail(@RequestParam UUID organizationId,
+                                                     @PathVariable UUID accountId,
+                                                     @RequestParam(required = false) String month) {
+        tenantAccessService.requireAccess(organizationId);
+        return reconciliationService.accountDetail(
+                organizationId,
+                accountId,
+                month != null ? YearMonth.parse(month) : null);
     }
 
     @PostMapping

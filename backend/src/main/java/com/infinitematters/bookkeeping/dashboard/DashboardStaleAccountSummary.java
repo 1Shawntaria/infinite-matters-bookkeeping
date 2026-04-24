@@ -15,5 +15,6 @@ public record DashboardStaleAccountSummary(
         String actionKey,
         String actionPath,
         DashboardActionUrgency actionUrgency,
-        String actionReason) {
+        String actionReason,
+        boolean sessionStarted) {
 }

@@ -578,9 +578,7 @@ public class DashboardService {
                             : end;
                     long daysSinceActivity = ChronoUnit.DAYS.between(lastTransactionDate, today);
                     String itemId = reconciliation != null ? "recon-" + reconciliation.id() : "recon-account-" + account.getId();
-                    String actionPath = reconciliation != null
-                            ? "/reconciliation/" + reconciliation.id()
-                            : "/reconciliation?accountId=" + account.getId();
+                    String actionPath = "/reconciliation/" + account.getId() + "?month=" + month;
                     String actionReason = reconciliation != null
                             ? "Reconciliation is in progress for this account."
                             : "Account requires reconciliation before period close.";
@@ -595,7 +593,8 @@ public class DashboardService {
                             "REVIEW_RECONCILIATION",
                             actionPath,
                             DashboardActionUrgency.HIGH,
-                            actionReason
+                            actionReason,
+                            reconciliation != null
                     );
                 })
                 .toList();
@@ -618,7 +617,8 @@ public class DashboardService {
                 "REVIEW_STALE_ACCOUNT",
                 "/reconciliation?accountId=" + account.getId(),
                 staleAccountUrgency(ChronoUnit.DAYS.between(lastTransactionDate, today)),
-                staleAccountReason(ChronoUnit.DAYS.between(lastTransactionDate, today)));
+                staleAccountReason(ChronoUnit.DAYS.between(lastTransactionDate, today)),
+                false);
     }
 
     private DashboardActionUrgency expenseCategoryUrgency(BigDecimal deltaFromPreviousMonth) {

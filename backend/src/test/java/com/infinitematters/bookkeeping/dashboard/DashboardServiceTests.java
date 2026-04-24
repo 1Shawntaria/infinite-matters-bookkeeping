@@ -459,9 +459,10 @@ class DashboardServiceTests {
         assertThat(snapshot.unreconciledAccounts()).hasSize(1);
         assertThat(snapshot.unreconciledAccounts().get(0).accountId()).isEqualTo(bankAccountId);
         assertThat(snapshot.unreconciledAccounts().get(0).accountName()).isEqualTo("Operating Checking");
-        assertThat(snapshot.unreconciledAccounts().get(0).actionPath()).isEqualTo("/reconciliation?accountId=" + bankAccountId);
+        assertThat(snapshot.unreconciledAccounts().get(0).actionPath()).isEqualTo("/reconciliation/" + bankAccountId + "?month=2026-03");
         assertThat(snapshot.unreconciledAccounts().get(0).actionReason())
                 .isEqualTo("Account requires reconciliation before period close.");
+        assertThat(snapshot.unreconciledAccounts().get(0).sessionStarted()).isFalse();
         assertThat(snapshot.primaryAction()).isNotNull();
         assertThat(snapshot.primaryAction().cardId()).isEqualTo("support-performance");
         assertThat(snapshot.primaryAction().label()).isEqualTo("Review urgent support risks");

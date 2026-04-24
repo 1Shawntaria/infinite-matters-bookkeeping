@@ -258,6 +258,72 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void invalidOrganizationHeaderReturnsBadRequest() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "invalid-org-header-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Invalid Header Owner", password);
+        String organizationId = createOrganization(ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .header(ORG_HEADER, "not-a-uuid")
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid X-Organization-Id header"))
+                .andExpect(jsonPath("$.path").value("/api/dashboard/snapshot"));
+    }
+
+    @Test
+    void returnsRealReconciliationAccountDetail() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "reconciliation-detail-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Reconciliation Detail Owner", password);
+        String organizationId = createOrganization(ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        MvcResult reconciliationStart = mockMvc.perform(post("/api/reconciliations")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-03",
+                                  "financialAccountId":"%s",
+                                  "openingBalance": 1000.00,
+                                  "statementEndingBalance": 1200.00
+                                }
+                                """.formatted(accountId)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String reconciliationId = objectMapper.readTree(reconciliationStart.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(get("/api/reconciliations/accounts/{accountId}", accountId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("month", "2026-03"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.focusMonth").value("2026-03"))
+                .andExpect(jsonPath("$.financialAccountId").value(accountId))
+                .andExpect(jsonPath("$.accountName").value("Operating Checking"))
+                .andExpect(jsonPath("$.session.id").value(reconciliationId))
+                .andExpect(jsonPath("$.session.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.bookEndingBalance").value(1000.0))
+                .andExpect(jsonPath("$.varianceAmount").value(200.0))
+                .andExpect(jsonPath("$.canStartReconciliation").value(false))
+                .andExpect(jsonPath("$.canCompleteReconciliation").value(true))
+                .andExpect(jsonPath("$.transactions").isArray());
+    }
+
+    @Test
     void importsTransactionsAndRoutesAmbiguousItemsIntoReview() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())

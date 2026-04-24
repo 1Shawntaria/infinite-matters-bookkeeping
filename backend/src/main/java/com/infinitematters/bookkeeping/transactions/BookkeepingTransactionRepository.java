@@ -24,6 +24,16 @@ public interface BookkeepingTransactionRepository extends JpaRepository<Bookkeep
 
     Optional<BookkeepingTransaction> findFirstByOrganizationIdOrderByTransactionDateDescCreatedAtDesc(UUID organizationId);
 
+    Optional<BookkeepingTransaction> findFirstByOrganizationIdAndFinancialAccountIdOrderByTransactionDateDescCreatedAtDesc(
+            UUID organizationId,
+            UUID financialAccountId);
+
+    List<BookkeepingTransaction> findByOrganizationIdAndFinancialAccountIdAndTransactionDateBetweenOrderByTransactionDateDescCreatedAtDesc(
+            UUID organizationId,
+            UUID financialAccountId,
+            LocalDate periodStart,
+            LocalDate periodEnd);
+
     @Query("""
             select coalesce(sum(t.amount), 0)
             from BookkeepingTransaction t

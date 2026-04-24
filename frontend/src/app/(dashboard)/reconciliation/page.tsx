@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
     getReconciliationDashboard,
     startReconciliation,
@@ -9,14 +10,22 @@ import {
 } from "@/lib/api/reconciliation";
 import { getOrganizationId } from "@/lib/auth/session";
 
+type BalanceInputs = Record<
+    string,
+    {
+        openingBalance: string;
+        statementEndingBalance: string;
+    }
+>;
+
 export default function ReconciliationPage() {
+    const router = useRouter();
     const [organizationId] = useState(getOrganizationId);
     const [data, setData] = useState<ReconciliationDashboard | null>(null);
     const [loading, setLoading] = useState(() => Boolean(organizationId));
     const [error, setError] = useState("");
-    const [openingBalance, setOpeningBalance] = useState("");
-    const [statementEndingBalance, setStatementEndingBalance] = useState("");
-    const [startingReconciliation, setStartingReconciliation] = useState(false);
+    const [balanceInputs, setBalanceInputs] = useState<BalanceInputs>({});
+    const [startingAccountId, setStartingAccountId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!organizationId) return;
@@ -27,14 +36,29 @@ export default function ReconciliationPage() {
             .finally(() => setLoading(false));
     }, [organizationId]);
 
+    function updateBalanceInput(accountId: string, field: "openingBalance" | "statementEndingBalance", value: string) {
+        setBalanceInputs((current) => ({
+            ...current,
+            [accountId]: {
+                openingBalance: current[accountId]?.openingBalance ?? "",
+                statementEndingBalance: current[accountId]?.statementEndingBalance ?? "",
+                [field]: value,
+            },
+        }));
+    }
+
     async function handleStartReconciliation(accountId: string, actionPath: string) {
         if (!organizationId || !data?.focusMonth) {
             setError("No organization ID found. Please sign in again.");
             return;
         }
 
-        const parsedOpeningBalance = Number(openingBalance);
-        const parsedStatementEndingBalance = Number(statementEndingBalance);
+        const inputs = balanceInputs[accountId] ?? {
+            openingBalance: "",
+            statementEndingBalance: "",
+        };
+        const parsedOpeningBalance = Number(inputs.openingBalance);
+        const parsedStatementEndingBalance = Number(inputs.statementEndingBalance);
 
         if (!Number.isFinite(parsedOpeningBalance) || !Number.isFinite(parsedStatementEndingBalance)) {
             setError("Enter valid opening and statement ending balances before starting.");
@@ -42,7 +66,7 @@ export default function ReconciliationPage() {
         }
 
         setError("");
-        setStartingReconciliation(true);
+        setStartingAccountId(accountId);
 
         try {
             await startReconciliation(organizationId, {
@@ -51,13 +75,13 @@ export default function ReconciliationPage() {
                 openingBalance: parsedOpeningBalance,
                 statementEndingBalance: parsedStatementEndingBalance,
             });
-            window.location.href = actionPath;
+            router.push(actionPath);
         } catch (err) {
             const message =
                 err instanceof Error ? err.message : "Unable to start reconciliation.";
             setError(message);
         } finally {
-            setStartingReconciliation(false);
+            setStartingAccountId(null);
         }
     }
 
@@ -130,46 +154,12 @@ export default function ReconciliationPage() {
                     </p>
                 ) : null}
 
-                {!data?.period?.closeReady && unreconciledAccounts.length > 0 && (
-                    <div className="mt-4 grid gap-3 md:max-w-xl md:grid-cols-2">
-                        <label className="space-y-2 text-sm text-zinc-300">
-                            <span>Opening Balance</span>
-                            <input
-                                className="w-full rounded-md border border-zinc-700 bg-black px-3 py-2 text-white outline-none"
-                                inputMode="decimal"
-                                type="number"
-                                step="0.01"
-                                value={openingBalance}
-                                onChange={(event) => setOpeningBalance(event.target.value)}
-                            />
-                        </label>
-
-                        <label className="space-y-2 text-sm text-zinc-300">
-                            <span>Statement Ending Balance</span>
-                            <input
-                                className="w-full rounded-md border border-zinc-700 bg-black px-3 py-2 text-white outline-none"
-                                inputMode="decimal"
-                                type="number"
-                                step="0.01"
-                                value={statementEndingBalance}
-                                onChange={(event) => setStatementEndingBalance(event.target.value)}
-                            />
-                        </label>
-
-                        <button
-                            onClick={() =>
-                                handleStartReconciliation(
-                                    unreconciledAccounts[0].accountId,
-                                    unreconciledAccounts[0].actionPath
-                                )
-                            }
-                            disabled={startingReconciliation}
-                            className="inline-block rounded-md bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition disabled:opacity-50 md:col-span-2"
-                        >
-                            {startingReconciliation ? "Starting..." : "Start Reconciliation"}
-                        </button>
-                    </div>
-                )}
+                {!data?.period?.closeReady && unreconciledAccounts.length > 0 ? (
+                    <p className="mt-4 text-sm text-zinc-400">
+                        Start or resume reconciliation from the specific account card below so the
+                        statement balances stay attached to the correct account.
+                    </p>
+                ) : null}
             </div>
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
@@ -232,15 +222,70 @@ export default function ReconciliationPage() {
                                             href={account.actionPath}
                                             className="rounded-md bg-red-500 px-4 py-2 text-center text-sm font-medium text-white hover:bg-red-600 transition"
                                         >
-                                            Review Account
+                                            {account.sessionStarted ? "Resume Reconciliation" : "Review Account"}
                                         </Link>
 
-                                        <button
-                                            disabled
-                                            className="cursor-not-allowed rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-500 opacity-60"
-                                        >
-                                            Mark Reconciled
-                                        </button>
+                                        {account.sessionStarted ? (
+                                            <p className="text-xs text-zinc-500">
+                                                A reconciliation session is already open for this account.
+                                            </p>
+                                        ) : (
+                                            <>
+                                                <label className="space-y-2 text-sm text-zinc-300">
+                                                    <span>Opening Balance</span>
+                                                    <input
+                                                        className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                                        inputMode="decimal"
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={balanceInputs[account.accountId]?.openingBalance ?? ""}
+                                                        onChange={(event) =>
+                                                            updateBalanceInput(
+                                                                account.accountId,
+                                                                "openingBalance",
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+
+                                                <label className="space-y-2 text-sm text-zinc-300">
+                                                    <span>Statement Ending Balance</span>
+                                                    <input
+                                                        className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                                        inputMode="decimal"
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={
+                                                            balanceInputs[account.accountId]
+                                                                ?.statementEndingBalance ?? ""
+                                                        }
+                                                        onChange={(event) =>
+                                                            updateBalanceInput(
+                                                                account.accountId,
+                                                                "statementEndingBalance",
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+
+                                                <button
+                                                    onClick={() =>
+                                                        handleStartReconciliation(
+                                                            account.accountId,
+                                                            account.actionPath
+                                                        )
+                                                    }
+                                                    disabled={startingAccountId === account.accountId}
+                                                    className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-900 transition disabled:opacity-50"
+                                                >
+                                                    {startingAccountId === account.accountId
+                                                        ? "Starting..."
+                                                        : "Start Reconciliation"}
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>

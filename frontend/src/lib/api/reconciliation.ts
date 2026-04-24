@@ -11,6 +11,7 @@ export type ReconciliationAccountSummary = {
     actionPath: string;
     actionUrgency: string;
     actionReason: string;
+    sessionStarted: boolean;
 };
 
 export type ReconciliationDashboard = {
@@ -51,6 +52,80 @@ export async function startReconciliation(
         {
             method: "POST",
             body: JSON.stringify(payload),
+        }
+    );
+}
+
+export type ReconciliationSession = {
+    id: string;
+    financialAccountId: string;
+    accountName: string;
+    periodStart: string;
+    periodEnd: string;
+    openingBalance: number;
+    statementEndingBalance: number;
+    computedEndingBalance: number | null;
+    varianceAmount: number | null;
+    notes: string | null;
+    status: string;
+    completedAt: string | null;
+    createdAt: string;
+};
+
+export type ReconciliationTransaction = {
+    transactionId: string;
+    transactionDate: string;
+    amount: number;
+    merchant: string | null;
+    memo: string | null;
+    status: string;
+};
+
+export type ReconciliationAccountDetail = {
+    focusMonth: string;
+    financialAccountId: string;
+    accountName: string;
+    institutionName: string | null;
+    accountType: string;
+    currency: string;
+    active: boolean;
+    session: ReconciliationSession | null;
+    bookEndingBalance: number | null;
+    varianceAmount: number | null;
+    postedTransactionCount: number;
+    reviewRequiredCount: number;
+    canStartReconciliation: boolean;
+    canCompleteReconciliation: boolean;
+    statusMessage: string;
+    transactions: ReconciliationTransaction[];
+};
+
+export async function getReconciliationAccountDetail(
+    organizationId: string,
+    accountId: string,
+    month?: string
+): Promise<ReconciliationAccountDetail> {
+    const query = new URLSearchParams({ organizationId });
+    if (month) {
+        query.set("month", month);
+    }
+
+    return apiFetch<ReconciliationAccountDetail>(
+        `/api/reconciliations/accounts/${encodeURIComponent(accountId)}?${query.toString()}`,
+        {
+            method: "GET",
+        }
+    );
+}
+
+export async function completeReconciliation(
+    organizationId: string,
+    sessionId: string
+) {
+    return apiFetch(
+        `/api/reconciliations/${encodeURIComponent(sessionId)}/complete?organizationId=${encodeURIComponent(organizationId)}`,
+        {
+            method: "POST",
         }
     );
 }
