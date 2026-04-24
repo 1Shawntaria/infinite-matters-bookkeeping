@@ -8,16 +8,21 @@ import {
 
 import Link from "next/link";
 import { mapBackendActionPathToFrontend } from "@/lib/navigation";
-import { getOrganizationId } from "@/lib/auth/session";
+import { useOrganizationId } from "@/lib/auth/session";
 
 export default function DashboardPage() {
-    const [organizationId] = useState(getOrganizationId);
+    const organizationId = useOrganizationId();
     const [data, setData] = useState<DashboardSnapshot | null>(null);
     const [error, setError] = useState("");
-    const [loading, setLoading] = useState(() => Boolean(organizationId));
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!organizationId) return;
+        if (!organizationId) {
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
 
         getDashboardSnapshot(organizationId)
             .then((result) => setData(result))

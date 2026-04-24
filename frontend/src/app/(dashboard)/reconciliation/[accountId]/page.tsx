@@ -9,7 +9,7 @@ import {
     ReconciliationAccountDetail,
     startReconciliation,
 } from "@/lib/api/reconciliation";
-import { getOrganizationId } from "@/lib/auth/session";
+import { useOrganizationId } from "@/lib/auth/session";
 
 type AccountReconciliationPageProps = {
     params: Promise<{
@@ -23,9 +23,9 @@ export default function AccountReconciliationPage({
     const router = useRouter();
     const searchParams = useSearchParams();
     const { accountId } = use(params);
-    const [organizationId] = useState(getOrganizationId);
+    const organizationId = useOrganizationId();
     const [detail, setDetail] = useState<ReconciliationAccountDetail | null>(null);
-    const [loading, setLoading] = useState(() => Boolean(organizationId));
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [openingBalance, setOpeningBalance] = useState("");
     const [statementEndingBalance, setStatementEndingBalance] = useState("");
@@ -35,7 +35,12 @@ export default function AccountReconciliationPage({
     const focusMonth = searchParams.get("month") || undefined;
 
     useEffect(() => {
-        if (!organizationId) return;
+        if (!organizationId) {
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
 
         getReconciliationAccountDetail(organizationId, accountId, focusMonth)
             .then((result) => {

@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { listOrganizations, OrganizationSummary } from "@/lib/api/auth";
 import { getOrganizationId, setOrganizationId } from "@/lib/auth/session";
 
 export function WorkspaceSwitcher() {
+    const router = useRouter();
+    const pathname = usePathname();
     const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
-    const [activeOrganizationId, setActiveOrganizationId] = useState(getOrganizationId);
+    const [activeOrganizationId, setActiveOrganizationId] = useState("");
     const [error, setError] = useState("");
 
     useEffect(() => {
@@ -29,6 +32,11 @@ export function WorkspaceSwitcher() {
                     return;
                 }
 
+                if (currentOrganizationId && hasCurrentOrganization) {
+                    setActiveOrganizationId(currentOrganizationId);
+                    return;
+                }
+
                 if (currentOrganizationId && !hasCurrentOrganization && result[0]) {
                     setOrganizationId(result[0].id);
                     setActiveOrganizationId(result[0].id);
@@ -48,7 +56,10 @@ export function WorkspaceSwitcher() {
         const nextOrganizationId = event.target.value;
         setOrganizationId(nextOrganizationId);
         setActiveOrganizationId(nextOrganizationId);
-        window.location.assign("/dashboard");
+
+        if (pathname !== "/dashboard") {
+            router.push("/dashboard");
+        }
     }
 
     if (error) {

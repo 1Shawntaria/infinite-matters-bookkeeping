@@ -8,7 +8,7 @@ import {
     startReconciliation,
     ReconciliationDashboard,
 } from "@/lib/api/reconciliation";
-import { getOrganizationId } from "@/lib/auth/session";
+import { useOrganizationId } from "@/lib/auth/session";
 
 type BalanceInputs = Record<
     string,
@@ -20,15 +20,20 @@ type BalanceInputs = Record<
 
 export default function ReconciliationPage() {
     const router = useRouter();
-    const [organizationId] = useState(getOrganizationId);
+    const organizationId = useOrganizationId();
     const [data, setData] = useState<ReconciliationDashboard | null>(null);
-    const [loading, setLoading] = useState(() => Boolean(organizationId));
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [balanceInputs, setBalanceInputs] = useState<BalanceInputs>({});
     const [startingAccountId, setStartingAccountId] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!organizationId) return;
+        if (!organizationId) {
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
 
         getReconciliationDashboard(organizationId)
             .then((result) => setData(result))

@@ -1,0 +1,375 @@
+import { expect, test } from "@playwright/test";
+
+const appOrigin = "http://127.0.0.1:3000";
+const apiOrigin = appOrigin;
+
+const organizations = [
+  {
+    id: "org-primary",
+    name: "Acme Books Demo",
+    planTier: "GROWTH",
+    timezone: "America/Los_Angeles",
+  },
+  {
+    id: "org-secondary",
+    name: "Sunrise Client Ops",
+    planTier: "STARTER",
+    timezone: "America/New_York",
+  },
+];
+
+function dashboardSnapshot(organizationId: string) {
+  if (organizationId === "org-secondary") {
+    return {
+      focusMonth: "2026-04",
+      cashBalance: 8450.55,
+      postedTransactionCount: 18,
+      primaryAction: null,
+      workflowInbox: {
+        openCount: 1,
+        overdueCount: 0,
+        dueTodayCount: 0,
+        highPriorityCount: 0,
+        unassignedCount: 1,
+        assignedToCurrentUserCount: 0,
+        recommendedActionLabel: null,
+        recommendedActionKey: null,
+        recommendedActionPath: null,
+        recommendedActionUrgency: null,
+        attentionTasks: [],
+      },
+      period: {
+        closeReady: true,
+        unreconciledAccountCount: 0,
+        recommendedActionLabel: null,
+        recommendedActionKey: null,
+        recommendedActionPath: null,
+        recommendedActionUrgency: null,
+      },
+      expenseCategories: [],
+      staleAccounts: [],
+      recentNotifications: [],
+    };
+  }
+
+  return {
+    focusMonth: "2026-04",
+    cashBalance: 15234.12,
+    postedTransactionCount: 27,
+    primaryAction: {
+      cardId: "period-close",
+      label: "Finish account reconciliations",
+      actionKey: "FINISH_RECONCILIATIONS",
+      actionPath: "/reconciliation",
+      itemCount: 1,
+      reason: "1 account still needs reconciliation before close.",
+      urgency: "HIGH",
+      source: "PERIOD_CLOSE",
+    },
+    workflowInbox: {
+      openCount: 3,
+      overdueCount: 1,
+      dueTodayCount: 1,
+      highPriorityCount: 1,
+      unassignedCount: 1,
+      assignedToCurrentUserCount: 1,
+      recommendedActionLabel: "Resolve open review tasks",
+      recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
+      recommendedActionPath: "/workflows/inbox",
+      recommendedActionUrgency: "HIGH",
+      attentionTasks: [],
+    },
+    period: {
+      closeReady: false,
+      unreconciledAccountCount: 1,
+      recommendedActionLabel: "Finish account reconciliations",
+      recommendedActionKey: "FINISH_RECONCILIATIONS",
+      recommendedActionPath: "/reconciliation",
+      recommendedActionUrgency: "HIGH",
+    },
+    expenseCategories: [
+      {
+        itemId: "expense-category-software",
+        category: "SOFTWARE",
+        amount: 610.0,
+        deltaFromPreviousMonth: 25.5,
+        actionKey: "REVIEW_EXPENSE_CATEGORY",
+        actionPath: "/transactions?category=SOFTWARE",
+        actionUrgency: "NORMAL",
+        actionReason: "Up 25.50 from last month.",
+      },
+    ],
+    staleAccounts: [],
+    recentNotifications: [],
+  };
+}
+
+function reviewTasks() {
+  return [
+    {
+      taskId: "review-task-1",
+      transactionId: "txn-1",
+      taskType: "TRANSACTION_REVIEW",
+      priority: "HIGH",
+      overdue: false,
+      title: "Review AMZN MKTP",
+      description: "Category needs confirmation.",
+      dueDate: "2026-04-30",
+      merchant: "AMZN MKTP",
+      amount: 142.18,
+      transactionDate: "2026-04-03",
+      proposedCategory: "OTHER",
+      confidenceScore: 0.83,
+      route: "PREMIUM",
+      resolutionComment: null,
+    },
+  ];
+}
+
+function reconciliationDashboard() {
+  return {
+    focusMonth: "2026-04",
+    period: {
+      closeReady: false,
+      unreconciledAccountCount: 1,
+      recommendedActionLabel: "Finish account reconciliations",
+      recommendedActionKey: "FINISH_RECONCILIATIONS",
+      recommendedActionPath: "/reconciliation",
+      recommendedActionUrgency: "HIGH",
+    },
+    unreconciledAccounts: [
+      {
+        itemId: "recon-account-operating",
+        accountId: "acct-operating",
+        accountName: "Operating Checking",
+        accountType: "BANK",
+        lastTransactionDate: "2026-04-06",
+        daysSinceActivity: 18,
+        actionKey: "REVIEW_RECONCILIATION",
+        actionPath: "/reconciliation/acct-operating?month=2026-04",
+        actionUrgency: "HIGH",
+        actionReason: "Account requires reconciliation before period close.",
+        sessionStarted: false,
+      },
+    ],
+  };
+}
+
+function reconciliationAccountDetail() {
+  return {
+    focusMonth: "2026-04",
+    financialAccountId: "acct-operating",
+    accountName: "Operating Checking",
+    institutionName: "Infinite Matters Bank",
+    accountType: "BANK",
+    currency: "USD",
+    active: true,
+    session: {
+      id: "recon-session-1",
+      financialAccountId: "acct-operating",
+      accountName: "Operating Checking",
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-30",
+      openingBalance: 1000,
+      statementEndingBalance: 1200,
+      computedEndingBalance: 1128.43,
+      varianceAmount: 71.57,
+      notes: "Variance detected; investigate before close",
+      status: "IN_PROGRESS",
+      completedAt: null,
+      createdAt: "2026-04-24T12:00:00Z",
+    },
+    bookEndingBalance: 1128.43,
+    varianceAmount: 71.57,
+    postedTransactionCount: 4,
+    reviewRequiredCount: 2,
+    canStartReconciliation: false,
+    canCompleteReconciliation: true,
+    statusMessage: "Resolve outstanding review items, then complete reconciliation.",
+    transactions: [
+      {
+        transactionId: "txn-1",
+        transactionDate: "2026-04-06",
+        amount: 49.99,
+        merchant: "UNKNOWN VENDOR",
+        memo: "Needs review",
+        status: "REVIEW_REQUIRED",
+      },
+      {
+        transactionId: "txn-2",
+        transactionDate: "2026-04-05",
+        amount: 89.0,
+        merchant: "CLOUDCO",
+        memo: "Monthly software",
+        status: "POSTED",
+      },
+    ],
+  };
+}
+
+async function mockApi(page: Parameters<typeof test>[0]["page"]) {
+  let remainingReviewTasks = reviewTasks();
+
+  async function fulfillJson(
+    route: Parameters<Parameters<typeof page.route>[1]>[0],
+    body: unknown,
+    status = 200
+  ) {
+    await route.fulfill({
+      status,
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  }
+
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const organizationHeader = request.headers()["x-organization-id"] ?? "org-primary";
+
+    if (url.pathname === "/api/auth/token" && request.method() === "POST") {
+      await fulfillJson(route, {
+        user: {
+          id: "user-1",
+          email: "owner@acme.test",
+          fullName: "Acme Owner",
+        },
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/auth/logout" && request.method() === "POST") {
+      await fulfillJson(route, {});
+      return;
+    }
+
+    if (url.pathname === "/api/users/organizations" && request.method() === "GET") {
+      await fulfillJson(route, organizations);
+      return;
+    }
+
+    if (url.pathname === "/api/dashboard/snapshot" && request.method() === "GET") {
+      const isReconciliationPage = page.url().includes("/reconciliation");
+      await fulfillJson(
+        route,
+        isReconciliationPage
+          ? reconciliationDashboard()
+          : dashboardSnapshot(organizationHeader)
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/reviews/tasks" && request.method() === "GET") {
+      await fulfillJson(route, remainingReviewTasks);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/reviews/tasks/") && request.method() === "POST") {
+      const taskId = url.pathname.split("/").at(-2);
+      remainingReviewTasks = remainingReviewTasks.filter((task) => task.taskId !== taskId);
+      await fulfillJson(route, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/api/reconciliations" && request.method() === "GET") {
+      await fulfillJson(route, []);
+      return;
+    }
+
+    if (url.pathname === "/api/reconciliations" && request.method() === "POST") {
+      await fulfillJson(route, reconciliationAccountDetail().session);
+      return;
+    }
+
+    if (url.pathname === "/api/reconciliations/accounts/acct-operating" && request.method() === "GET") {
+      await fulfillJson(route, reconciliationAccountDetail());
+      return;
+    }
+
+    if (
+      url.pathname === "/api/reconciliations/recon-session-1/complete" &&
+      request.method() === "POST"
+    ) {
+      await fulfillJson(route, {
+        ...reconciliationAccountDetail().session,
+        status: "COMPLETED",
+        varianceAmount: 0,
+        notes: "Balanced successfully",
+      });
+      return;
+    }
+
+    await fulfillJson(
+      route,
+      { message: `Unhandled mock route: ${request.method()} ${url.pathname}` },
+      404
+    );
+  });
+}
+
+test.beforeEach(async ({ page }) => {
+  await mockApi(page);
+});
+
+async function seedOrganization(page: Parameters<typeof test>[0]["page"], organizationId = "org-primary") {
+  await page.addInitScript((seededOrganizationId) => {
+    window.sessionStorage.setItem("organizationId", seededOrganizationId);
+  }, organizationId);
+}
+
+test("login stores organization context and lands on dashboard", async ({ page }) => {
+  await page.goto("/login");
+
+  await page.getByLabel("Email").fill("owner@acme.test");
+  await page.getByLabel("Password").fill("password123");
+  await page.getByRole("button", { name: "Sign In" }).click();
+
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.locator("select")).toHaveValue("org-primary");
+  await expect(page.getByText("$15234.12")).toBeVisible();
+});
+
+test("workspace switching reloads dashboard data for the selected organization", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/dashboard");
+
+  await expect(page.locator("select")).toHaveValue("org-primary");
+  await expect(page.getByText("$15234.12")).toBeVisible();
+
+  await page.selectOption("select", "org-secondary");
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByText("$8450.55")).toBeVisible();
+});
+
+test("review queue resolves a task from the UI", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/review-queue");
+
+  await expect(page.getByRole("heading", { name: "Review Queue" })).toBeVisible();
+  await expect(page.getByText("AMZN MKTP")).toBeVisible();
+
+  await page.locator("select").last().selectOption("OTHER");
+  await page.getByRole("button", { name: "Resolve Task" }).click();
+
+  await expect(page.getByText("Task resolved successfully.")).toBeVisible();
+  await expect(page.getByText("No review tasks remaining.")).toBeVisible();
+});
+
+test("reconciliation flow starts from the account card and opens real account details", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/reconciliation");
+
+  await expect(page.getByRole("heading", { name: "Reconciliation" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Operating Checking" })).toBeVisible();
+
+  await page.getByLabel("Opening Balance").fill("1000.00");
+  await page.getByLabel("Statement Ending Balance").fill("1200.00");
+  await page.getByRole("button", { name: "Start Reconciliation" }).click();
+
+  await expect(page).toHaveURL(/\/reconciliation\/acct-operating\?month=2026-04$/);
+  await expect(page.getByRole("heading", { name: "Account Reconciliation" })).toBeVisible();
+  await expect(page.getByText("Resolve outstanding review items, then complete reconciliation.")).toBeVisible();
+  await expect(page.getByText("UNKNOWN VENDOR")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Complete Reconciliation" })).toBeVisible();
+});
