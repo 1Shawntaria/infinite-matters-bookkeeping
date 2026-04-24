@@ -2,6 +2,7 @@ package com.infinitematters.bookkeeping.dashboard;
 
 import com.infinitematters.bookkeeping.accounts.AccountType;
 import com.infinitematters.bookkeeping.accounts.FinancialAccount;
+import com.infinitematters.bookkeeping.accounts.FinancialAccountRepository;
 import com.infinitematters.bookkeeping.audit.AuditEventSummary;
 import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.close.CloseChecklistItem;
@@ -28,6 +29,7 @@ import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanc
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportTaskOperationsSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportTaskSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterWorkflowTaskService;
+import com.infinitematters.bookkeeping.ledger.JournalEntryRepository;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
 import com.infinitematters.bookkeeping.periods.AccountingPeriod;
 import com.infinitematters.bookkeeping.periods.AccountingPeriodRepository;
@@ -58,6 +60,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -65,6 +68,8 @@ class DashboardServiceTests {
 
     @Mock
     private OrganizationService organizationService;
+    @Mock
+    private FinancialAccountRepository financialAccountRepository;
     @Mock
     private BookkeepingTransactionRepository transactionRepository;
     @Mock
@@ -80,6 +85,8 @@ class DashboardServiceTests {
     @Mock
     private CloseChecklistService closeChecklistService;
     @Mock
+    private JournalEntryRepository journalEntryRepository;
+    @Mock
     private AccountingPeriodRepository accountingPeriodRepository;
     @Mock
     private AuditService auditService;
@@ -92,6 +99,7 @@ class DashboardServiceTests {
     void setUp() {
         dashboardService = new DashboardService(
                 organizationService,
+                financialAccountRepository,
                 transactionRepository,
                 categorizationDecisionRepository,
                 reviewQueueService,
@@ -99,9 +107,12 @@ class DashboardServiceTests {
                 deadLetterWorkflowTaskService,
                 deadLetterSupportPerformanceMonitorService,
                 closeChecklistService,
+                journalEntryRepository,
                 accountingPeriodRepository,
                 auditService,
                 reconciliationService);
+
+        lenient().when(financialAccountRepository.findByOrganizationId(any())).thenReturn(List.of());
     }
 
     @Test
@@ -115,11 +126,13 @@ class DashboardServiceTests {
         setField(account, "id", bankAccountId);
         account.setName("Operating Checking");
         account.setAccountType(AccountType.BANK);
+        account.setActive(true);
 
         FinancialAccount staleAccount = new FinancialAccount();
         setField(staleAccount, "id", staleAccountId);
         staleAccount.setName("Reserve Checking");
         staleAccount.setAccountType(AccountType.BANK);
+        staleAccount.setActive(true);
 
         BookkeepingTransaction marchSoftware = transaction(bankAccountId, account, LocalDate.now().minusDays(29), "60.00");
         BookkeepingTransaction febSoftware = transaction(bankAccountId, account, LocalDate.now().minusDays(60), "40.00");
@@ -136,6 +149,14 @@ class DashboardServiceTests {
                 .thenReturn(new BigDecimal("120.00"));
         when(transactionRepository.findByOrganizationIdAndStatusOrderByTransactionDateDescCreatedAtDesc(organizationId, TransactionStatus.POSTED))
                 .thenReturn(List.of(marchSoftware, febSoftware, staleMeals));
+        when(financialAccountRepository.findByOrganizationId(organizationId))
+                .thenReturn(List.of(account, staleAccount));
+        when(journalEntryRepository.countTransactionEntriesForAccountInPeriod(
+                bankAccountId, YearMonth.of(2026, 3).atDay(1), YearMonth.of(2026, 3).atEndOfMonth()))
+                .thenReturn(2L);
+        when(journalEntryRepository.countTransactionEntriesForAccountInPeriod(
+                staleAccountId, YearMonth.of(2026, 3).atDay(1), YearMonth.of(2026, 3).atEndOfMonth()))
+                .thenReturn(0L);
         when(categorizationDecisionRepository.findByTransactionOrganizationId(organizationId))
                 .thenReturn(List.of(
                         decision(marchSoftware, Category.SOFTWARE),
@@ -435,6 +456,12 @@ class DashboardServiceTests {
         assertThat(snapshot.period().recommendedActionKey()).isEqualTo("FINISH_RECONCILIATIONS");
         assertThat(snapshot.period().recommendedActionPath()).isEqualTo("/reconciliation");
         assertThat(snapshot.period().recommendedActionUrgency()).isEqualTo(DashboardActionUrgency.HIGH);
+        assertThat(snapshot.unreconciledAccounts()).hasSize(1);
+        assertThat(snapshot.unreconciledAccounts().get(0).accountId()).isEqualTo(bankAccountId);
+        assertThat(snapshot.unreconciledAccounts().get(0).accountName()).isEqualTo("Operating Checking");
+        assertThat(snapshot.unreconciledAccounts().get(0).actionPath()).isEqualTo("/reconciliation?accountId=" + bankAccountId);
+        assertThat(snapshot.unreconciledAccounts().get(0).actionReason())
+                .isEqualTo("Account requires reconciliation before period close.");
         assertThat(snapshot.primaryAction()).isNotNull();
         assertThat(snapshot.primaryAction().cardId()).isEqualTo("support-performance");
         assertThat(snapshot.primaryAction().label()).isEqualTo("Review urgent support risks");

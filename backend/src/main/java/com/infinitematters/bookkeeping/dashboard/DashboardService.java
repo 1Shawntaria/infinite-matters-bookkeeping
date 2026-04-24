@@ -2,6 +2,7 @@ package com.infinitematters.bookkeeping.dashboard;
 
 import com.infinitematters.bookkeeping.accounts.AccountType;
 import com.infinitematters.bookkeeping.accounts.FinancialAccount;
+import com.infinitematters.bookkeeping.accounts.FinancialAccountRepository;
 import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.close.CloseChecklistSummary;
 import com.infinitematters.bookkeeping.close.CloseChecklistService;
@@ -17,6 +18,7 @@ import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanc
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskStatus;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportTaskOperationsSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterWorkflowTaskService;
+import com.infinitematters.bookkeeping.ledger.JournalEntryRepository;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
 import com.infinitematters.bookkeeping.periods.AccountingPeriod;
 import com.infinitematters.bookkeeping.periods.AccountingPeriodRepository;
@@ -64,6 +66,7 @@ public class DashboardService {
                     + "and X-Dashboard-Home-Supported-Versions lists all supported versions.";
 
     private final OrganizationService organizationService;
+    private final FinancialAccountRepository financialAccountRepository;
     private final BookkeepingTransactionRepository transactionRepository;
     private final CategorizationDecisionRepository categorizationDecisionRepository;
     private final ReviewQueueService reviewQueueService;
@@ -71,11 +74,13 @@ public class DashboardService {
     private final DeadLetterWorkflowTaskService deadLetterWorkflowTaskService;
     private final DeadLetterSupportPerformanceMonitorService deadLetterSupportPerformanceMonitorService;
     private final CloseChecklistService closeChecklistService;
+    private final JournalEntryRepository journalEntryRepository;
     private final AccountingPeriodRepository accountingPeriodRepository;
     private final AuditService auditService;
     private final ReconciliationService reconciliationService;
 
     public DashboardService(OrganizationService organizationService,
+                            FinancialAccountRepository financialAccountRepository,
                             BookkeepingTransactionRepository transactionRepository,
                             CategorizationDecisionRepository categorizationDecisionRepository,
                             ReviewQueueService reviewQueueService,
@@ -83,10 +88,12 @@ public class DashboardService {
                             DeadLetterWorkflowTaskService deadLetterWorkflowTaskService,
                             DeadLetterSupportPerformanceMonitorService deadLetterSupportPerformanceMonitorService,
                             CloseChecklistService closeChecklistService,
+                            JournalEntryRepository journalEntryRepository,
                             AccountingPeriodRepository accountingPeriodRepository,
                             AuditService auditService,
                             ReconciliationService reconciliationService) {
         this.organizationService = organizationService;
+        this.financialAccountRepository = financialAccountRepository;
         this.transactionRepository = transactionRepository;
         this.categorizationDecisionRepository = categorizationDecisionRepository;
         this.reviewQueueService = reviewQueueService;
@@ -94,6 +101,7 @@ public class DashboardService {
         this.deadLetterWorkflowTaskService = deadLetterWorkflowTaskService;
         this.deadLetterSupportPerformanceMonitorService = deadLetterSupportPerformanceMonitorService;
         this.closeChecklistService = closeChecklistService;
+        this.journalEntryRepository = journalEntryRepository;
         this.accountingPeriodRepository = accountingPeriodRepository;
         this.auditService = auditService;
         this.reconciliationService = reconciliationService;
@@ -199,25 +207,9 @@ public class DashboardService {
         Map<UUID, CategorizationDecision> latestDecisions = latestDecisionByTransaction(organizationId);
         List<DashboardExpenseCategorySummary> expenseCategories = expenseCategories(focusMonth, postedTransactions, latestDecisions);
         List<DashboardStaleAccountSummary> staleAccounts = staleAccounts(postedTransactions);
-        List<ReconciliationSummary> reconciliationSummaries =
-                reconciliationService.list(organizationId, focusMonth);
-
+        List<ReconciliationSummary> reconciliationSummaries = reconciliationService.list(organizationId, focusMonth);
         List<DashboardStaleAccountSummary> unreconciledAccounts =
-                reconciliationSummaries.stream()
-                        .filter(r -> r.status() != ReconciliationStatus.COMPLETED)
-                        .map(r -> new DashboardStaleAccountSummary(
-                                "recon-" + r.id(),
-                                r.financialAccountId(),
-                                r.accountName(),
-                                AccountType.BANK, // temporary
-                                r.periodEnd(),
-                                0, // temporary
-                                "REVIEW_RECONCILIATION",
-                                "/reconciliation/" + r.id(),
-                                DashboardActionUrgency.HIGH,
-                                "Account requires reconciliation"
-                        ))
-                        .toList();
+                unreconciledAccounts(organizationId, focusMonth, postedTransactions, reconciliationSummaries);
         DashboardPrimaryAction primaryAction = primaryAction(
                 inbox,
                 period,
@@ -546,6 +538,66 @@ public class DashboardService {
                 .map(transaction -> toStaleAccountSummary(transaction.getFinancialAccount(), transaction.getTransactionDate(), today))
                 .filter(summary -> summary.daysSinceActivity() >= STALE_ACCOUNT_DAYS)
                 .sorted(Comparator.comparingLong(DashboardStaleAccountSummary::daysSinceActivity).reversed())
+                .toList();
+    }
+
+    private List<DashboardStaleAccountSummary> unreconciledAccounts(UUID organizationId,
+                                                                    YearMonth month,
+                                                                    List<BookkeepingTransaction> postedTransactions,
+                                                                    List<ReconciliationSummary> reconciliationSummaries) {
+        LocalDate start = month.atDay(1);
+        LocalDate end = month.atEndOfMonth();
+        LocalDate today = LocalDate.now();
+
+        Map<UUID, BookkeepingTransaction> latestPostedTransactionByAccount = postedTransactions.stream()
+                .filter(transaction -> !transaction.getTransactionDate().isBefore(start))
+                .filter(transaction -> !transaction.getTransactionDate().isAfter(end))
+                .collect(Collectors.toMap(
+                        transaction -> transaction.getFinancialAccount().getId(),
+                        transaction -> transaction,
+                        (left, right) -> left.getTransactionDate().isAfter(right.getTransactionDate()) ? left : right));
+
+        Map<UUID, ReconciliationSummary> reconciliationByAccount = reconciliationSummaries.stream()
+                .collect(Collectors.toMap(
+                        ReconciliationSummary::financialAccountId,
+                        summary -> summary,
+                        (left, right) -> left.createdAt().isAfter(right.createdAt()) ? left : right,
+                        LinkedHashMap::new));
+
+        return financialAccountRepository.findByOrganizationId(organizationId).stream()
+                .filter(FinancialAccount::isActive)
+                .filter(account -> journalEntryRepository.countTransactionEntriesForAccountInPeriod(account.getId(), start, end) > 0)
+                .filter(account -> {
+                    ReconciliationSummary reconciliation = reconciliationByAccount.get(account.getId());
+                    return reconciliation == null || reconciliation.status() != ReconciliationStatus.COMPLETED;
+                })
+                .map(account -> {
+                    ReconciliationSummary reconciliation = reconciliationByAccount.get(account.getId());
+                    LocalDate lastTransactionDate = latestPostedTransactionByAccount.containsKey(account.getId())
+                            ? latestPostedTransactionByAccount.get(account.getId()).getTransactionDate()
+                            : end;
+                    long daysSinceActivity = ChronoUnit.DAYS.between(lastTransactionDate, today);
+                    String itemId = reconciliation != null ? "recon-" + reconciliation.id() : "recon-account-" + account.getId();
+                    String actionPath = reconciliation != null
+                            ? "/reconciliation/" + reconciliation.id()
+                            : "/reconciliation?accountId=" + account.getId();
+                    String actionReason = reconciliation != null
+                            ? "Reconciliation is in progress for this account."
+                            : "Account requires reconciliation before period close.";
+
+                    return new DashboardStaleAccountSummary(
+                            itemId,
+                            account.getId(),
+                            account.getName(),
+                            account.getAccountType(),
+                            lastTransactionDate,
+                            daysSinceActivity,
+                            "REVIEW_RECONCILIATION",
+                            actionPath,
+                            DashboardActionUrgency.HIGH,
+                            actionReason
+                    );
+                })
                 .toList();
     }
 
