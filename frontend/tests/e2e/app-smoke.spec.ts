@@ -13,9 +13,48 @@ const organizations = [
     planTier: "STARTER",
     timezone: "America/New_York",
   },
+  {
+    id: "org-empty",
+    name: "Northwind New Books",
+    planTier: "STARTER",
+    timezone: "America/Chicago",
+  },
 ];
 
 function dashboardSnapshot(organizationId: string) {
+  if (organizationId === "org-empty") {
+    return {
+      focusMonth: "2026-04",
+      cashBalance: 0,
+      postedTransactionCount: 0,
+      primaryAction: null,
+      workflowInbox: {
+        openCount: 0,
+        overdueCount: 0,
+        dueTodayCount: 0,
+        highPriorityCount: 0,
+        unassignedCount: 0,
+        assignedToCurrentUserCount: 0,
+        recommendedActionLabel: null,
+        recommendedActionKey: null,
+        recommendedActionPath: null,
+        recommendedActionUrgency: null,
+        attentionTasks: [],
+      },
+      period: {
+        closeReady: true,
+        unreconciledAccountCount: 0,
+        recommendedActionLabel: null,
+        recommendedActionKey: null,
+        recommendedActionPath: null,
+        recommendedActionUrgency: null,
+      },
+      expenseCategories: [],
+      staleAccounts: [],
+      recentNotifications: [],
+    };
+  }
+
   if (organizationId === "org-secondary") {
     return {
       focusMonth: "2026-04",
@@ -560,4 +599,15 @@ test("setup flow can bootstrap a sample workspace in-app", async ({ page }) => {
   await expect(page.getByText("Demo Operating Checking is ready for imports.")).toBeVisible();
   await expect(page.getByText("Last import Apr 24 · UNKNOWN VENDOR")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Demo Operating Checking activity" })).toBeVisible();
+});
+
+test("dashboard onboarding handoff points empty workspaces into guided setup", async ({ page }) => {
+  await seedOrganization(page, "org-empty");
+  await page.goto("/dashboard");
+
+  await expect(page.getByRole("link", { name: "Load sample workspace" })).toBeVisible();
+  await page.getByRole("link", { name: "Use your own CSV" }).click();
+
+  await expect(page).toHaveURL(/\/setup\?welcome=1$/);
+  await expect(page.getByText("You are in the guided setup lane")).toBeVisible();
 });

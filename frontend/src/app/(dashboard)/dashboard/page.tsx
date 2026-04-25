@@ -318,29 +318,50 @@ export default function DashboardPage() {
                 <SectionBand
                     eyebrow="Getting started"
                     title="This workspace is ready for its first operating cycle"
-                    description="A quiet workspace is normal at the beginning. The fastest path is to bring in transactions, clear any review work, and then close out reconciliations."
+                    description="A quiet workspace is normal at the beginning. We can guide the first run from here instead of making you hunt for where setup starts."
                     actions={
-                        <Link
-                            href="/setup"
-                            className="inline-flex rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
-                        >
-                            Open setup flow
-                        </Link>
+                        <div className="flex flex-wrap gap-3">
+                            <Link
+                                href="/setup?welcome=1"
+                                className="inline-flex rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                            >
+                                Use your own CSV
+                            </Link>
+                            <Link
+                                href="/setup?demo=1&welcome=1"
+                                className="inline-flex rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                            >
+                                Load sample workspace
+                            </Link>
+                        </div>
                     }
                 >
-                    <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                                Guided first run
+                            </p>
+                            <h3 className="mt-2 text-lg font-semibold text-white">
+                                Choose the onboarding lane that fits this moment
+                            </h3>
+                            <div className="mt-4 space-y-3 text-sm text-zinc-400">
+                                <p>
+                                    <span className="font-medium text-zinc-200">Sample workspace:</span>{" "}
+                                    instantly populate the product with realistic data for a guided tour.
+                                </p>
+                                <p>
+                                    <span className="font-medium text-zinc-200">Real CSV import:</span>{" "}
+                                    validate your actual statement flow and let the workspace build from live activity.
+                                </p>
+                            </div>
+                        </div>
                         <NextStepsList
-                            title="Suggested first run"
+                            title="What happens after setup"
                             items={[
-                                "Bring in a recent bank or card statement so your operating picture starts with real transaction activity.",
-                                "Resolve any review-queue items created by ambiguous merchants before you move into reconciliation.",
-                                "Start reconciliation once balances are available so period close stays grounded in the real statement data.",
+                                "The dashboard starts showing spend, workflow pressure, and close-readiness signals.",
+                                "Ambiguous merchants route into the review queue with suggested categories.",
+                                "Account activity becomes available for reconciliation and close preparation.",
                             ]}
-                        />
-                        <StatusBanner
-                            tone="muted"
-                            title="What will appear next"
-                            message="As activity lands, this dashboard will light up with category movement, workflow pressure, and close-readiness signals."
                         />
                     </div>
                 </SectionBand>

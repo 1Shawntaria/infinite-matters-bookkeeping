@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     createFinancialAccount,
     FinancialAccount,
@@ -68,6 +68,9 @@ export default function SetupPage() {
     const [creatingAccount, setCreatingAccount] = useState(false);
     const [importing, setImporting] = useState(false);
     const [bootstrappingSample, setBootstrappingSample] = useState(false);
+    const [autoSampleTriggered, setAutoSampleTriggered] = useState(false);
+    const [showWelcomeState, setShowWelcomeState] = useState(false);
+    const [autoDemoRequested, setAutoDemoRequested] = useState(false);
 
     const accountsQuery = useQuery<FinancialAccount[], Error>({
         queryKey: ["financialAccounts", organizationId],
@@ -124,22 +127,26 @@ export default function SetupPage() {
     ];
     const completedSteps = setupCompletionSteps.filter(Boolean).length;
 
-    async function refreshWorkspaceQueries(activeOrganizationId: string) {
+    const refreshWorkspaceQueries = useCallback(async (activeOrganizationId: string) => {
         await queryClient.invalidateQueries({ queryKey: ["financialAccounts", activeOrganizationId] });
         await queryClient.invalidateQueries({ queryKey: ["dashboardSnapshot", activeOrganizationId] });
         await queryClient.invalidateQueries({ queryKey: ["reviewTasks", activeOrganizationId] });
         await queryClient.invalidateQueries({ queryKey: ["reconciliationDashboard", activeOrganizationId] });
         await queryClient.invalidateQueries({ queryKey: ["importHistory", activeOrganizationId] });
-    }
+    }, [queryClient]);
 
-    async function runImport(activeOrganizationId: string, financialAccountId: string, file: File) {
+    const runImport = useCallback(async (
+        activeOrganizationId: string,
+        financialAccountId: string,
+        file: File
+    ) => {
         const result = await importTransactionsCsv(activeOrganizationId, financialAccountId, file);
         setImportResult(result);
         setCsvFile(null);
         setCsvPreview(null);
         await refreshWorkspaceQueries(activeOrganizationId);
         return result;
-    }
+    }, [refreshWorkspaceQueries]);
 
     async function inspectCsvFile(file: File | null) {
         if (!file) {
@@ -243,7 +250,7 @@ export default function SetupPage() {
         }
     }
 
-    async function handleLoadSampleWorkspace() {
+    const handleLoadSampleWorkspace = useCallback(async () => {
         if (!organizationId) {
             setImportError("No organization ID found. Please sign in again.");
             return;
@@ -291,7 +298,39 @@ export default function SetupPage() {
         } finally {
             setBootstrappingSample(false);
         }
-    }
+    }, [accounts, latestImportByAccount, organizationId, runImport]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        setShowWelcomeState(params.get("welcome") === "1" || params.get("demo") === "1");
+        setAutoDemoRequested(params.get("demo") === "1");
+    }, []);
+
+    useEffect(() => {
+        if (
+            !autoDemoRequested ||
+            autoSampleTriggered ||
+            !hydrated ||
+            !organizationId ||
+            bootstrappingSample
+        ) {
+            return;
+        }
+
+        setAutoSampleTriggered(true);
+        void handleLoadSampleWorkspace();
+    }, [
+        autoDemoRequested,
+        autoSampleTriggered,
+        bootstrappingSample,
+        handleLoadSampleWorkspace,
+        hydrated,
+        organizationId,
+    ]);
 
     if (!hydrated || loading) {
         return (
@@ -368,6 +407,30 @@ export default function SetupPage() {
                 title="What gets the workspace useful fastest"
                 description="The cleanest first run is account setup, then CSV import, then review queue, then reconciliation."
             >
+                {showWelcomeState ? (
+                    <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+                        <div className="rounded-lg border border-emerald-400/30 bg-emerald-300/10 p-4">
+                            <p className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-200">
+                                Welcome aboard
+                            </p>
+                            <h3 className="mt-2 text-lg font-semibold text-white">
+                                You are in the guided setup lane
+                            </h3>
+                            <p className="mt-2 text-sm text-zinc-300">
+                                Start with sample data for a fast product tour, or bring your own
+                                CSV when you want to validate the real onboarding path.
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                            <p className="text-sm font-semibold text-white">What this unlocks</p>
+                            <div className="mt-3 space-y-2 text-sm text-zinc-400">
+                                <p>1. Dashboard metrics become meaningful instead of empty.</p>
+                                <p>2. Review queue items appear when merchant decisions are needed.</p>
+                                <p>3. Reconciliation has real account activity to work from.</p>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
                 <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                     <NextStepsList
                         title="Recommended sequence"
