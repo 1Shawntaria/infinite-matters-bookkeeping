@@ -32,6 +32,16 @@ const ACCOUNT_TYPE_OPTIONS: Array<FinancialAccount["accountType"]> = [
     "LOAN",
 ];
 const EXPECTED_CSV_HEADERS = ["id", "date", "merchant", "memo", "amount", "mcc"] as const;
+const SAMPLE_ACCOUNT_NAME = "Demo Operating Checking";
+const SAMPLE_ACCOUNT_INSTITUTION = "Infinite Matters Sample Bank";
+const SAMPLE_CSV = `id,date,merchant,memo,amount,mcc
+sample-20260401,2026-04-01,STARBUCKS,coffee with client,18.45,5814
+sample-20260402,2026-04-02,ADOBE,design software,64.99,5734
+sample-20260403,2026-04-03,AMZN MKTP,office restock,142.18,5942
+sample-20260404,2026-04-04,SHELL,field visit fuel,52.81,5541
+sample-20260405,2026-04-05,CLOUDCO,monthly infrastructure,89.00,5734
+sample-20260406,2026-04-06,UNKNOWN VENDOR,needs category review,49.99,5734
+`;
 
 type CsvPreview = {
     headers: string[];
@@ -57,6 +67,7 @@ export default function SetupPage() {
     const [csvPreview, setCsvPreview] = useState<CsvPreview | null>(null);
     const [creatingAccount, setCreatingAccount] = useState(false);
     const [importing, setImporting] = useState(false);
+    const [bootstrappingSample, setBootstrappingSample] = useState(false);
 
     const accountsQuery = useQuery<FinancialAccount[], Error>({
         queryKey: ["financialAccounts", organizationId],
@@ -112,6 +123,23 @@ export default function SetupPage() {
         importResult != null && (importResult.reviewRequiredCount ?? 0) === 0,
     ];
     const completedSteps = setupCompletionSteps.filter(Boolean).length;
+
+    async function refreshWorkspaceQueries(activeOrganizationId: string) {
+        await queryClient.invalidateQueries({ queryKey: ["financialAccounts", activeOrganizationId] });
+        await queryClient.invalidateQueries({ queryKey: ["dashboardSnapshot", activeOrganizationId] });
+        await queryClient.invalidateQueries({ queryKey: ["reviewTasks", activeOrganizationId] });
+        await queryClient.invalidateQueries({ queryKey: ["reconciliationDashboard", activeOrganizationId] });
+        await queryClient.invalidateQueries({ queryKey: ["importHistory", activeOrganizationId] });
+    }
+
+    async function runImport(activeOrganizationId: string, financialAccountId: string, file: File) {
+        const result = await importTransactionsCsv(activeOrganizationId, financialAccountId, file);
+        setImportResult(result);
+        setCsvFile(null);
+        setCsvPreview(null);
+        await refreshWorkspaceQueries(activeOrganizationId);
+        return result;
+    }
 
     async function inspectCsvFile(file: File | null) {
         if (!file) {
@@ -205,20 +233,63 @@ export default function SetupPage() {
         setImportSuccess("");
 
         try {
-            const result = await importTransactionsCsv(organizationId, selectedAccountId, csvFile);
-            setImportResult(result);
+            await runImport(organizationId, selectedAccountId, csvFile);
             setImportSuccess("Import completed successfully.");
-            setCsvFile(null);
-            setCsvPreview(null);
-            await queryClient.invalidateQueries({ queryKey: ["dashboardSnapshot", organizationId] });
-            await queryClient.invalidateQueries({ queryKey: ["reviewTasks", organizationId] });
-            await queryClient.invalidateQueries({ queryKey: ["reconciliationDashboard", organizationId] });
-            await queryClient.invalidateQueries({ queryKey: ["importHistory", organizationId] });
         } catch (err) {
             setImportResult(null);
             setImportError(err instanceof Error ? err.message : "Unable to import CSV.");
         } finally {
             setImporting(false);
+        }
+    }
+
+    async function handleLoadSampleWorkspace() {
+        if (!organizationId) {
+            setImportError("No organization ID found. Please sign in again.");
+            return;
+        }
+
+        setBootstrappingSample(true);
+        setAccountError("");
+        setAccountSuccess("");
+        setImportError("");
+        setImportSuccess("");
+
+        try {
+            const existingUnusedDemoAccount = accounts.find(
+                (account) =>
+                    account.name === SAMPLE_ACCOUNT_NAME &&
+                    !latestImportByAccount.get(account.id)
+            );
+
+            const sampleAccount =
+                existingUnusedDemoAccount ??
+                (await createFinancialAccount({
+                    organizationId,
+                    name: existingUnusedDemoAccount
+                        ? SAMPLE_ACCOUNT_NAME
+                        : accounts.some((account) => account.name === SAMPLE_ACCOUNT_NAME)
+                          ? `${SAMPLE_ACCOUNT_NAME} ${accounts.length + 1}`
+                          : SAMPLE_ACCOUNT_NAME,
+                    accountType: "BANK",
+                    institutionName: SAMPLE_ACCOUNT_INSTITUTION,
+                    currency: "USD",
+                }));
+
+            setSelectedAccountId(sampleAccount.id);
+            const sampleFile = new File([SAMPLE_CSV], "infinite-matters-sample.csv", {
+                type: "text/csv",
+            });
+            await runImport(organizationId, sampleAccount.id, sampleFile);
+            setAccountSuccess(`${sampleAccount.name} is ready for imports.`);
+            setImportSuccess("Sample workspace loaded successfully.");
+        } catch (err) {
+            setImportResult(null);
+            setImportError(
+                err instanceof Error ? err.message : "Unable to load sample workspace."
+            );
+        } finally {
+            setBootstrappingSample(false);
         }
     }
 
@@ -310,6 +381,34 @@ export default function SetupPage() {
                         tone="muted"
                         title="CSV import tip"
                         message="Use the provider export as-is when possible. The import endpoint expects the file in multipart field 'file' and will safely skip duplicates."
+                    />
+                </div>
+                <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                    <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                            Fastest sandbox path
+                        </p>
+                        <h3 className="mt-2 text-lg font-semibold text-white">
+                            Load sample activity without leaving the app
+                        </h3>
+                        <p className="mt-2 text-sm text-zinc-400">
+                            This creates a demo checking account and imports a realistic CSV so the
+                            dashboard, review queue, and reconciliation views all have something to
+                            work with immediately.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={handleLoadSampleWorkspace}
+                            disabled={bootstrappingSample || importing}
+                            className="mt-4 rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
+                        >
+                            {bootstrappingSample ? "Loading sample workspace..." : "Load sample workspace"}
+                        </button>
+                    </div>
+                    <StatusBanner
+                        tone="muted"
+                        title="Two equally valid ways to start"
+                        message="Use sample data when you want to explore the product shape quickly. Use your own CSV when you are ready to validate the real import path."
                     />
                 </div>
                 <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">

@@ -549,3 +549,15 @@ test("setup flow creates an account and imports a csv", async ({ page }) => {
   await expect(page.getByText("REVIEW_REQUIRED · PREMIUM")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Payroll Checking activity" })).toBeVisible();
 });
+
+test("setup flow can bootstrap a sample workspace in-app", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/setup");
+
+  await page.getByRole("button", { name: "Load sample workspace" }).click();
+
+  await expect(page.getByText("Sample workspace loaded successfully.")).toBeVisible();
+  await expect(page.getByText("Demo Operating Checking is ready for imports.")).toBeVisible();
+  await expect(page.getByText("Last import Apr 24 · UNKNOWN VENDOR")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Demo Operating Checking activity" })).toBeVisible();
+});
