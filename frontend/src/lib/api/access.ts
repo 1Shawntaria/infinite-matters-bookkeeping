@@ -45,3 +45,13 @@ export async function updateMembershipRole(
         }
     );
 }
+
+export async function removeMembership(
+    organizationId: string,
+    membershipId: string
+): Promise<void> {
+    const query = new URLSearchParams({ organizationId });
+    await apiFetch<void>(`/api/users/memberships/${membershipId}?${query.toString()}`, {
+        method: "DELETE",
+    });
+}

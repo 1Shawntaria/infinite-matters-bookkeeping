@@ -686,6 +686,33 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname.startsWith("/api/users/memberships/") && request.method() === "DELETE") {
+      const membershipId = url.pathname.split("/")[4];
+      const targetMembership = memberships.find((membership) => membership.id === membershipId);
+      const ownerMemberships = memberships.filter((membership) => membership.role === "OWNER");
+
+      if (targetMembership?.role === "OWNER" && ownerMemberships.length <= 1) {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            timestamp: "2026-04-24T14:00:00Z",
+            status: 400,
+            error: "Bad Request",
+            message: "The last owner cannot be removed from the workspace",
+            path: url.pathname,
+            requestId: "req-membership-delete",
+            details: [],
+          }),
+        });
+        return;
+      }
+
+      memberships = memberships.filter((membership) => membership.id !== membershipId);
+      await route.fulfill({ status: 200, body: "" });
+      return;
+    }
+
     if (url.pathname === "/api/accounts" && request.method() === "GET") {
       await fulfillJson(route, financialAccounts);
       return;
@@ -957,6 +984,13 @@ test("access workspace lets operators review and update memberships", async ({ p
   });
   await staffMemberCard.locator("select").selectOption("ADMIN");
   await expect(page.getByText("Member role updated successfully.")).toBeVisible();
+
+  const opsAdminCard = page.locator("div.rounded-lg").filter({
+    has: page.getByText("Ops Admin"),
+  });
+  await opsAdminCard.getByRole("button", { name: "Remove access" }).click();
+  await expect(page.getByText("Ops Admin no longer has workspace access.")).toBeVisible();
+  await expect(page.getByText("ops@acme.test")).toHaveCount(0);
 });
 
 test("review queue resolves a task from the UI", async ({ page }) => {

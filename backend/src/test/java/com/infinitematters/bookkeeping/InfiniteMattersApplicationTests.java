@@ -34,6 +34,7 @@ import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasItem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -330,6 +331,60 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].user.email", hasItems(ownerEmail, adminEmail, memberEmail)));
+
+        String adminMembershipId = null;
+        for (JsonNode membership : memberships) {
+            if (adminEmail.equals(membership.path("user").path("email").asText())) {
+                adminMembershipId = membership.path("id").asText();
+                break;
+            }
+        }
+        assertThat(adminMembershipId).isNotNull();
+
+        mockMvc.perform(delete("/api/users/memberships/{membershipId}", adminMembershipId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/users/memberships")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[*].user.email", hasItems(ownerEmail, memberEmail)));
+    }
+
+    @Test
+    void lastOwnerCannotBeRemovedFromOrganization() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "last-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Last Owner", password);
+        String organizationId = createOrganization("Last Owner Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        MvcResult membershipsResult = mockMvc.perform(get("/api/users/memberships")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andReturn();
+
+        String ownerMembershipId = objectMapper.readTree(membershipsResult.getResponse().getContentAsString())
+                .get(0)
+                .path("id")
+                .asText();
+
+        mockMvc.perform(delete("/api/users/memberships/{membershipId}", ownerMembershipId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("The last owner cannot be removed from the workspace"));
     }
 
     @Test

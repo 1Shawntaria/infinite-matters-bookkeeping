@@ -4,7 +4,13 @@ import { FormEvent, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
-import { addMembershipByEmail, listMemberships, MembershipDetail, updateMembershipRole } from "@/lib/api/access";
+import {
+    addMembershipByEmail,
+    listMemberships,
+    MembershipDetail,
+    removeMembership,
+    updateMembershipRole,
+} from "@/lib/api/access";
 import { listOrganizations, OrganizationSummary } from "@/lib/api/auth";
 import { useOrganizationSession } from "@/lib/auth/session";
 
@@ -114,6 +120,24 @@ export default function AccessPage() {
         }
     }
 
+    async function handleRemoveMembership(membership: MembershipDetail) {
+        if (!organizationId) return;
+
+        setBannerError("");
+        setBannerMessage("");
+        setWorkingMembershipId(`remove-${membership.id}`);
+
+        try {
+            await removeMembership(organizationId, membership.id);
+            await refreshMemberships();
+            setBannerMessage(`${membership.user.fullName} no longer has workspace access.`);
+        } catch (error) {
+            setBannerError(error instanceof Error ? error.message : "Unable to remove that member.");
+        } finally {
+            setWorkingMembershipId(null);
+        }
+    }
+
     if (!hydrated || loading) {
         return (
             <LoadingPanel
@@ -195,7 +219,7 @@ export default function AccessPage() {
                         <SummaryMetric
                             label="Owners"
                             value={`${ownerCount}`}
-                            detail="Owner memberships are visible but not editable from this lightweight access surface."
+                            detail="Owners stay fixed here unless another owner is already in place. That keeps each workspace recoverable."
                         />
                         <SummaryMetric
                             label="Admins"
@@ -260,7 +284,9 @@ export default function AccessPage() {
                         <div className="space-y-3">
                             {sortedMemberships.map((membership) => {
                                 const canEdit = membership.role !== "OWNER";
-                                const busy = workingMembershipId === membership.id;
+                                const busy =
+                                    workingMembershipId === membership.id ||
+                                    workingMembershipId === `remove-${membership.id}`;
 
                                 return (
                                     <div
@@ -284,7 +310,7 @@ export default function AccessPage() {
                                             </div>
 
                                             {canEdit ? (
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap items-center gap-2">
                                                     <select
                                                         value={membership.role}
                                                         onChange={(event) =>
@@ -299,13 +325,21 @@ export default function AccessPage() {
                                                             </option>
                                                         ))}
                                                     </select>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveMembership(membership)}
+                                                        disabled={busy}
+                                                        className="rounded-md border border-rose-400/30 px-3 py-2 text-sm text-rose-100 hover:bg-rose-400/10 disabled:opacity-50"
+                                                    >
+                                                        Remove access
+                                                    </button>
                                                     {busy ? (
                                                         <span className="text-xs text-zinc-500">Saving...</span>
                                                     ) : null}
                                                 </div>
                                             ) : (
                                                 <p className="text-xs text-zinc-500">
-                                                    Owner role is fixed here for safety.
+                                                    Owner access stays protected here so the workspace always keeps a recoverable operator path.
                                                 </p>
                                             )}
                                         </div>

@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.util.List;
 import java.util.Set;
@@ -95,12 +96,35 @@ public class UserController {
                                                          @PathVariable UUID membershipId,
                                                          @Valid @RequestBody UpdateMembershipRoleRequest request) {
         UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        UserRole actorRole = userService.roleForOrganization(organizationId, actorUserId);
+        UserRole targetRole = userService.membershipForOrganization(organizationId, membershipId).getRole();
+        if (targetRole == UserRole.OWNER && actorRole != UserRole.OWNER) {
+            throw new com.infinitematters.bookkeeping.security.AccessDeniedException(
+                    "Only owners can manage owner memberships");
+        }
         MembershipDetailResponse response = MembershipDetailResponse.from(
                 userService.updateMembershipRole(organizationId, membershipId, request.role()));
         auditService.record(organizationId, "ORGANIZATION_MEMBERSHIP_ROLE_UPDATED",
                 "organization_membership", response.id().toString(),
                 "Membership role updated by user " + actorUserId + " to " + request.role());
         return response;
+    }
+
+    @DeleteMapping("/memberships/{membershipId}")
+    public void removeMembership(@RequestParam UUID organizationId,
+                                 @PathVariable UUID membershipId) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        UserRole actorRole = userService.roleForOrganization(organizationId, actorUserId);
+        MembershipDetailResponse membership = MembershipDetailResponse.from(
+                userService.membershipForOrganization(organizationId, membershipId));
+        if (membership.role() == UserRole.OWNER && actorRole != UserRole.OWNER) {
+            throw new com.infinitematters.bookkeeping.security.AccessDeniedException(
+                    "Only owners can manage owner memberships");
+        }
+        userService.removeMembership(organizationId, membershipId);
+        auditService.record(organizationId, "ORGANIZATION_MEMBERSHIP_REMOVED",
+                "organization_membership", membership.id().toString(),
+                "Membership removed by user " + actorUserId + " for user " + membership.user().id());
     }
 
     @GetMapping("/organizations")

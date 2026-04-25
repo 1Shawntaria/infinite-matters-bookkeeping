@@ -125,6 +125,24 @@ public class UserService {
         return membershipRepository.save(membership);
     }
 
+    public OrganizationMembership membershipForOrganization(UUID organizationId, UUID membershipId) {
+        OrganizationMembership membership = membershipRepository.findById(membershipId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown membership: " + membershipId));
+        if (!membership.getOrganization().getId().equals(organizationId)) {
+            throw new IllegalArgumentException("Membership does not belong to organization " + organizationId);
+        }
+        return membership;
+    }
+
+    public void removeMembership(UUID organizationId, UUID membershipId) {
+        OrganizationMembership membership = membershipForOrganization(organizationId, membershipId);
+        if (membership.getRole() == UserRole.OWNER &&
+                membershipRepository.countByOrganizationIdAndRole(organizationId, UserRole.OWNER) <= 1) {
+            throw new IllegalArgumentException("The last owner cannot be removed from the workspace");
+        }
+        membershipRepository.delete(membership);
+    }
+
     public AppUser updatePassword(UUID userId, String newPassword) {
         AppUser user = get(userId);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
