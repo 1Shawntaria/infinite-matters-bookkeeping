@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import { useOrganizationSession } from "@/lib/auth/session";
-import { AuthActivityItem, AuthSessionSummary, listAuthActivity, listAuthSessions } from "@/lib/api/auth";
+import {
+    AuthActivityItem,
+    AuthSessionSummary,
+    listAuthActivity,
+    listAuthSessions,
+    revokeAuthSession,
+} from "@/lib/api/auth";
 import { AuditEventSummary, listAuditEvents } from "@/lib/api/audit";
 import { ImportedTransactionHistoryItem, listImportHistory } from "@/lib/api/imports";
 
@@ -69,6 +75,10 @@ function auditEntry(item: AuditEventSummary): TimelineEntry {
 export default function ActivityPage() {
     const { organizationId, hydrated } = useOrganizationSession();
     const [filter, setFilter] = useState<TimelineFilter>("ALL");
+    const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+    const [sessionMessage, setSessionMessage] = useState("");
+    const [sessionError, setSessionError] = useState("");
+    const queryClient = useQueryClient();
 
     const authSessionsQuery = useQuery<AuthSessionSummary[], Error>({
         queryKey: ["authSessions"],
@@ -124,6 +134,27 @@ export default function ActivityPage() {
             : allEntries.filter((entry) => entry.lane === filter);
     const activeSessions = (authSessionsQuery.data ?? []).filter((session) => session.active);
     const latestSession = activeSessions[0] ?? authSessionsQuery.data?.[0] ?? null;
+
+    async function handleRevokeSession(sessionId: string) {
+        setSessionError("");
+        setSessionMessage("");
+        setRevokingSessionId(sessionId);
+
+        try {
+            await revokeAuthSession(sessionId, "Revoked from security activity workspace");
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["authSessions"] }),
+                queryClient.invalidateQueries({ queryKey: ["authActivity"] }),
+            ]);
+            setSessionMessage("Session revoked. The activity feed has been refreshed.");
+        } catch (error) {
+            setSessionError(
+                error instanceof Error ? error.message : "Unable to revoke the selected session."
+            );
+        } finally {
+            setRevokingSessionId(null);
+        }
+    }
 
     if (!hydrated || loading) {
         return (
@@ -211,6 +242,114 @@ export default function ActivityPage() {
                     tone={allEntries.length > 0 ? "success" : "default"}
                 />
             </div>
+
+            {sessionError ? (
+                <StatusBanner
+                    tone="error"
+                    title="Session action failed"
+                    message={sessionError}
+                />
+            ) : null}
+
+            {sessionMessage ? (
+                <StatusBanner
+                    tone="success"
+                    title="Session updated"
+                    message={sessionMessage}
+                />
+            ) : null}
+
+            <SectionBand
+                eyebrow="Session controls"
+                title="Manage signed-in sessions"
+                description="Use this view to spot long-lived sessions, revoke anything suspicious, and keep access aligned with the team you expect."
+            >
+                <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                    <div className="space-y-3">
+                        {(authSessionsQuery.data ?? []).length > 0 ? (
+                            (authSessionsQuery.data ?? []).map((session, index) => {
+                                const active = session.active;
+                                const label =
+                                    index === 0 && active
+                                        ? "Latest active session"
+                                        : active
+                                          ? "Active session"
+                                          : "Revoked or expired";
+
+                                return (
+                                    <div
+                                        key={session.sessionId}
+                                        className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4"
+                                    >
+                                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                            <div className="space-y-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="text-sm font-semibold text-white">{label}</p>
+                                                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                        {active ? "ACTIVE" : session.revokedAt ? "REVOKED" : "EXPIRED"}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-zinc-400">
+                                                    Created {formatTimestamp(session.createdAt)}
+                                                </p>
+                                                <p className="text-xs text-zinc-500">
+                                                    Last used {formatTimestamp(session.lastUsedAt ?? session.createdAt)}
+                                                    {" · "}
+                                                    Expires {formatTimestamp(session.expiresAt)}
+                                                </p>
+                                                {session.revokedReason ? (
+                                                    <p className="text-xs text-zinc-500">
+                                                        Reason: {session.revokedReason}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+
+                                            {active ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRevokeSession(session.sessionId)}
+                                                    disabled={revokingSessionId === session.sessionId}
+                                                    className="rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100 hover:bg-rose-500/20 disabled:opacity-50"
+                                                >
+                                                    {revokingSessionId === session.sessionId ? "Revoking..." : "Revoke session"}
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <StatusBanner
+                                tone="muted"
+                                title="No session history yet"
+                                message="Signed-in session inventory will appear here once authentication activity is recorded."
+                            />
+                        )}
+                    </div>
+
+                    <div className="space-y-4">
+                        <SummaryMetric
+                            label="Active sessions"
+                            value={`${activeSessions.length}`}
+                            detail="Keep this number small and expected."
+                            tone={activeSessions.length <= 1 ? "success" : "warning"}
+                        />
+                        <SummaryMetric
+                            label="Latest refresh"
+                            value={latestSession ? formatTimestamp(latestSession.lastUsedAt ?? latestSession.createdAt) : "Quiet"}
+                            detail="A quick trust check for whether someone is still using the workspace."
+                        />
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <h3 className="text-sm font-semibold text-white">Good security hygiene</h3>
+                            <div className="mt-3 space-y-3 text-sm text-zinc-400">
+                                <p>Revoke anything you do not recognize, especially after contractor or device changes.</p>
+                                <p>Use the sign-out control when you finish work on shared or temporary machines.</p>
+                                <p>Password resets already revoke every session, so that remains your strongest recovery move.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </SectionBand>
 
             <SectionBand
                 eyebrow="Activity feed"

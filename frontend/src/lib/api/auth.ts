@@ -88,6 +88,14 @@ export async function listAuthSessions(): Promise<AuthSessionSummary[]> {
     });
 }
 
+export async function revokeAuthSession(sessionId: string, reason: string): Promise<AuthSessionSummary> {
+    return apiFetch<AuthSessionSummary>(`/api/auth/sessions/${sessionId}/revoke`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        includeOrganizationId: false,
+    });
+}
+
 export async function listAuthActivity(): Promise<AuthActivityItem[]> {
     return apiFetch<AuthActivityItem[]>("/api/auth/activity", {
         method: "GET",

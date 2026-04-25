@@ -297,6 +297,17 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       replacedBySessionId: null,
       active: true,
     },
+    {
+      sessionId: "session-legacy",
+      createdAt: "2026-04-23T09:15:00Z",
+      expiresAt: "2026-05-23T09:15:00Z",
+      lastUsedAt: "2026-04-23T17:25:00Z",
+      revokedAt: null,
+      revokedReason: null,
+      reuseDetectedAt: null,
+      replacedBySessionId: null,
+      active: true,
+    },
   ];
   const auditEvents = [
     {
@@ -356,6 +367,26 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
 
     if (url.pathname === "/api/auth/sessions" && request.method() === "GET") {
       await fulfillJson(route, authSessions);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/auth/sessions/") && request.method() === "POST") {
+      const sessionId = url.pathname.split("/")[4];
+      const target = authSessions.find((session) => session.sessionId === sessionId);
+      if (!target) {
+        await fulfillJson(route, { message: "Session not found" }, 404);
+        return;
+      }
+
+      const updated = {
+        ...target,
+        active: false,
+        revokedAt: "2026-04-24T12:15:00Z",
+        revokedReason: "Revoked from security activity workspace",
+      };
+      const index = authSessions.findIndex((session) => session.sessionId === sessionId);
+      authSessions[index] = updated;
+      await fulfillJson(route, updated);
       return;
     }
 
@@ -591,6 +622,10 @@ test("activity page shows merged operational timeline and filter views", async (
   await expect(page.getByText("Auth Login Succeeded")).toBeVisible();
   await expect(page.getByText("Organization Member Added").last()).toBeVisible();
   await expect(page.getByText("Operating Checking: CLOUDCO")).toBeVisible();
+
+  await page.getByRole("button", { name: "Revoke session" }).nth(1).click();
+  await expect(page.getByText("Session revoked. The activity feed has been refreshed.")).toBeVisible();
+  await expect(page.getByText("REVOKED", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Audit" }).click();
   await expect(page.getByText("Organization Member Added").last()).toBeVisible();
