@@ -13,6 +13,32 @@ export type MembershipDetail = {
     createdAt: string;
 };
 
+export type OrganizationInvitation = {
+    id: string;
+    organizationId: string;
+    organizationName: string;
+    email: string;
+    role: string;
+    status: string;
+    expiresAt: string;
+    acceptedAt: string | null;
+    revokedAt: string | null;
+    createdAt: string;
+    invitedByUser: {
+        id: string;
+        email: string;
+        fullName: string;
+        createdAt: string;
+    } | null;
+    acceptedByUser: {
+        id: string;
+        email: string;
+        fullName: string;
+        createdAt: string;
+    } | null;
+    inviteUrl: string | null;
+};
+
 export async function listMemberships(organizationId: string): Promise<MembershipDetail[]> {
     const query = new URLSearchParams({ organizationId });
     return apiFetch<MembershipDetail[]>(`/api/users/memberships?${query.toString()}`, {
@@ -26,6 +52,24 @@ export async function addMembershipByEmail(
     role: string
 ): Promise<MembershipDetail> {
     return apiFetch<MembershipDetail>("/api/users/memberships/by-email", {
+        method: "POST",
+        body: JSON.stringify({ organizationId, email, role }),
+    });
+}
+
+export async function listInvitations(organizationId: string): Promise<OrganizationInvitation[]> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<OrganizationInvitation[]>(`/api/users/invitations?${query.toString()}`, {
+        method: "GET",
+    });
+}
+
+export async function createInvitation(
+    organizationId: string,
+    email: string,
+    role: string
+): Promise<OrganizationInvitation> {
+    return apiFetch<OrganizationInvitation>("/api/users/invitations", {
         method: "POST",
         body: JSON.stringify({ organizationId, email, role }),
     });
@@ -52,6 +96,16 @@ export async function removeMembership(
 ): Promise<void> {
     const query = new URLSearchParams({ organizationId });
     await apiFetch<void>(`/api/users/memberships/${membershipId}?${query.toString()}`, {
+        method: "DELETE",
+    });
+}
+
+export async function revokeInvitation(
+    organizationId: string,
+    invitationId: string
+): Promise<OrganizationInvitation> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<OrganizationInvitation>(`/api/users/invitations/${invitationId}?${query.toString()}`, {
         method: "DELETE",
     });
 }

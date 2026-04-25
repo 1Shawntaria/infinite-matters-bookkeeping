@@ -286,6 +286,28 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       createdAt: "2026-04-20T12:22:00Z",
     },
   ];
+  let invitations = [
+    {
+      id: "invite-pending-1",
+      organizationId: "org-primary",
+      organizationName: "Acme Books Demo",
+      email: "pending@acme.test",
+      role: "MEMBER",
+      status: "PENDING",
+      expiresAt: "2026-05-01T12:00:00Z",
+      acceptedAt: null,
+      revokedAt: null,
+      createdAt: "2026-04-24T12:40:00Z",
+      invitedByUser: {
+        id: "user-1",
+        email: "owner@acme.test",
+        fullName: "Acme Owner",
+        createdAt: "2026-04-20T12:00:00Z",
+      },
+      acceptedByUser: null,
+      inviteUrl: "http://localhost:3000/invite/token-existing",
+    },
+  ];
   let financialAccounts = [
     {
       id: "acct-operating",
@@ -509,11 +531,73 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
     }
 
     if (url.pathname === "/api/auth/me" && request.method() === "GET") {
+      if (page.url().includes("/invite/")) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ message: "Not signed in" }),
+        });
+        return;
+      }
       await fulfillJson(route, {
         id: "user-1",
         email: "owner@acme.test",
         fullName: "Acme Owner",
         createdAt: "2026-04-20T12:00:00Z",
+      });
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/auth/invitations/") && request.method() === "GET") {
+      const token = url.pathname.split("/")[4];
+      const invitation = invitations.find((item) => item.inviteUrl?.endsWith(`/invite/${token}`));
+      if (!invitation) {
+        await fulfillJson(route, { message: "Invitation not found" }, 404);
+        return;
+      }
+      await fulfillJson(route, invitation);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/auth/invitations/") && url.pathname.endsWith("/accept") && request.method() === "POST") {
+      const token = url.pathname.split("/")[4];
+      const index = invitations.findIndex((item) => item.inviteUrl?.endsWith(`/invite/${token}`));
+      if (index === -1) {
+        await fulfillJson(route, { message: "Invitation not found" }, 404);
+        return;
+      }
+      invitations[index] = {
+        ...invitations[index],
+        status: "ACCEPTED",
+        acceptedAt: "2026-04-24T14:15:00Z",
+        acceptedByUser: {
+          id: "user-invitee",
+          email: invitations[index].email,
+          fullName: "Invited Teammate",
+          createdAt: "2026-04-24T14:14:00Z",
+        },
+      };
+      memberships = [
+        ...memberships,
+        {
+          id: `membership-invite-${memberships.length + 1}`,
+          organizationId: invitations[index].organizationId,
+          user: {
+            id: "user-invitee",
+            email: invitations[index].email,
+            fullName: "Invited Teammate",
+            createdAt: "2026-04-24T14:14:00Z",
+          },
+          role: invitations[index].role,
+          createdAt: "2026-04-24T14:15:00Z",
+        },
+      ];
+      await fulfillJson(route, {
+        user: {
+          id: "user-invitee",
+          email: invitations[index].email,
+          fullName: "Invited Teammate",
+        },
       });
       return;
     }
@@ -642,6 +726,15 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/users/invitations" && request.method() === "GET") {
+      const targetOrganizationId = url.searchParams.get("organizationId") ?? "org-primary";
+      await fulfillJson(
+        route,
+        invitations.filter((invitation) => invitation.organizationId === targetOrganizationId)
+      );
+      return;
+    }
+
     if (url.pathname === "/api/users/memberships" && request.method() === "GET") {
       const targetOrganizationId = url.searchParams.get("organizationId") ?? "org-primary";
       await fulfillJson(
@@ -710,6 +803,51 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
 
       memberships = memberships.filter((membership) => membership.id !== membershipId);
       await route.fulfill({ status: 200, body: "" });
+      return;
+    }
+
+    if (url.pathname === "/api/users/invitations" && request.method() === "POST") {
+      const body = request.postDataJSON() as {
+        organizationId: string;
+        email: string;
+        role: string;
+      };
+      const createdInvitation = {
+        id: `invite-${invitations.length + 1}`,
+        organizationId: body.organizationId,
+        organizationName:
+          organizations.find((organization) => organization.id === body.organizationId)?.name ??
+          "Acme Books Demo",
+        email: body.email,
+        role: body.role,
+        status: "PENDING",
+        expiresAt: "2026-05-01T12:00:00Z",
+        acceptedAt: null,
+        revokedAt: null,
+        createdAt: "2026-04-24T13:20:00Z",
+        invitedByUser: {
+          id: "user-1",
+          email: "owner@acme.test",
+          fullName: "Acme Owner",
+          createdAt: "2026-04-20T12:00:00Z",
+        },
+        acceptedByUser: null,
+        inviteUrl: `http://localhost:3000/invite/token-${invitations.length + 1}`,
+      };
+      invitations = [createdInvitation, ...invitations];
+      await fulfillJson(route, createdInvitation);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/users/invitations/") && request.method() === "DELETE") {
+      const invitationId = url.pathname.split("/")[4];
+      const index = invitations.findIndex((invitation) => invitation.id === invitationId);
+      invitations[index] = {
+        ...invitations[index],
+        status: "REVOKED",
+        revokedAt: "2026-04-24T13:45:00Z",
+      };
+      await fulfillJson(route, invitations[index]);
       return;
     }
 
@@ -991,6 +1129,31 @@ test("access workspace lets operators review and update memberships", async ({ p
   await opsAdminCard.getByRole("button", { name: "Remove access" }).click();
   await expect(page.getByText("Ops Admin no longer has workspace access.")).toBeVisible();
   await expect(page.getByText("ops@acme.test")).toHaveCount(0);
+
+  await page.getByPlaceholder("new.hire@company.com").fill("invitee@acme.test");
+  await page.getByRole("button", { name: "Create invite" }).click();
+  await expect(page.getByText("Invitation created successfully.")).toBeVisible();
+  await expect(page.getByText("http://localhost:3000/invite/token-2")).toBeVisible();
+
+  const pendingInviteCard = page.locator("div.rounded-lg").filter({
+    has: page.getByText("pending@acme.test"),
+  });
+  await pendingInviteCard.getByRole("button", { name: "Revoke invite" }).click();
+  await expect(page.getByText("Invitation for pending@acme.test has been revoked.")).toBeVisible();
+});
+
+test("invite page creates an account and accepts a workspace invitation", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/invite/token-existing");
+
+  await expect(page.getByRole("heading", { name: "You've been invited into a workspace." })).toBeVisible();
+  await expect(page.getByText("Acme Books Demo")).toBeVisible();
+
+  await page.getByLabel("Full name").fill("Invited Teammate");
+  await page.getByLabel("Password").fill("password123");
+  await page.getByRole("button", { name: "Create account and accept" }).click();
+
+  await expect(page).toHaveURL(/\/dashboard$/);
 });
 
 test("review queue resolves a task from the UI", async ({ page }) => {

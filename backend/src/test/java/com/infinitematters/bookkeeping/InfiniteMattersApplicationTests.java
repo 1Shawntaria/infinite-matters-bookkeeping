@@ -388,6 +388,106 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void ownerCanCreateListAndRevokeInvitations() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "invite-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Invite Owner", password);
+        String organizationId = createOrganization("Invitation Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        MvcResult invitationResult = mockMvc.perform(post("/api/users/invitations")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organizationId": "%s",
+                                  "email": "invitee-%s@example.test",
+                                  "role": "MEMBER"
+                                }
+                                """.formatted(organizationId, suffix)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.inviteUrl").isNotEmpty())
+                .andReturn();
+
+        String invitationId = objectMapper.readTree(invitationResult.getResponse().getContentAsString())
+                .path("id")
+                .asText();
+
+        mockMvc.perform(get("/api/users/invitations")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].status").value("PENDING"));
+
+        mockMvc.perform(delete("/api/users/invitations/{invitationId}", invitationId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REVOKED"));
+    }
+
+    @Test
+    void invitationCanCreateAccountAndAcceptWorkspace() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "accept-owner-" + suffix + "@example.test";
+        String invitedEmail = "accept-invitee-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Accept Owner", password);
+        String organizationId = createOrganization("Accepted Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        MvcResult invitationResult = mockMvc.perform(post("/api/users/invitations")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organizationId": "%s",
+                                  "email": "%s",
+                                  "role": "ADMIN"
+                                }
+                                """.formatted(organizationId, invitedEmail)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String inviteUrl = objectMapper.readTree(invitationResult.getResponse().getContentAsString())
+                .path("inviteUrl")
+                .asText();
+        String token = inviteUrl.substring(inviteUrl.lastIndexOf('/') + 1);
+
+        mockMvc.perform(get("/api/auth/invitations/{token}", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(invitedEmail))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+
+        mockMvc.perform(post("/api/auth/invitations/{token}/accept", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "Invited Admin",
+                                  "password": "password123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.email").value(invitedEmail));
+
+        AuthTokens invitedTokens = issueToken(invitedEmail, password);
+        mockMvc.perform(get("/api/users/organizations")
+                        .header("Authorization", bearerToken(invitedTokens.accessToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(organizationId))
+                .andExpect(jsonPath("$[0].role").value("ADMIN"));
+    }
+
+    @Test
     void invalidOrganizationHeaderReturnsBadRequest() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "invalid-org-header-" + suffix + "@example.test";

@@ -6,9 +6,13 @@ import Link from "next/link";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import {
     addMembershipByEmail,
+    createInvitation,
     listMemberships,
+    listInvitations,
     MembershipDetail,
+    OrganizationInvitation,
     removeMembership,
+    revokeInvitation,
     updateMembershipRole,
 } from "@/lib/api/access";
 import { listOrganizations, OrganizationSummary } from "@/lib/api/auth";
@@ -34,9 +38,12 @@ export default function AccessPage() {
     const queryClient = useQueryClient();
     const [inviteEmail, setInviteEmail] = useState("");
     const [inviteRole, setInviteRole] = useState<(typeof MANAGEABLE_ROLES)[number]>("MEMBER");
+    const [invitationEmail, setInvitationEmail] = useState("");
+    const [invitationRole, setInvitationRole] = useState<(typeof MANAGEABLE_ROLES)[number]>("MEMBER");
     const [workingMembershipId, setWorkingMembershipId] = useState<string | null>(null);
     const [bannerMessage, setBannerMessage] = useState("");
     const [bannerError, setBannerError] = useState("");
+    const [inviteLink, setInviteLink] = useState("");
 
     const organizationsQuery = useQuery<OrganizationSummary[], Error>({
         queryKey: ["organizations"],
@@ -52,19 +59,27 @@ export default function AccessPage() {
         enabled: hydrated && Boolean(organizationId) && canManageAccess,
         queryFn: () => listMemberships(organizationId),
     });
+    const invitationsQuery = useQuery<OrganizationInvitation[], Error>({
+        queryKey: ["invitations", organizationId],
+        enabled: hydrated && Boolean(organizationId) && canManageAccess,
+        queryFn: () => listInvitations(organizationId),
+    });
 
     const loading =
         hydrated && organizationId
-            ? organizationsQuery.isLoading || (canManageAccess && membershipsQuery.isLoading)
+            ? organizationsQuery.isLoading || (canManageAccess && (membershipsQuery.isLoading || invitationsQuery.isLoading))
             : false;
     const queryError =
         organizationsQuery.error?.message ??
         membershipsQuery.error?.message ??
+        invitationsQuery.error?.message ??
         "";
     const memberships = membershipsQuery.data ?? [];
+    const invitations = invitationsQuery.data ?? [];
     const ownerCount = memberships.filter((membership) => membership.role === "OWNER").length;
     const adminCount = memberships.filter((membership) => membership.role === "ADMIN").length;
     const memberCount = memberships.filter((membership) => membership.role === "MEMBER").length;
+    const pendingInvitationCount = invitations.filter((invitation) => invitation.status === "PENDING").length;
 
     const sortedMemberships = useMemo(() => {
         return [...(membershipsQuery.data ?? [])].sort((left, right) => {
@@ -81,12 +96,17 @@ export default function AccessPage() {
         await queryClient.invalidateQueries({ queryKey: ["memberships", organizationId] });
     }
 
+    async function refreshInvitations() {
+        await queryClient.invalidateQueries({ queryKey: ["invitations", organizationId] });
+    }
+
     async function handleInvite(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         if (!organizationId) return;
 
         setBannerError("");
         setBannerMessage("");
+        setInviteLink("");
         setWorkingMembershipId("invite");
 
         try {
@@ -97,6 +117,29 @@ export default function AccessPage() {
             setBannerMessage("Workspace access updated successfully.");
         } catch (error) {
             setBannerError(error instanceof Error ? error.message : "Unable to add that member.");
+        } finally {
+            setWorkingMembershipId(null);
+        }
+    }
+
+    async function handleInvitation(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!organizationId) return;
+
+        setBannerError("");
+        setBannerMessage("");
+        setInviteLink("");
+        setWorkingMembershipId("invitation");
+
+        try {
+            const invitation = await createInvitation(organizationId, invitationEmail, invitationRole);
+            await refreshInvitations();
+            setInvitationEmail("");
+            setInvitationRole("MEMBER");
+            setBannerMessage("Invitation created successfully.");
+            setInviteLink(invitation.inviteUrl ?? "");
+        } catch (error) {
+            setBannerError(error instanceof Error ? error.message : "Unable to create that invitation.");
         } finally {
             setWorkingMembershipId(null);
         }
@@ -133,6 +176,25 @@ export default function AccessPage() {
             setBannerMessage(`${membership.user.fullName} no longer has workspace access.`);
         } catch (error) {
             setBannerError(error instanceof Error ? error.message : "Unable to remove that member.");
+        } finally {
+            setWorkingMembershipId(null);
+        }
+    }
+
+    async function handleRevokeInvitation(invitation: OrganizationInvitation) {
+        if (!organizationId) return;
+
+        setBannerError("");
+        setBannerMessage("");
+        setInviteLink("");
+        setWorkingMembershipId(`revoke-${invitation.id}`);
+
+        try {
+            await revokeInvitation(organizationId, invitation.id);
+            await refreshInvitations();
+            setBannerMessage(`Invitation for ${invitation.email} has been revoked.`);
+        } catch (error) {
+            setBannerError(error instanceof Error ? error.message : "Unable to revoke that invitation.");
         } finally {
             setWorkingMembershipId(null);
         }
@@ -209,8 +271,20 @@ export default function AccessPage() {
                 <StatusBanner
                     tone="success"
                     title="Access updated"
-                    message={bannerMessage}
+                    message={inviteLink ? `${bannerMessage} Share the invite link below before it expires.` : bannerMessage}
                 />
+            ) : null}
+
+            {inviteLink ? (
+                <SectionBand
+                    eyebrow="One-time invite link"
+                    title="Share this invitation"
+                    description="This link lets the invited person create an account or accept the invite with an existing matching email."
+                >
+                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-4">
+                        <p className="break-all text-sm text-emerald-100">{inviteLink}</p>
+                    </div>
+                </SectionBand>
             ) : null}
 
             {canManageAccess ? (
@@ -230,6 +304,11 @@ export default function AccessPage() {
                             label="Members"
                             value={`${memberCount}`}
                             detail="Members can work inside the product without access to operator controls."
+                        />
+                        <SummaryMetric
+                            label="Pending invites"
+                            value={`${pendingInvitationCount}`}
+                            detail="Pending invitations expire automatically and can be revoked before acceptance."
                         />
                     </div>
 
@@ -274,6 +353,97 @@ export default function AccessPage() {
                                 </button>
                             </div>
                         </form>
+                    </SectionBand>
+
+                    <SectionBand
+                        eyebrow="Invite new teammate"
+                        title="Pending invitations"
+                        description="Create an invitation link for someone who does not have workspace access yet. They can accept it by signing in or creating an account with the invited email."
+                    >
+                        <form className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr_auto]" onSubmit={handleInvitation}>
+                            <label className="space-y-2">
+                                <span className="text-sm text-zinc-300">Invite email</span>
+                                <input
+                                    type="email"
+                                    value={invitationEmail}
+                                    onChange={(event) => setInvitationEmail(event.target.value)}
+                                    placeholder="new.hire@company.com"
+                                    className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
+                                    required
+                                />
+                            </label>
+                            <label className="space-y-2">
+                                <span className="text-sm text-zinc-300">Role</span>
+                                <select
+                                    value={invitationRole}
+                                    onChange={(event) => setInvitationRole(event.target.value as (typeof MANAGEABLE_ROLES)[number])}
+                                    className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
+                                >
+                                    {MANAGEABLE_ROLES.map((role) => (
+                                        <option key={role} value={role}>
+                                            {formatRole(role)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <div className="flex items-end">
+                                <button
+                                    type="submit"
+                                    disabled={workingMembershipId === "invitation"}
+                                    className="rounded-md bg-sky-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-sky-200 disabled:opacity-50"
+                                >
+                                    {workingMembershipId === "invitation" ? "Creating..." : "Create invite"}
+                                </button>
+                            </div>
+                        </form>
+
+                        <div className="mt-6 space-y-3">
+                            {invitations.length === 0 ? (
+                                <p className="text-sm text-zinc-500">No invitations have been created for this workspace yet.</p>
+                            ) : (
+                                invitations.map((invitation) => {
+                                    const busy = workingMembershipId === `revoke-${invitation.id}`;
+                                    const pending = invitation.status === "PENDING";
+                                    return (
+                                        <div
+                                            key={invitation.id}
+                                            className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4"
+                                        >
+                                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                                <div className="space-y-1">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <p className="text-sm font-semibold text-white">{invitation.email}</p>
+                                                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                            {invitation.role}
+                                                        </span>
+                                                        <span className="rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-sky-100">
+                                                            {invitation.status}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-zinc-500">
+                                                        Expires {formatTimestamp(invitation.expiresAt)}
+                                                    </p>
+                                                </div>
+
+                                                {pending ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRevokeInvitation(invitation)}
+                                                            disabled={busy}
+                                                            className="rounded-md border border-rose-400/30 px-3 py-2 text-sm text-rose-100 hover:bg-rose-400/10 disabled:opacity-50"
+                                                        >
+                                                            Revoke invite
+                                                        </button>
+                                                        {busy ? <span className="text-xs text-zinc-500">Saving...</span> : null}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
                     </SectionBand>
 
                     <SectionBand

@@ -34,7 +34,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/providers/notifications/events", "/api/providers/notifications/events/*").permitAll()
                         .requestMatchers("/api/users", "/api/organizations",
                                 "/api/auth/token", "/api/auth/refresh", "/api/auth/logout",
-                                "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                                "/api/auth/forgot-password", "/api/auth/reset-password",
+                                "/api/auth/invitations/*", "/api/auth/invitations/*/accept").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(requestLoggingFilter, BasicAuthenticationFilter.class)
                 .addFilterBefore(csrfProtectionFilter, BasicAuthenticationFilter.class)

@@ -8,16 +8,20 @@ import com.infinitematters.bookkeeping.security.AuthRateLimitService;
 import com.infinitematters.bookkeeping.security.RefreshTokenService;
 import com.infinitematters.bookkeeping.security.RequestIdentityService;
 import com.infinitematters.bookkeeping.users.AppUser;
+import com.infinitematters.bookkeeping.users.OrganizationInvitation;
+import com.infinitematters.bookkeeping.users.OrganizationInvitationService;
 import com.infinitematters.bookkeeping.users.PasswordResetService;
 import com.infinitematters.bookkeeping.users.UserService;
 import com.infinitematters.bookkeeping.notifications.NotificationService;
 import com.infinitematters.bookkeeping.notifications.NotificationSummary;
+import com.infinitematters.bookkeeping.web.dto.AcceptInvitationRequest;
 import com.infinitematters.bookkeeping.web.dto.AuthSessionSummary;
 import com.infinitematters.bookkeeping.web.dto.AuthTokenResponse;
 import com.infinitematters.bookkeeping.web.dto.ForgotPasswordRequest;
 import com.infinitematters.bookkeeping.web.dto.ForgotPasswordResponse;
 import com.infinitematters.bookkeeping.web.dto.LoginRequest;
 import com.infinitematters.bookkeeping.web.dto.LogoutRequest;
+import com.infinitematters.bookkeeping.web.dto.OrganizationInvitationResponse;
 import com.infinitematters.bookkeeping.web.dto.RefreshTokenRequest;
 import com.infinitematters.bookkeeping.web.dto.RevokeSessionRequest;
 import com.infinitematters.bookkeeping.web.dto.ResetPasswordRequest;
@@ -48,6 +52,7 @@ public class AuthController {
     private final NotificationService notificationService;
     private final RequestIdentityService requestIdentityService;
     private final AuditService auditService;
+    private final OrganizationInvitationService invitationService;
     private final boolean exposePasswordResetTokenResponse;
     private final boolean includeTokensInResponse;
 
@@ -60,6 +65,7 @@ public class AuthController {
                           NotificationService notificationService,
                           RequestIdentityService requestIdentityService,
                           AuditService auditService,
+                          OrganizationInvitationService invitationService,
                           @Value("${bookkeeping.auth.password-reset.expose-token-response:false}")
                           boolean exposePasswordResetTokenResponse,
                           @Value("${bookkeeping.auth.response-tokens.enabled:true}")
@@ -73,6 +79,7 @@ public class AuthController {
         this.notificationService = notificationService;
         this.requestIdentityService = requestIdentityService;
         this.auditService = auditService;
+        this.invitationService = invitationService;
         this.exposePasswordResetTokenResponse = exposePasswordResetTokenResponse;
         this.includeTokensInResponse = includeTokensInResponse;
     }
@@ -198,6 +205,28 @@ public class AuthController {
         return UserResponse.from(requestIdentityService.requireUser());
     }
 
+    @GetMapping("/invitations/{token}")
+    public OrganizationInvitationResponse invitation(@PathVariable String token) {
+        return OrganizationInvitationResponse.from(invitationService.invitationForToken(token));
+    }
+
+    @PostMapping("/invitations/{token}/accept")
+    public AuthTokenResponse acceptInvitation(@PathVariable String token,
+                                              @Valid @RequestBody(required = false) AcceptInvitationRequest request,
+                                              HttpServletResponse response) {
+        OrganizationInvitation invitation = invitationService.invitationForToken(token);
+        AppUser user = requestIdentityService.currentUserEmail()
+                .map(userService::getByEmail)
+                .orElseGet(() -> createInvitedUser(invitation, request));
+        invitationService.acceptInvitation(token, user);
+        auditService.recordForUser(user.getId(), invitation.getOrganization().getId(),
+                "ORGANIZATION_INVITATION_ACCEPTED",
+                "organization_invitation",
+                invitation.getId().toString(),
+                "Workspace invitation accepted for " + invitation.getEmail());
+        return issueTokenPair(user, refreshTokenService.issue(user), response);
+    }
+
     private AuthTokenResponse issueTokenPair(AppUser user,
                                              RefreshTokenService.IssuedRefreshToken refreshToken,
                                              HttpServletResponse response) {
@@ -231,5 +260,16 @@ public class AuthController {
             return java.util.Optional.of(requestToken);
         }
         return authCookieService.refreshToken(servletRequest);
+    }
+
+    private AppUser createInvitedUser(OrganizationInvitation invitation, AcceptInvitationRequest request) {
+        if (userService.findByEmail(invitation.getEmail()).isPresent()) {
+            throw new IllegalArgumentException("An account already exists for this invitation. Sign in to accept it.");
+        }
+        if (request == null || request.fullName() == null || request.fullName().isBlank()
+                || request.password() == null || request.password().isBlank()) {
+            throw new IllegalArgumentException("Full name and password are required to create an invited account");
+        }
+        return userService.create(invitation.getEmail(), request.fullName(), request.password());
     }
 }

@@ -30,8 +30,11 @@ export default function LoginPage() {
             }
 
             storeAuthSession(organization.id);
-
-            router.push("/dashboard");
+            const nextPath =
+                typeof window !== "undefined"
+                    ? new URLSearchParams(window.location.search).get("next")
+                    : null;
+            router.push(nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard");
         } catch (err) {
             const message =
                 err instanceof Error ? err.message : "Unable to sign in.";

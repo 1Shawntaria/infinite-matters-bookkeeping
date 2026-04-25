@@ -79,6 +79,37 @@ export type NotificationSummaryItem = {
     createdAt: string;
 };
 
+export type InvitationAcceptRequest = {
+    fullName?: string;
+    password?: string;
+};
+
+export type InvitationPreview = {
+    id: string;
+    organizationId: string;
+    organizationName: string;
+    email: string;
+    role: string;
+    status: string;
+    expiresAt: string;
+    acceptedAt: string | null;
+    revokedAt: string | null;
+    createdAt: string;
+    invitedByUser: {
+        id: string;
+        email: string;
+        fullName: string;
+        createdAt: string;
+    } | null;
+    acceptedByUser: {
+        id: string;
+        email: string;
+        fullName: string;
+        createdAt: string;
+    } | null;
+    inviteUrl: string | null;
+};
+
 export async function login(payload: LoginRequest): Promise<LoginResponse> {
     return apiFetch<LoginResponse>("/api/auth/token", {
         method: "POST",
@@ -135,6 +166,26 @@ export async function listAuthActivity(): Promise<AuthActivityItem[]> {
 export async function listAuthNotifications(): Promise<NotificationSummaryItem[]> {
     return apiFetch<NotificationSummaryItem[]>("/api/auth/notifications", {
         method: "GET",
+        includeOrganizationId: false,
+    });
+}
+
+export async function getInvitationPreview(token: string): Promise<InvitationPreview> {
+    return apiFetch<InvitationPreview>(`/api/auth/invitations/${token}`, {
+        method: "GET",
+        includeAuth: false,
+        includeOrganizationId: false,
+    });
+}
+
+export async function acceptInvitation(
+    token: string,
+    payload?: InvitationAcceptRequest
+): Promise<LoginResponse> {
+    return apiFetch<LoginResponse>(`/api/auth/invitations/${token}/accept`, {
+        method: "POST",
+        body: JSON.stringify(payload ?? {}),
+        includeAuth: false,
         includeOrganizationId: false,
     });
 }

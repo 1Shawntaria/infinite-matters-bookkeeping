@@ -3,17 +3,21 @@ package com.infinitematters.bookkeeping.web;
 import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.security.RequestIdentityService;
 import com.infinitematters.bookkeeping.security.TenantAccessService;
+import com.infinitematters.bookkeeping.users.OrganizationInvitationService;
 import com.infinitematters.bookkeeping.web.dto.AddMembershipRequest;
 import com.infinitematters.bookkeeping.web.dto.AddMembershipByEmailRequest;
+import com.infinitematters.bookkeeping.web.dto.CreateInvitationRequest;
 import com.infinitematters.bookkeeping.web.dto.CreateUserRequest;
 import com.infinitematters.bookkeeping.web.dto.MembershipDetailResponse;
 import com.infinitematters.bookkeeping.web.dto.MembershipResponse;
+import com.infinitematters.bookkeeping.web.dto.OrganizationInvitationResponse;
 import com.infinitematters.bookkeeping.web.dto.OrganizationResponse;
 import com.infinitematters.bookkeeping.web.dto.UpdateMembershipRoleRequest;
 import com.infinitematters.bookkeeping.web.dto.UserResponse;
 import com.infinitematters.bookkeeping.users.UserService;
 import com.infinitematters.bookkeeping.users.UserRole;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,15 +39,21 @@ public class UserController {
     private final TenantAccessService tenantAccessService;
     private final RequestIdentityService requestIdentityService;
     private final AuditService auditService;
+    private final OrganizationInvitationService invitationService;
+    private final String frontendBaseUrl;
 
     public UserController(UserService userService,
                           TenantAccessService tenantAccessService,
                           RequestIdentityService requestIdentityService,
-                          AuditService auditService) {
+                          AuditService auditService,
+                          OrganizationInvitationService invitationService,
+                          @Value("${bookkeeping.frontend.base-url:http://localhost:3000}") String frontendBaseUrl) {
         this.userService = userService;
         this.tenantAccessService = tenantAccessService;
         this.requestIdentityService = requestIdentityService;
         this.auditService = auditService;
+        this.invitationService = invitationService;
+        this.frontendBaseUrl = frontendBaseUrl;
     }
 
     @PostMapping
@@ -91,6 +101,30 @@ public class UserController {
                 .toList();
     }
 
+    @PostMapping("/invitations")
+    public OrganizationInvitationResponse createInvitation(@Valid @RequestBody CreateInvitationRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(request.organizationId(), Set.of(UserRole.OWNER, UserRole.ADMIN));
+        OrganizationInvitationService.CreatedInvitation createdInvitation = invitationService.createInvitation(
+                request.organizationId(),
+                actorUserId,
+                request.email(),
+                request.role());
+        auditService.record(request.organizationId(), "ORGANIZATION_INVITATION_CREATED",
+                "organization_invitation", createdInvitation.invitation().getId().toString(),
+                "Invitation created by user " + actorUserId + " for " + request.email() + " as " + request.role());
+        return OrganizationInvitationResponse.from(
+                createdInvitation.invitation(),
+                inviteUrl(createdInvitation.rawToken()));
+    }
+
+    @GetMapping("/invitations")
+    public List<OrganizationInvitationResponse> listInvitations(@RequestParam UUID organizationId) {
+        tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return invitationService.invitationsForOrganization(organizationId).stream()
+                .map(OrganizationInvitationResponse::from)
+                .toList();
+    }
+
     @PatchMapping("/memberships/{membershipId}")
     public MembershipDetailResponse updateMembershipRole(@RequestParam UUID organizationId,
                                                          @PathVariable UUID membershipId,
@@ -127,6 +161,18 @@ public class UserController {
                 "Membership removed by user " + actorUserId + " for user " + membership.user().id());
     }
 
+    @DeleteMapping("/invitations/{invitationId}")
+    public OrganizationInvitationResponse revokeInvitation(@RequestParam UUID organizationId,
+                                                           @PathVariable UUID invitationId) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        OrganizationInvitationResponse response = OrganizationInvitationResponse.from(
+                invitationService.revokeInvitation(organizationId, invitationId));
+        auditService.record(organizationId, "ORGANIZATION_INVITATION_REVOKED",
+                "organization_invitation", response.id().toString(),
+                "Invitation revoked by user " + actorUserId + " for " + response.email());
+        return response;
+    }
+
     @GetMapping("/organizations")
     public List<OrganizationResponse> listOrganizationsForCurrentUser() {
         UUID userId = requestIdentityService.requireUserId();
@@ -134,5 +180,9 @@ public class UserController {
                 .stream()
                 .map(OrganizationResponse::from)
                 .toList();
+    }
+
+    private String inviteUrl(String token) {
+        return frontendBaseUrl.replaceAll("/+$", "") + "/invite/" + token;
     }
 }
