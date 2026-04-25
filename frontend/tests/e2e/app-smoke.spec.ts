@@ -206,6 +206,18 @@ function reconciliationAccountDetail() {
 
 async function mockApi(page: Parameters<typeof test>[0]["page"]) {
   let remainingReviewTasks = reviewTasks();
+  let financialAccounts = [
+    {
+      id: "acct-operating",
+      organizationId: "org-primary",
+      name: "Operating Checking",
+      accountType: "BANK",
+      institutionName: "Infinite Matters Bank",
+      currency: "USD",
+      active: true,
+      createdAt: "2026-04-24T12:00:00Z",
+    },
+  ];
 
   async function fulfillJson(
     route: Parameters<Parameters<typeof page.route>[1]>[0],
@@ -245,6 +257,35 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/accounts" && request.method() === "GET") {
+      await fulfillJson(route, financialAccounts);
+      return;
+    }
+
+    if (url.pathname === "/api/accounts" && request.method() === "POST") {
+      const body = request.postDataJSON() as {
+        organizationId: string;
+        name: string;
+        accountType: string;
+        institutionName: string;
+        currency: string;
+      };
+
+      const createdAccount = {
+        id: `acct-${financialAccounts.length + 1}`,
+        organizationId: body.organizationId,
+        name: body.name,
+        accountType: body.accountType,
+        institutionName: body.institutionName,
+        currency: body.currency,
+        active: true,
+        createdAt: "2026-04-24T12:30:00Z",
+      };
+      financialAccounts = [...financialAccounts, createdAccount];
+      await fulfillJson(route, createdAccount);
+      return;
+    }
+
     if (url.pathname === "/api/dashboard/snapshot" && request.method() === "GET") {
       const isReconciliationPage = page.url().includes("/reconciliation");
       await fulfillJson(
@@ -275,6 +316,40 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
 
     if (url.pathname === "/api/reconciliations" && request.method() === "POST") {
       await fulfillJson(route, reconciliationAccountDetail().session);
+      return;
+    }
+
+    if (url.pathname === "/api/transactions/import/csv" && request.method() === "POST") {
+      await fulfillJson(route, {
+        importedCount: 3,
+        duplicateCount: 0,
+        reviewRequiredCount: 1,
+        postedCount: 2,
+        transactions: [
+          {
+            transactionId: "txn-new-1",
+            transactionDate: "2026-04-06",
+            amount: 49.99,
+            merchant: "UNKNOWN VENDOR",
+            proposedCategory: "OTHER",
+            finalCategory: null,
+            route: "PREMIUM",
+            confidenceScore: 0.83,
+            status: "REVIEW_REQUIRED",
+          },
+          {
+            transactionId: "txn-new-2",
+            transactionDate: "2026-04-05",
+            amount: 89.0,
+            merchant: "CLOUDCO",
+            proposedCategory: "SOFTWARE",
+            finalCategory: "SOFTWARE",
+            route: "RULES",
+            confidenceScore: 0.92,
+            status: "POSTED",
+          },
+        ],
+      });
       return;
     }
 
@@ -371,4 +446,31 @@ test("reconciliation flow starts from the account card and opens real account de
   await expect(page.getByText("Resolve outstanding review items, then complete reconciliation.")).toBeVisible();
   await expect(page.getByText("UNKNOWN VENDOR")).toBeVisible();
   await expect(page.getByRole("button", { name: "Complete Reconciliation" })).toBeVisible();
+});
+
+test("setup flow creates an account and imports a csv", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/setup");
+
+  await expect(page.getByRole("heading", { name: "Import your first real activity" })).toBeVisible();
+
+  await page.getByLabel("Account Name").fill("Payroll Checking");
+  await page.getByLabel("Institution Name").fill("Northwind Bank");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  await expect(page.getByText("Payroll Checking is ready for imports.")).toBeVisible();
+
+  await page.getByLabel("Destination Account").selectOption({ label: "Payroll Checking" });
+  await page
+    .getByLabel("CSV File")
+    .setInputFiles({
+      name: "demo.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("id,date,amount,merchant\n1,2026-04-06,49.99,UNKNOWN VENDOR\n"),
+    });
+  await page.getByRole("button", { name: "Import Transactions" }).click();
+
+  await expect(page.getByText("Import completed successfully.")).toBeVisible();
+  await expect(page.getByText("3 new")).toBeVisible();
+  await expect(page.getByText("UNKNOWN VENDOR")).toBeVisible();
 });

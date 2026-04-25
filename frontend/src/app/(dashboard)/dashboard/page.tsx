@@ -162,6 +162,14 @@ export default function DashboardPage() {
                     eyebrow="Getting started"
                     title="This workspace is ready for its first operating cycle"
                     description="A quiet workspace is normal at the beginning. The fastest path is to bring in transactions, clear any review work, and then close out reconciliations."
+                    actions={
+                        <Link
+                            href="/setup"
+                            className="inline-flex rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                        >
+                            Open setup flow
+                        </Link>
+                    }
                 >
                     <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
                         <NextStepsList
