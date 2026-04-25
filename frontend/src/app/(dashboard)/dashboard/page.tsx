@@ -71,6 +71,31 @@ export default function DashboardPage() {
         .slice(0, 4);
     const notificationItems = recentNotifications.slice(0, 3);
     const staleAccountItems = staleAccounts.slice(0, 3);
+    const activeAccountCount = staleAccounts.length + (data?.period?.unreconciledAccountCount ?? 0);
+    const setupSteps = [
+        {
+            label: "Create an account",
+            complete: activeAccountCount > 0,
+            detail: activeAccountCount > 0
+                ? "At least one financial account is ready for activity."
+                : "Create the first account in Setup & Import.",
+        },
+        {
+            label: "Import transactions",
+            complete: (data?.postedTransactionCount ?? 0) > 0,
+            detail: (data?.postedTransactionCount ?? 0) > 0
+                ? `${data?.postedTransactionCount ?? 0} posted transaction(s) are already in the books.`
+                : "Bring in a CSV statement to populate the workspace.",
+        },
+        {
+            label: "Clear workflow decisions",
+            complete: workflowCounts.openCount === 0,
+            detail: workflowCounts.openCount === 0
+                ? "No open categorization tasks are blocking progress."
+                : `${workflowCounts.openCount} queue item(s) still need review.`,
+        },
+    ];
+    const completedSetupSteps = setupSteps.filter((step) => step.complete).length;
 
     if (!hydrated || loading) {
         return (
@@ -185,6 +210,56 @@ export default function DashboardPage() {
                             title="What will appear next"
                             message="As activity lands, this dashboard will light up with category movement, workflow pressure, and close-readiness signals."
                         />
+                    </div>
+                </SectionBand>
+            ) : null}
+
+            {completedSetupSteps < setupSteps.length ? (
+                <SectionBand
+                    eyebrow="Setup progress"
+                    title="You are still in the first-run setup loop"
+                    description="This checklist keeps the team oriented on what still needs to happen before the workspace feels fully operational."
+                    actions={
+                        <Link
+                            href="/setup"
+                            className="inline-flex rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                        >
+                            Continue setup
+                        </Link>
+                    }
+                >
+                    <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+                        <SummaryMetric
+                            label="Steps completed"
+                            value={`${completedSetupSteps}/${setupSteps.length}`}
+                            detail="Finish these once and the dashboard becomes much more self-explanatory."
+                            tone={completedSetupSteps === setupSteps.length ? "success" : "warning"}
+                        />
+                        <div className="grid gap-3">
+                            {setupSteps.map((step) => (
+                                <div
+                                    key={step.label}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4"
+                                >
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-sm font-semibold text-white">
+                                            {step.label}
+                                        </p>
+                                        <span
+                                            className={[
+                                                "rounded-full px-2.5 py-1 text-xs",
+                                                step.complete
+                                                    ? "border border-emerald-400/30 bg-emerald-300/10 text-emerald-100"
+                                                    : "border border-amber-400/30 bg-amber-300/10 text-amber-100",
+                                            ].join(" ")}
+                                        >
+                                            {step.complete ? "Done" : "Next"}
+                                        </span>
+                                    </div>
+                                    <p className="mt-2 text-sm text-zinc-400">{step.detail}</p>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </SectionBand>
             ) : null}

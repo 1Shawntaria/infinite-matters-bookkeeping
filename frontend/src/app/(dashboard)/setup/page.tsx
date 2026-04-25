@@ -14,6 +14,7 @@ import {
     LoadingPanel,
     NextStepsList,
     PageHero,
+    ProgressMeter,
     SectionBand,
     StatusBanner,
     SummaryMetric,
@@ -62,6 +63,12 @@ export default function SetupPage() {
         () => accounts.find((account) => account.id === selectedAccountId) ?? null,
         [accounts, selectedAccountId]
     );
+    const setupCompletionSteps = [
+        accounts.length > 0,
+        importResult != null || importSuccess.length > 0,
+        importResult != null && (importResult.reviewRequiredCount ?? 0) === 0,
+    ];
+    const completedSteps = setupCompletionSteps.filter(Boolean).length;
 
     async function handleCreateAccount(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -213,6 +220,38 @@ export default function SetupPage() {
                         title="CSV import tip"
                         message="Use the provider export as-is when possible. The import endpoint expects the file in multipart field 'file' and will safely skip duplicates."
                     />
+                </div>
+                <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                    <ProgressMeter
+                        label="Setup progress"
+                        value={completedSteps}
+                        total={3}
+                        tone={completedSteps === 3 ? "success" : "warning"}
+                    />
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                        <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">1. Account</p>
+                            <p className="mt-2 text-sm font-medium text-white">
+                                {accounts.length > 0 ? "Ready" : "Still needed"}
+                            </p>
+                        </div>
+                        <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">2. Import</p>
+                            <p className="mt-2 text-sm font-medium text-white">
+                                {importResult ? "Completed" : "Still needed"}
+                            </p>
+                        </div>
+                        <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">3. Review follow-up</p>
+                            <p className="mt-2 text-sm font-medium text-white">
+                                {importResult
+                                    ? importResult.reviewRequiredCount > 0
+                                        ? `${importResult.reviewRequiredCount} item(s) next`
+                                        : "Clear"
+                                    : "Pending import"}
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </SectionBand>
 
@@ -420,6 +459,22 @@ export default function SetupPage() {
                         </label>
                     </div>
 
+                    <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                        <StatusBanner
+                            tone="muted"
+                            title="Before you import"
+                            message="Use the exported CSV from the financial institution when possible, keep headers intact, and avoid editing row IDs so duplicate detection can protect you."
+                        />
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <h3 className="text-sm font-semibold text-white">What happens next</h3>
+                            <div className="mt-3 space-y-2 text-sm text-zinc-400">
+                                <p>1. Clean rows post directly into the workspace.</p>
+                                <p>2. Ambiguous merchants become review-queue items.</p>
+                                <p>3. Reconciliation picks up the new account activity automatically.</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <button
                         type="submit"
                         disabled={importing || accounts.length === 0}
@@ -502,6 +557,40 @@ export default function SetupPage() {
                                 </p>
                             )}
                         </div>
+                    </div>
+                ) : null}
+
+                {importResult ? (
+                    <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                        <NextStepsList
+                            title="Recommended follow-up"
+                            items={
+                                importResult.reviewRequiredCount > 0
+                                    ? [
+                                          "Open the review queue and resolve the imported ambiguous merchants first.",
+                                          "Return to the dashboard to confirm workflow pressure and close-readiness updated.",
+                                          "Move into reconciliation once statement balances are available for the imported account.",
+                                      ]
+                                    : [
+                                          "Return to the dashboard to confirm the new activity appears in the workspace pulse.",
+                                          "Open reconciliation if this account is part of the current close cycle.",
+                                          "Import the next account or statement while momentum is high.",
+                                      ]
+                            }
+                        />
+                        <StatusBanner
+                            tone={importResult.reviewRequiredCount > 0 ? "error" : "success"}
+                            title={
+                                importResult.reviewRequiredCount > 0
+                                    ? "Review queue follow-up needed"
+                                    : "Import landed cleanly"
+                            }
+                            message={
+                                importResult.reviewRequiredCount > 0
+                                    ? `${importResult.reviewRequiredCount} imported transaction(s) still need a category decision before the books are fully clean.`
+                                    : `${importResult.postedCount} transaction(s) posted without needing manual review.`
+                            }
+                        />
                     </div>
                 ) : null}
             </SectionBand>
