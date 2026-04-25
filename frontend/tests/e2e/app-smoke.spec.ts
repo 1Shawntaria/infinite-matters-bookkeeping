@@ -6,18 +6,21 @@ const organizations = [
     name: "Acme Books Demo",
     planTier: "GROWTH",
     timezone: "America/Los_Angeles",
+    role: "OWNER",
   },
   {
     id: "org-secondary",
     name: "Sunrise Client Ops",
     planTier: "STARTER",
     timezone: "America/New_York",
+    role: "ADMIN",
   },
   {
     id: "org-empty",
     name: "Northwind New Books",
     planTier: "STARTER",
     timezone: "America/Chicago",
+    role: "MEMBER",
   },
 ];
 
@@ -532,6 +535,18 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/workflows/notifications/dead-letter/history" && request.method() === "GET") {
+      await fulfillJson(route, [
+        {
+          ...workflowNotifications[2],
+          deadLetterResolutionStatus: "RESOLVED",
+          deadLetterResolvedAt: "2026-04-24T12:20:00Z",
+          deadLetterResolutionNote: "Resolved from notifications workspace",
+        },
+      ]);
+      return;
+    }
+
     if (
       url.pathname.startsWith("/api/workflows/notifications/") &&
       url.pathname.endsWith("/dead-letter/retry") &&
@@ -832,6 +847,7 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
 
   await page.getByRole("button", { name: "Mark resolved" }).click();
   await expect(page.getByText("Dead-letter notification marked resolved.")).toBeVisible();
+  await expect(page.getByText("Resolved from notifications workspace").last()).toBeVisible();
 
   await page.getByRole("button", { name: "Auth" }).click();
   await expect(page.getByText("Your password was changed successfully.")).toBeVisible();

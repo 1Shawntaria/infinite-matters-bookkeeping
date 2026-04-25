@@ -234,13 +234,16 @@ class InfiniteMattersApplicationTests {
                         .header("Authorization", bearerToken(ownerTokens.accessToken())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[*].id", hasItems(primaryOrganizationId, secondaryOrganizationId)));
+                .andExpect(jsonPath("$[*].id", hasItems(primaryOrganizationId, secondaryOrganizationId)))
+                .andExpect(jsonPath("$[?(@.id=='%s')].role".formatted(primaryOrganizationId), hasItem("OWNER")))
+                .andExpect(jsonPath("$[?(@.id=='%s')].role".formatted(secondaryOrganizationId), hasItem("OWNER")));
 
         mockMvc.perform(get("/api/users/organizations")
                         .header("Authorization", bearerToken(memberTokens.accessToken())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(secondaryOrganizationId));
+                .andExpect(jsonPath("$[0].id").value(secondaryOrganizationId))
+                .andExpect(jsonPath("$[0].role").value("MEMBER"));
 
         mockMvc.perform(get("/api/dashboard/snapshot")
                         .header(ORG_HEADER, primaryOrganizationId)

@@ -57,11 +57,7 @@ public class UserController {
     @GetMapping("/organizations")
     public List<OrganizationResponse> listOrganizationsForCurrentUser() {
         UUID userId = requestIdentityService.requireUserId();
-        List<UUID> organizationIds = userService.membershipsForUser(userId)
-                .stream()
-                .map(membership -> membership.getOrganization().getId())
-                .toList();
-        return organizationService.listByIds(organizationIds)
+        return userService.membershipsForUser(userId)
                 .stream()
                 .map(OrganizationResponse::from)
                 .toList();

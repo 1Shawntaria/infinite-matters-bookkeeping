@@ -31,6 +31,16 @@ export async function listDeadLetterNotifications(
     );
 }
 
+export async function listResolvedDeadLetterNotifications(
+    organizationId: string
+): Promise<NotificationSummaryItem[]> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<NotificationSummaryItem[]>(
+        `/api/workflows/notifications/dead-letter/history?${query.toString()}`,
+        { method: "GET" }
+    );
+}
+
 export async function retryDeadLetterNotification(
     organizationId: string,
     notificationId: string,

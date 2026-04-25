@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
-import { NotificationSummaryItem, listAuthNotifications } from "@/lib/api/auth";
+import { listOrganizations, NotificationSummaryItem, OrganizationSummary, listAuthNotifications } from "@/lib/api/auth";
 import {
     listAttentionNotifications,
     listDeadLetterNotifications,
+    listResolvedDeadLetterNotifications,
     listWorkflowNotifications,
     requeueFailedNotification,
     resolveDeadLetterNotification,
@@ -44,11 +45,19 @@ export default function NotificationsPage() {
     const [actingNotificationId, setActingNotificationId] = useState<string | null>(null);
     const queryClient = useQueryClient();
 
+    const organizationsQuery = useQuery<OrganizationSummary[], Error>({
+        queryKey: ["organizations"],
+        enabled: hydrated,
+        queryFn: () => listOrganizations(),
+    });
     const authNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
         queryKey: ["authNotifications"],
         enabled: hydrated,
         queryFn: () => listAuthNotifications(),
     });
+    const currentOrganization = (organizationsQuery.data ?? []).find((item) => item.id === organizationId) ?? null;
+    const isAdminOperator =
+        currentOrganization?.role === "OWNER" || currentOrganization?.role === "ADMIN";
     const workflowNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
         queryKey: ["workflowNotifications", organizationId],
         enabled: hydrated && Boolean(organizationId),
@@ -56,27 +65,37 @@ export default function NotificationsPage() {
     });
     const attentionNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
         queryKey: ["attentionNotifications", organizationId],
-        enabled: hydrated && Boolean(organizationId),
+        enabled: hydrated && Boolean(organizationId) && isAdminOperator,
         queryFn: () => listAttentionNotifications(organizationId),
     });
     const deadLetterNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
         queryKey: ["deadLetterNotifications", organizationId],
-        enabled: hydrated && Boolean(organizationId),
+        enabled: hydrated && Boolean(organizationId) && isAdminOperator,
         queryFn: () => listDeadLetterNotifications(organizationId),
+    });
+    const resolvedDeadLetterNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
+        queryKey: ["resolvedDeadLetterNotifications", organizationId],
+        enabled: hydrated && Boolean(organizationId) && isAdminOperator,
+        queryFn: () => listResolvedDeadLetterNotifications(organizationId),
     });
 
     const loading =
         hydrated && organizationId
-            ? authNotificationsQuery.isLoading ||
+            ? organizationsQuery.isLoading ||
+              authNotificationsQuery.isLoading ||
               workflowNotificationsQuery.isLoading ||
-              attentionNotificationsQuery.isLoading ||
-              deadLetterNotificationsQuery.isLoading
+              (isAdminOperator &&
+                  (attentionNotificationsQuery.isLoading ||
+                      deadLetterNotificationsQuery.isLoading ||
+                      resolvedDeadLetterNotificationsQuery.isLoading))
             : false;
     const queryError =
+        organizationsQuery.error?.message ??
         authNotificationsQuery.error?.message ??
         workflowNotificationsQuery.error?.message ??
         attentionNotificationsQuery.error?.message ??
         deadLetterNotificationsQuery.error?.message ??
+        resolvedDeadLetterNotificationsQuery.error?.message ??
         "";
 
     const mergedNotifications = useMemo<NotificationEntry[]>(
@@ -100,12 +119,14 @@ export default function NotificationsPage() {
         (item) => item.deliveryState === "FAILED" || item.deliveryState === "DEAD_LETTER"
     );
     const deadLetterNotifications = deadLetterNotificationsQuery.data ?? [];
+    const resolvedDeadLetters = resolvedDeadLetterNotificationsQuery.data ?? [];
 
     async function refreshNotificationData() {
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: ["workflowNotifications", organizationId] }),
             queryClient.invalidateQueries({ queryKey: ["attentionNotifications", organizationId] }),
             queryClient.invalidateQueries({ queryKey: ["deadLetterNotifications", organizationId] }),
+            queryClient.invalidateQueries({ queryKey: ["resolvedDeadLetterNotifications", organizationId] }),
         ]);
     }
 
@@ -197,9 +218,13 @@ export default function NotificationsPage() {
                         />
                         <SummaryMetric
                             label="Needs attention"
-                            value={`${attentionIds.size}`}
-                            detail="Notifications already flagged as operationally important."
-                            tone={attentionIds.size > 0 ? "warning" : "success"}
+                            value={isAdminOperator ? `${attentionIds.size}` : "Member"}
+                            detail={
+                                isAdminOperator
+                                    ? "Notifications already flagged as operationally important."
+                                    : "Owner/admin delivery controls are only shown to operators with elevated workspace access."
+                            }
+                            tone={isAdminOperator && attentionIds.size > 0 ? "warning" : "success"}
                         />
                     </div>
                 }
@@ -263,9 +288,10 @@ export default function NotificationsPage() {
             <SectionBand
                 eyebrow="Delivery operations"
                 title="Resolve delivery issues"
-                description="Owners can retry failed sends or close out dead-letter items here without leaving the product."
+                description="Owners and admins can retry failed sends, resolve dead letters, and review what was already handled."
             >
-                {deliveryIssues.length > 0 || deadLetterNotifications.length > 0 ? (
+                {isAdminOperator ? (
+                    deliveryIssues.length > 0 || deadLetterNotifications.length > 0 ? (
                     <div className="space-y-3">
                         {[...deliveryIssues, ...deadLetterNotifications.filter(
                             (item) => !deliveryIssues.some((issue) => issue.id === item.id)
@@ -333,14 +359,69 @@ export default function NotificationsPage() {
                             );
                         })}
                     </div>
-                ) : (
+                    ) : (
                     <StatusBanner
                         tone="success"
                         title="Delivery pipeline looks healthy"
                         message="No failed or dead-letter workflow notifications need attention right now."
                     />
+                    )
+                ) : (
+                    <StatusBanner
+                        tone="muted"
+                        title="Operator-only delivery controls"
+                        message="You can still monitor notification history here, but retry and dead-letter actions are reserved for workspace owners and admins."
+                    />
                 )}
             </SectionBand>
+
+            {isAdminOperator ? (
+                <SectionBand
+                    eyebrow="Resolved history"
+                    title="Recently resolved dead letters"
+                    description="This gives operators context for what was already handled so the team does not repeatedly investigate the same delivery incident."
+                >
+                    {resolvedDeadLetters.length > 0 ? (
+                        <div className="space-y-3">
+                            {resolvedDeadLetters.slice(0, 6).map((notification) => (
+                                <div
+                                    key={`resolved-${notification.id}`}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4"
+                                >
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div className="space-y-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <p className="text-sm font-semibold text-white">
+                                                    {titleCase(notification.category)}
+                                                </p>
+                                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                    {notification.deadLetterResolutionStatus ?? "Resolved"}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-zinc-300">{notification.message}</p>
+                                            <p className="text-xs text-zinc-500">
+                                                Resolved {formatTimestamp(notification.deadLetterResolvedAt)}
+                                                {notification.deadLetterResolutionNote
+                                                    ? ` · ${notification.deadLetterResolutionNote}`
+                                                    : ""}
+                                            </p>
+                                        </div>
+                                        <p className="shrink-0 text-xs text-zinc-500">
+                                            {notification.recipientEmail ?? "Unknown recipient"}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <StatusBanner
+                            tone="muted"
+                            title="No resolved dead letters yet"
+                            message="Resolved delivery history will appear here after operators handle failed sends."
+                        />
+                    )}
+                </SectionBand>
+            ) : null}
 
             <SectionBand
                 eyebrow="Inbox filters"
