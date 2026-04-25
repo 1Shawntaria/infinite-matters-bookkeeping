@@ -273,6 +273,31 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       status: "POSTED",
     },
   ];
+  const authActivity = [
+    {
+      id: "auth-activity-1",
+      organizationId: null,
+      actorUserId: "user-1",
+      eventType: "AUTH_LOGIN_SUCCEEDED",
+      entityType: "app_user",
+      entityId: "user-1",
+      details: "User authenticated",
+      createdAt: "2026-04-24T11:58:00Z",
+    },
+  ];
+  const authSessions = [
+    {
+      sessionId: "session-1",
+      createdAt: "2026-04-24T11:58:00Z",
+      expiresAt: "2026-05-24T11:58:00Z",
+      lastUsedAt: "2026-04-24T12:10:00Z",
+      revokedAt: null,
+      revokedReason: null,
+      reuseDetectedAt: null,
+      replacedBySessionId: null,
+      active: true,
+    },
+  ];
 
   async function fulfillJson(
     route: Parameters<Parameters<typeof page.route>[1]>[0],
@@ -304,6 +329,26 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
 
     if (url.pathname === "/api/auth/logout" && request.method() === "POST") {
       await fulfillJson(route, {});
+      return;
+    }
+
+    if (url.pathname === "/api/auth/me" && request.method() === "GET") {
+      await fulfillJson(route, {
+        id: "user-1",
+        email: "owner@acme.test",
+        fullName: "Acme Owner",
+        createdAt: "2026-04-20T12:00:00Z",
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/auth/sessions" && request.method() === "GET") {
+      await fulfillJson(route, authSessions);
+      return;
+    }
+
+    if (url.pathname === "/api/auth/activity" && request.method() === "GET") {
+      await fulfillJson(route, authActivity);
       return;
     }
 
@@ -501,6 +546,8 @@ test("login stores organization context and lands on dashboard", async ({ page }
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.locator("select:visible").first()).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
+  await expect(page.getByText("Session and trust").filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("Acme Owner").filter({ visible: true })).toBeVisible();
 });
 
 test("workspace switching reloads dashboard data for the selected organization", async ({ page }) => {
@@ -512,6 +559,7 @@ test("workspace switching reloads dashboard data for the selected organization",
   await expect(workspaceSelect).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
   await expect(page.getByText("Operating Checking · CLOUDCO")).toBeVisible();
+  await expect(page.getByText("AUTH LOGIN SUCCEEDED")).toBeVisible();
 
   await workspaceSelect.selectOption("org-secondary");
   await expect(page).toHaveURL(/\/dashboard$/);

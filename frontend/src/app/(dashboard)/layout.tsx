@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DashboardNav } from "@/components/dashboard-nav";
 import { SignOutButton } from "@/components/sign-out-button";
+import { WorkspaceTrustPanel } from "@/components/workspace-trust-panel";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 
 export default function DashboardLayout({
@@ -25,6 +26,7 @@ export default function DashboardLayout({
                     </div>
 
                     <WorkspaceSwitcher />
+                    <WorkspaceTrustPanel />
                     <DashboardNav orientation="row" />
                 </div>
             </div>
@@ -45,6 +47,9 @@ export default function DashboardLayout({
 
                     <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.03] p-4">
                         <WorkspaceSwitcher />
+                    </div>
+                    <div className="mt-6">
+                        <WorkspaceTrustPanel />
                     </div>
                     <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.03] p-3">
                         <DashboardNav />

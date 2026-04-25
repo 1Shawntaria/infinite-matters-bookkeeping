@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { AuthActivityItem, listAuthActivity } from "@/lib/api/auth";
 import {
     FinancialAccount,
     listFinancialAccounts,
@@ -31,6 +32,11 @@ import {
 export default function DashboardPage() {
     const { organizationId, hydrated } = useOrganizationSession();
     const [error, setError] = useState("");
+    const authActivityQuery = useQuery<AuthActivityItem[], Error>({
+        queryKey: ["authActivity"],
+        enabled: hydrated,
+        queryFn: () => listAuthActivity(),
+    });
     const accountsQuery = useQuery<FinancialAccount[], Error>({
         queryKey: ["financialAccounts", organizationId],
         enabled: hydrated && Boolean(organizationId),
@@ -61,6 +67,7 @@ export default function DashboardPage() {
         dashboardQuery.error?.message ??
         accountsQuery.error?.message ??
         importHistoryQuery.error?.message ??
+        authActivityQuery.error?.message ??
         "";
     const actionHref = data?.primaryAction
         ? mapBackendActionPathToFrontend(data.primaryAction.actionPath)
@@ -138,6 +145,31 @@ export default function DashboardPage() {
     const activeImportAccounts = importsByAccount
         .filter((item) => item.importCount > 0)
         .slice(0, 3);
+    const activityTimeline = [
+        ...importHistory.slice(0, 4).map((item) => ({
+            id: `import-${item.transactionId}`,
+            time: item.importedAt,
+            title: `${item.financialAccountName}: ${item.merchant}`,
+            detail: `${item.status.replaceAll("_", " ")} through ${item.route.toLowerCase()}`,
+            lane: "Import",
+        })),
+        ...(authActivityQuery.data ?? []).slice(0, 4).map((item) => ({
+            id: `auth-${item.id}`,
+            time: item.createdAt,
+            title: item.eventType.replaceAll("_", " "),
+            detail: item.details,
+            lane: "Security",
+        })),
+        ...notificationItems.slice(0, 3).map((item) => ({
+            id: `notification-${item.id}`,
+            time: item.createdAt,
+            title: item.category,
+            detail: item.message,
+            lane: "Notification",
+        })),
+    ]
+        .sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime())
+        .slice(0, 6);
 
     if (!hydrated || loading) {
         return (
@@ -560,11 +592,56 @@ export default function DashboardPage() {
                 </SectionBand>
 
                 <SectionBand
-                    eyebrow="Fresh signals"
-                    title="Accounts and notifications worth checking"
-                    description="Recent friction tends to show up here first when the workspace starts drifting."
+                    eyebrow="Recent activity"
+                    title="What just happened in this workspace"
+                    description="This timeline keeps imports, security events, and operational notifications visible together."
                 >
                     <div className="grid gap-4">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold text-white">Activity timeline</h3>
+                                <span className="text-xs text-zinc-500">
+                                    {activityTimeline.length} recent
+                                </span>
+                            </div>
+                            {activityTimeline.length > 0 ? (
+                                <div className="mt-4 space-y-3">
+                                    {activityTimeline.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className="rounded-md border border-white/10 bg-black/20 px-3 py-3"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-medium text-white">
+                                                        {item.title}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-zinc-400">
+                                                        {item.detail}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xs text-zinc-500">{item.lane}</p>
+                                                    <p className="mt-1 text-xs text-zinc-400">
+                                                        {new Date(item.time).toLocaleString("en-US", {
+                                                            month: "short",
+                                                            day: "numeric",
+                                                            hour: "numeric",
+                                                            minute: "2-digit",
+                                                        })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="mt-3 text-sm text-zinc-400">
+                                    Recent imports, auth events, and notifications will collect here as the workspace gets used.
+                                </p>
+                            )}
+                        </div>
+
                         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
                             <div className="flex items-center justify-between gap-3">
                                 <h3 className="text-sm font-semibold text-white">Stale accounts</h3>
