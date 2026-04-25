@@ -529,6 +529,20 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$[0].finalCategory").value("SOFTWARE"))
                 .andExpect(jsonPath("$[1].status").value("POSTED"));
 
+        mockMvc.perform(get("/api/transactions/import-history")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(memberToken))
+                        .param("organizationId", organizationId)
+                        .param("financialAccountId", accountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].financialAccountId").value(accountId))
+                .andExpect(jsonPath("$[0].financialAccountName").value("Operating Checking"))
+                .andExpect(jsonPath("$[0].importedAt").isString())
+                .andExpect(jsonPath("$[0].merchant").value("UNKNOWN VENDOR"))
+                .andExpect(jsonPath("$[0].status").value("POSTED"))
+                .andExpect(jsonPath("$[1].merchant").value("STARBUCKS"));
+
         MockMultipartFile secondFile = new MockMultipartFile(
                 "file",
                 "transactions-2.csv",

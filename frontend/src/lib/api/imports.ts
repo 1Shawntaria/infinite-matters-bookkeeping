@@ -20,6 +20,21 @@ export type ImportBatchResult = {
     transactions: ImportedTransactionSummary[];
 };
 
+export type ImportedTransactionHistoryItem = {
+    transactionId: string;
+    financialAccountId: string;
+    financialAccountName: string;
+    importedAt: string;
+    transactionDate: string;
+    amount: number;
+    merchant: string;
+    proposedCategory: string | null;
+    finalCategory: string | null;
+    route: string;
+    confidenceScore: number;
+    status: string;
+};
+
 export async function importTransactionsCsv(
     organizationId: string,
     financialAccountId: string,
@@ -34,6 +49,23 @@ export async function importTransactionsCsv(
             method: "POST",
             body: formData,
             includeJsonHeader: false,
+        }
+    );
+}
+
+export async function listImportHistory(
+    organizationId: string,
+    financialAccountId?: string
+): Promise<ImportedTransactionHistoryItem[]> {
+    const searchParams = new URLSearchParams({ organizationId });
+    if (financialAccountId) {
+        searchParams.set("financialAccountId", financialAccountId);
+    }
+
+    return apiFetch<ImportedTransactionHistoryItem[]>(
+        `/api/transactions/import-history?${searchParams.toString()}`,
+        {
+            method: "GET",
         }
     );
 }

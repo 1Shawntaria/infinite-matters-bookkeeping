@@ -187,6 +187,41 @@ public class TransactionIngestService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ImportedTransactionHistoryItem> listImportHistory(UUID organizationId, UUID financialAccountId) {
+        organizationService.get(organizationId);
+
+        List<BookkeepingTransaction> transactions = financialAccountId == null
+                ? transactionRepository.findByOrganizationIdOrderByCreatedAtDescIdDesc(organizationId)
+                : transactionRepository.findByOrganizationIdAndFinancialAccountIdOrderByCreatedAtDescIdDesc(
+                        organizationId,
+                        financialAccountId);
+
+        return transactions.stream()
+                .map(transaction -> {
+                    CategorizationDecision decision = decisionRepository.findTopByTransactionIdOrderByCreatedAtDesc(transaction.getId())
+                            .orElseThrow(() -> new IllegalStateException("No decision found for transaction " + transaction.getId()));
+                    return new ImportedTransactionHistoryItem(
+                            transaction.getId(),
+                            transaction.getFinancialAccount().getId(),
+                            transaction.getFinancialAccount().getName(),
+                            transaction.getCreatedAt(),
+                            transaction.getTransactionDate(),
+                            transaction.getAmount(),
+                            transaction.getMerchant(),
+                            toCategoryName(decision.getProposedCategory()),
+                            toCategoryName(decision.getFinalCategory()),
+                            decision.getRoute(),
+                            decision.getConfidenceScore(),
+                            transaction.getStatus());
+                })
+                .toList();
+    }
+
+    private String toCategoryName(Enum<?> category) {
+        return category == null ? null : category.name();
+    }
+
     private boolean shouldAutoAccept(CategorizationResult result) {
         return "RULES".equals(result.route())
                 || "MEMORY".equals(result.route())

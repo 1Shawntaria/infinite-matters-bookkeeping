@@ -218,6 +218,22 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       createdAt: "2026-04-24T12:00:00Z",
     },
   ];
+  let importHistory = [
+    {
+      transactionId: "txn-history-1",
+      financialAccountId: "acct-operating",
+      financialAccountName: "Operating Checking",
+      importedAt: "2026-04-24T12:00:00Z",
+      transactionDate: "2026-04-05",
+      amount: 89.0,
+      merchant: "CLOUDCO",
+      proposedCategory: "SOFTWARE",
+      finalCategory: "SOFTWARE",
+      route: "RULES",
+      confidenceScore: 0.92,
+      status: "POSTED",
+    },
+  ];
 
   async function fulfillJson(
     route: Parameters<Parameters<typeof page.route>[1]>[0],
@@ -320,6 +336,41 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
     }
 
     if (url.pathname === "/api/transactions/import/csv" && request.method() === "POST") {
+      const destinationAccountId = url.searchParams.get("financialAccountId") ?? "acct-operating";
+      const destinationAccount =
+        financialAccounts.find((account) => account.id === destinationAccountId) ??
+        financialAccounts[0];
+      importHistory = [
+        {
+          transactionId: "txn-new-1",
+          financialAccountId: destinationAccount.id,
+          financialAccountName: destinationAccount.name,
+          importedAt: "2026-04-24T12:45:00Z",
+          transactionDate: "2026-04-06",
+          amount: 49.99,
+          merchant: "UNKNOWN VENDOR",
+          proposedCategory: "OTHER",
+          finalCategory: null,
+          route: "PREMIUM",
+          confidenceScore: 0.83,
+          status: "REVIEW_REQUIRED",
+        },
+        {
+          transactionId: "txn-new-2",
+          financialAccountId: destinationAccount.id,
+          financialAccountName: destinationAccount.name,
+          importedAt: "2026-04-24T12:45:00Z",
+          transactionDate: "2026-04-05",
+          amount: 89.0,
+          merchant: "CLOUDCO",
+          proposedCategory: "SOFTWARE",
+          finalCategory: "SOFTWARE",
+          route: "RULES",
+          confidenceScore: 0.92,
+          status: "POSTED",
+        },
+        ...importHistory,
+      ];
       await fulfillJson(route, {
         importedCount: 3,
         duplicateCount: 0,
@@ -350,6 +401,17 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
           },
         ],
       });
+      return;
+    }
+
+    if (url.pathname === "/api/transactions/import-history" && request.method() === "GET") {
+      const financialAccountId = url.searchParams.get("financialAccountId");
+      await fulfillJson(
+        route,
+        financialAccountId
+          ? importHistory.filter((item) => item.financialAccountId === financialAccountId)
+          : importHistory
+      );
       return;
     }
 
@@ -471,6 +533,7 @@ test("setup flow creates an account and imports a csv", async ({ page }) => {
   await page.getByRole("button", { name: "Import Transactions" }).click();
 
   await expect(page.getByText("Import completed successfully.")).toBeVisible();
-  await expect(page.getByText("3 new")).toBeVisible();
-  await expect(page.getByText("UNKNOWN VENDOR")).toBeVisible();
+  await expect(page.getByText("Last import Apr 24 · UNKNOWN VENDOR")).toBeVisible();
+  await expect(page.getByText("REVIEW_REQUIRED · PREMIUM")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payroll Checking activity" })).toBeVisible();
 });

@@ -8,7 +8,12 @@ import {
     FinancialAccount,
     listFinancialAccounts,
 } from "@/lib/api/accounts";
-import { importTransactionsCsv, ImportBatchResult } from "@/lib/api/imports";
+import {
+    importTransactionsCsv,
+    ImportBatchResult,
+    ImportedTransactionHistoryItem,
+    listImportHistory,
+} from "@/lib/api/imports";
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     LoadingPanel,
@@ -49,9 +54,19 @@ export default function SetupPage() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listFinancialAccounts(organizationId),
     });
+    const importHistoryQuery = useQuery<ImportedTransactionHistoryItem[], Error>({
+        queryKey: ["importHistory", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listImportHistory(organizationId),
+    });
     const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
-    const loading = hydrated && organizationId ? accountsQuery.isLoading : false;
-    const queryError = accountsQuery.error?.message ?? "";
+    const importHistory = useMemo(() => importHistoryQuery.data ?? [], [importHistoryQuery.data]);
+    const loading =
+        hydrated && organizationId
+            ? accountsQuery.isLoading || importHistoryQuery.isLoading
+            : false;
+    const queryError =
+        accountsQuery.error?.message ?? importHistoryQuery.error?.message ?? "";
 
     useEffect(() => {
         if (!selectedAccountId && accounts[0]?.id) {
@@ -62,6 +77,25 @@ export default function SetupPage() {
     const selectedAccount = useMemo(
         () => accounts.find((account) => account.id === selectedAccountId) ?? null,
         [accounts, selectedAccountId]
+    );
+    const latestImport = importHistory[0] ?? null;
+    const latestImportByAccount = useMemo(() => {
+        const latestByAccount = new Map<string, ImportedTransactionHistoryItem>();
+
+        for (const item of importHistory) {
+            if (!latestByAccount.has(item.financialAccountId)) {
+                latestByAccount.set(item.financialAccountId, item);
+            }
+        }
+
+        return latestByAccount;
+    }, [importHistory]);
+    const visibleImportHistory = useMemo(
+        () =>
+            selectedAccountId
+                ? importHistory.filter((item) => item.financialAccountId === selectedAccountId)
+                : importHistory,
+        [importHistory, selectedAccountId]
     );
     const setupCompletionSteps = [
         accounts.length > 0,
@@ -130,6 +164,7 @@ export default function SetupPage() {
             await queryClient.invalidateQueries({ queryKey: ["dashboardSnapshot", organizationId] });
             await queryClient.invalidateQueries({ queryKey: ["reviewTasks", organizationId] });
             await queryClient.invalidateQueries({ queryKey: ["reconciliationDashboard", organizationId] });
+            await queryClient.invalidateQueries({ queryKey: ["importHistory", organizationId] });
         } catch (err) {
             setImportResult(null);
             setImportError(err instanceof Error ? err.message : "Unable to import CSV.");
@@ -175,12 +210,19 @@ export default function SetupPage() {
                         <SummaryMetric
                             label="Last import"
                             value={
-                                importResult
-                                    ? `${importResult.importedCount} new`
+                                latestImport
+                                    ? new Date(latestImport.importedAt).toLocaleDateString("en-US", {
+                                          month: "short",
+                                          day: "numeric",
+                                      })
                                     : "Not started"
                             }
-                            detail="Successful imports immediately update the rest of the workspace."
-                            tone={importResult ? "success" : "default"}
+                            detail={
+                                latestImport
+                                    ? `${latestImport.financialAccountName} · ${latestImport.merchant}`
+                                    : "Successful imports immediately update the rest of the workspace."
+                            }
+                            tone={latestImport ? "success" : "default"}
                         />
                     </div>
                 }
@@ -374,6 +416,14 @@ export default function SetupPage() {
                                             </p>
                                             <p className="mt-1 text-xs text-zinc-400">
                                                 {(account.institutionName || "Institution not provided")} · {account.accountType} · {account.currency}
+                                            </p>
+                                            <p className="mt-2 text-xs text-zinc-500">
+                                                {latestImportByAccount.get(account.id)
+                                                    ? `Last import ${new Date(latestImportByAccount.get(account.id)!.importedAt).toLocaleDateString("en-US", {
+                                                          month: "short",
+                                                          day: "numeric",
+                                                      })} · ${latestImportByAccount.get(account.id)!.merchant}`
+                                                    : "No imported transactions yet."}
                                             </p>
                                         </div>
                                         <button
@@ -593,6 +643,75 @@ export default function SetupPage() {
                         />
                     </div>
                 ) : null}
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Import traceability"
+                title={selectedAccount ? `${selectedAccount.name} activity` : "Recent import activity"}
+                description="Use this view to confirm where recent imports landed, when they arrived, and what sort of follow-up they created."
+            >
+                <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <SummaryMetric
+                            label="Tracked imports"
+                            value={`${importHistory.length}`}
+                            detail="Persisted imported transactions in this workspace."
+                            tone={importHistory.length > 0 ? "success" : "default"}
+                        />
+                        <SummaryMetric
+                            label="Selected account"
+                            value={`${visibleImportHistory.length}`}
+                            detail={
+                                selectedAccount
+                                    ? `Imported transactions currently tied to ${selectedAccount.name}.`
+                                    : "Choose an account to see account-specific import history."
+                            }
+                            tone={visibleImportHistory.length > 0 ? "success" : "default"}
+                        />
+                    </div>
+
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                        <h3 className="text-sm font-semibold text-white">Latest imported rows</h3>
+                        <div className="mt-4 space-y-3">
+                            {visibleImportHistory.slice(0, 5).map((item) => (
+                                <div
+                                    key={item.transactionId}
+                                    className="rounded-md border border-white/10 bg-black/20 px-3 py-3"
+                                >
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-medium text-white">{item.merchant}</p>
+                                            <p className="mt-1 text-xs text-zinc-400">
+                                                {item.financialAccountName} · {item.transactionDate} ·{" "}
+                                                {new Date(item.importedAt).toLocaleString("en-US", {
+                                                    month: "short",
+                                                    day: "numeric",
+                                                    hour: "numeric",
+                                                    minute: "2-digit",
+                                                })}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-medium text-white">
+                                                ${item.amount.toFixed(2)}
+                                            </p>
+                                            <p className="mt-1 text-xs text-zinc-400">
+                                                {item.status} · {item.route}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {visibleImportHistory.length === 0 ? (
+                                <StatusBanner
+                                    tone="muted"
+                                    title="No import history yet"
+                                    message="Once a CSV lands, this section will show where it went, when it arrived, and what kind of follow-up it created."
+                                />
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
             </SectionBand>
         </main>
     );

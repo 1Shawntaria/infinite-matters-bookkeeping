@@ -2,6 +2,7 @@ package com.infinitematters.bookkeeping.web;
 
 import com.infinitematters.bookkeeping.security.TenantAccessService;
 import com.infinitematters.bookkeeping.transactions.ImportBatchResult;
+import com.infinitematters.bookkeeping.transactions.ImportedTransactionHistoryItem;
 import com.infinitematters.bookkeeping.transactions.ImportedTransactionSummary;
 import com.infinitematters.bookkeeping.transactions.TransactionIngestService;
 import org.springframework.http.MediaType;
@@ -44,5 +45,12 @@ public class TransactionImportController {
     public List<ImportedTransactionSummary> list(@RequestParam UUID organizationId) {
         tenantAccessService.requireAccess(organizationId);
         return transactionIngestService.listTransactions(organizationId);
+    }
+
+    @GetMapping("/import-history")
+    public List<ImportedTransactionHistoryItem> listImportHistory(@RequestParam UUID organizationId,
+                                                                  @RequestParam(required = false) UUID financialAccountId) {
+        tenantAccessService.requireAccess(organizationId);
+        return transactionIngestService.listImportHistory(organizationId, financialAccountId);
     }
 }

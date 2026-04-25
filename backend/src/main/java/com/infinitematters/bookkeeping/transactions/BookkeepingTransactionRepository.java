@@ -19,6 +19,11 @@ public interface BookkeepingTransactionRepository extends JpaRepository<Bookkeep
 
     List<BookkeepingTransaction> findByOrganizationIdOrderByTransactionDateDescCreatedAtDesc(UUID organizationId);
 
+    List<BookkeepingTransaction> findByOrganizationIdOrderByCreatedAtDescIdDesc(UUID organizationId);
+
+    List<BookkeepingTransaction> findByOrganizationIdAndFinancialAccountIdOrderByCreatedAtDescIdDesc(UUID organizationId,
+                                                                                                      UUID financialAccountId);
+
     List<BookkeepingTransaction> findByOrganizationIdAndStatusOrderByTransactionDateDescCreatedAtDesc(UUID organizationId,
                                                                                                       TransactionStatus status);
 
