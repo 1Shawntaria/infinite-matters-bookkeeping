@@ -196,6 +196,49 @@ export function NextStepsList({
     );
 }
 
+export function MiniBarChart({
+    title,
+    items,
+}: {
+    title: string;
+    items: Array<{
+        label: string;
+        value: number;
+        helper?: string;
+    }>;
+}) {
+    const maxValue = Math.max(1, ...items.map((item) => item.value));
+
+    return (
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+            <h3 className="text-sm font-semibold text-white">{title}</h3>
+            <div className="mt-4 space-y-4">
+                {items.map((item) => (
+                    <div key={item.label} className="space-y-2">
+                        <div className="flex items-baseline justify-between gap-3">
+                            <div>
+                                <p className="text-sm text-zinc-200">{item.label}</p>
+                                {item.helper ? (
+                                    <p className="text-xs text-zinc-500">{item.helper}</p>
+                                ) : null}
+                            </div>
+                            <p className="text-sm font-medium text-white">
+                                {item.value.toLocaleString()}
+                            </p>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                            <div
+                                className="h-full rounded-full bg-emerald-300"
+                                style={{ width: `${Math.max(8, (item.value / maxValue) * 100)}%` }}
+                            />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export function LoadingPanel({
     title,
     message,

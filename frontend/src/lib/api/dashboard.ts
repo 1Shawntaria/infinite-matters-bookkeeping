@@ -45,6 +45,48 @@ export type ExpenseCategoryItem = {
     actionReason: string;
 };
 
+export type StaleAccountItem = {
+    itemId: string;
+    accountId: string;
+    accountName: string;
+    accountType: string;
+    lastTransactionDate: string;
+    daysSinceActivity: number;
+    actionKey: string;
+    actionPath: string;
+    actionUrgency: string;
+    actionReason: string;
+    sessionStarted: boolean;
+};
+
+export type NotificationSummaryItem = {
+    id: string;
+    workflowTaskId: string | null;
+    userId: string | null;
+    category: string;
+    channel: string;
+    status: string;
+    deliveryState: string;
+    message: string;
+    referenceType: string | null;
+    referenceId: string | null;
+    recipientEmail: string | null;
+    providerName: string | null;
+    providerMessageId: string | null;
+    attemptCount: number;
+    lastError: string | null;
+    lastFailureCode: string | null;
+    deadLetterResolutionStatus: string | null;
+    deadLetterResolutionReasonCode: string | null;
+    deadLetterResolutionNote: string | null;
+    deadLetterResolvedAt: string | null;
+    deadLetterResolvedByUserId: string | null;
+    scheduledFor: string | null;
+    lastAttemptedAt: string | null;
+    sentAt: string | null;
+    createdAt: string;
+};
+
 export type DashboardSnapshot = {
     focusMonth: string;
     cashBalance: number;
@@ -53,8 +95,8 @@ export type DashboardSnapshot = {
     workflowInbox: WorkflowInbox;
     period: PeriodSummary;
     expenseCategories: ExpenseCategoryItem[];
-    staleAccounts: unknown[];
-    recentNotifications: unknown[];
+    staleAccounts: StaleAccountItem[];
+    recentNotifications: NotificationSummaryItem[];
     [key: string]: unknown;
 };
 

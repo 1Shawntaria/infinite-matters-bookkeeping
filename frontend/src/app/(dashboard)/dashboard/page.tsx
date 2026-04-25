@@ -11,6 +11,7 @@ import { mapBackendActionPathToFrontend } from "@/lib/navigation";
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     LoadingPanel,
+    MiniBarChart,
     NextStepsList,
     PageHero,
     ProgressMeter,
@@ -40,6 +41,12 @@ export default function DashboardPage() {
     const expenseCategories = Array.isArray(data?.expenseCategories)
         ? data.expenseCategories
         : [];
+    const staleAccounts = Array.isArray(data?.staleAccounts)
+        ? data.staleAccounts
+        : [];
+    const recentNotifications = Array.isArray(data?.recentNotifications)
+        ? data.recentNotifications
+        : [];
     const workflowCounts = data?.workflowInbox ?? {
         openCount: 0,
         overdueCount: 0,
@@ -59,6 +66,11 @@ export default function DashboardPage() {
         workflowCounts.openCount === 0 &&
         (data?.period?.unreconciledAccountCount ?? 0) === 0 &&
         expenseCategories.length === 0;
+    const topExpenseCategories = [...expenseCategories]
+        .sort((left, right) => right.amount - left.amount)
+        .slice(0, 4);
+    const notificationItems = recentNotifications.slice(0, 3);
+    const staleAccountItems = staleAccounts.slice(0, 3);
 
     if (!hydrated || loading) {
         return (
@@ -155,7 +167,7 @@ export default function DashboardPage() {
                         <NextStepsList
                             title="Suggested first run"
                             items={[
-                                "Import a recent bank or card statement so the dashboard can start tracking transaction volume and category trends.",
+                                "Bring in a recent bank or card statement so your operating picture starts with real transaction activity.",
                                 "Resolve any review-queue items created by ambiguous merchants before you move into reconciliation.",
                                 "Start reconciliation once balances are available so period close stays grounded in the real statement data.",
                             ]}
@@ -262,6 +274,133 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </SectionBand>
+
+            <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                <SectionBand
+                    eyebrow="Volume and mix"
+                    title="Where activity is showing up"
+                    description="These quick visuals help you see whether work is clustering around categorization, close, or raw transaction volume."
+                >
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        <MiniBarChart
+                            title="Workflow load"
+                            items={[
+                                {
+                                    label: "Open tasks",
+                                    value: workflowCounts.openCount,
+                                    helper: `${workflowCounts.overdueCount} overdue, ${workflowCounts.dueTodayCount} due today`,
+                                },
+                                {
+                                    label: "High priority",
+                                    value: workflowCounts.highPriorityCount,
+                                    helper: "Tasks that should move first",
+                                },
+                                {
+                                    label: "Unassigned",
+                                    value: workflowCounts.unassignedCount,
+                                    helper: "Items still waiting for ownership",
+                                },
+                            ]}
+                        />
+                        <MiniBarChart
+                            title="Expense concentration"
+                            items={
+                                topExpenseCategories.length > 0
+                                    ? topExpenseCategories.map((item) => ({
+                                          label: item.category,
+                                          value: item.amount,
+                                          helper: item.actionReason,
+                                      }))
+                                    : [
+                                          {
+                                              label: "No spend trend yet",
+                                              value: 1,
+                                              helper: "Import and post more activity to start comparing categories.",
+                                          },
+                                      ]
+                            }
+                        />
+                    </div>
+                </SectionBand>
+
+                <SectionBand
+                    eyebrow="Fresh signals"
+                    title="Accounts and notifications worth checking"
+                    description="Recent friction tends to show up here first when the workspace starts drifting."
+                >
+                    <div className="grid gap-4">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold text-white">Stale accounts</h3>
+                                <span className="text-xs text-zinc-500">
+                                    {staleAccounts.length} tracked
+                                </span>
+                            </div>
+                            {staleAccountItems.length > 0 ? (
+                                <div className="mt-4 space-y-3">
+                                    {staleAccountItems.map((account) => (
+                                        <div
+                                            key={account.itemId}
+                                            className="rounded-md border border-white/10 bg-black/20 px-3 py-3"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <p className="text-sm font-medium text-white">
+                                                    {account.accountName}
+                                                </p>
+                                                <span className="text-xs text-zinc-500">
+                                                    {account.daysSinceActivity}d quiet
+                                                </span>
+                                            </div>
+                                            <p className="mt-1 text-xs text-zinc-400">
+                                                {account.actionReason}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="mt-3 text-sm text-zinc-400">
+                                    No stale-account pressure is visible right now.
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold text-white">Recent notifications</h3>
+                                <span className="text-xs text-zinc-500">
+                                    {recentNotifications.length} recent
+                                </span>
+                            </div>
+                            {notificationItems.length > 0 ? (
+                                <div className="mt-4 space-y-3">
+                                    {notificationItems.map((notification) => (
+                                        <div
+                                            key={notification.id}
+                                            className="rounded-md border border-white/10 bg-black/20 px-3 py-3"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <p className="text-sm font-medium text-white">
+                                                    {notification.category}
+                                                </p>
+                                                <span className="text-xs text-zinc-500">
+                                                    {notification.deliveryState}
+                                                </span>
+                                            </div>
+                                            <p className="mt-1 text-xs text-zinc-400">
+                                                {notification.message}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="mt-3 text-sm text-zinc-400">
+                                    No recent notification activity needs attention.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </SectionBand>
+            </div>
 
             {expenseCategories.length > 0 ? (
                 <SectionBand
