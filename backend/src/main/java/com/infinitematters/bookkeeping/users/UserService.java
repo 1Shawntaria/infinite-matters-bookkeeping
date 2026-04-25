@@ -48,6 +48,10 @@ public class UserService {
         AppUser user = get(userId);
 
         return membershipRepository.findByOrganizationIdAndUserId(organizationId, userId)
+                .map(existingMembership -> {
+                    existingMembership.setRole(role);
+                    return membershipRepository.save(existingMembership);
+                })
                 .orElseGet(() -> {
                     OrganizationMembership membership = new OrganizationMembership();
                     membership.setOrganization(organization);
@@ -59,6 +63,15 @@ public class UserService {
 
     public List<OrganizationMembership> membershipsForUser(UUID userId) {
         return membershipRepository.findByUserId(userId);
+    }
+
+    public List<OrganizationMembership> membershipsForOrganization(UUID organizationId) {
+        organizationService.get(organizationId);
+        return membershipRepository.findByOrganizationIdOrderByCreatedAtAsc(organizationId);
+    }
+
+    public OrganizationMembership addMembershipByEmail(UUID organizationId, String email, UserRole role) {
+        return addMembership(organizationId, getByEmail(email).getId(), role);
     }
 
     public boolean hasAccess(UUID organizationId, UUID userId) {
@@ -97,6 +110,19 @@ public class UserService {
         return membershipRepository.findByOrganizationIdAndRoleIn(organizationId, roles).stream()
                 .map(OrganizationMembership::getUser)
                 .toList();
+    }
+
+    public OrganizationMembership updateMembershipRole(UUID organizationId, UUID membershipId, UserRole role) {
+        OrganizationMembership membership = membershipRepository.findById(membershipId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown membership: " + membershipId));
+        if (!membership.getOrganization().getId().equals(organizationId)) {
+            throw new IllegalArgumentException("Membership does not belong to organization " + organizationId);
+        }
+        if (membership.getRole() == UserRole.OWNER || role == UserRole.OWNER) {
+            throw new IllegalArgumentException("Owner memberships cannot be reassigned through this endpoint");
+        }
+        membership.setRole(role);
+        return membershipRepository.save(membership);
     }
 
     public AppUser updatePassword(UUID userId, String newPassword) {

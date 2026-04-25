@@ -248,6 +248,44 @@ function reconciliationAccountDetail() {
 
 async function mockApi(page: Parameters<typeof test>[0]["page"]) {
   let remainingReviewTasks = reviewTasks();
+  let memberships = [
+    {
+      id: "membership-owner",
+      organizationId: "org-primary",
+      user: {
+        id: "user-1",
+        email: "owner@acme.test",
+        fullName: "Acme Owner",
+        createdAt: "2026-04-20T12:00:00Z",
+      },
+      role: "OWNER",
+      createdAt: "2026-04-20T12:05:00Z",
+    },
+    {
+      id: "membership-admin",
+      organizationId: "org-primary",
+      user: {
+        id: "user-2",
+        email: "ops@acme.test",
+        fullName: "Ops Admin",
+        createdAt: "2026-04-20T12:10:00Z",
+      },
+      role: "ADMIN",
+      createdAt: "2026-04-20T12:12:00Z",
+    },
+    {
+      id: "membership-member",
+      organizationId: "org-primary",
+      user: {
+        id: "user-3",
+        email: "member@acme.test",
+        fullName: "Staff Member",
+        createdAt: "2026-04-20T12:20:00Z",
+      },
+      role: "MEMBER",
+      createdAt: "2026-04-20T12:22:00Z",
+    },
+  ];
   let financialAccounts = [
     {
       id: "acct-operating",
@@ -604,6 +642,50 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/users/memberships" && request.method() === "GET") {
+      const targetOrganizationId = url.searchParams.get("organizationId") ?? "org-primary";
+      await fulfillJson(
+        route,
+        memberships.filter((membership) => membership.organizationId === targetOrganizationId)
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/users/memberships/by-email" && request.method() === "POST") {
+      const body = request.postDataJSON() as {
+        organizationId: string;
+        email: string;
+        role: string;
+      };
+      const createdMembership = {
+        id: `membership-${memberships.length + 1}`,
+        organizationId: body.organizationId,
+        user: {
+          id: `user-${memberships.length + 1}`,
+          email: body.email,
+          fullName: "New Workspace Member",
+          createdAt: "2026-04-24T13:00:00Z",
+        },
+        role: body.role,
+        createdAt: "2026-04-24T13:01:00Z",
+      };
+      memberships = [...memberships, createdMembership];
+      await fulfillJson(route, createdMembership);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/users/memberships/") && request.method() === "PATCH") {
+      const membershipId = url.pathname.split("/")[4];
+      const body = request.postDataJSON() as { role: string };
+      const index = memberships.findIndex((membership) => membership.id === membershipId);
+      memberships[index] = {
+        ...memberships[index],
+        role: body.role,
+      };
+      await fulfillJson(route, memberships[index]);
+      return;
+    }
+
     if (url.pathname === "/api/accounts" && request.method() === "GET") {
       await fulfillJson(route, financialAccounts);
       return;
@@ -854,6 +936,27 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
 
   await page.getByRole("button", { name: "Attention" }).click();
   await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();
+});
+
+test("access workspace lets operators review and update memberships", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/access");
+
+  await expect(page.getByRole("heading", { name: "Access", exact: true })).toBeVisible();
+  await expect(page.getByText("Ops Admin")).toBeVisible();
+  await expect(page.getByText("Staff Member")).toBeVisible();
+
+  await page.getByPlaceholder("teammate@company.com").fill("new.member@acme.test");
+  await page.locator("select").last().selectOption("ADMIN");
+  await page.getByRole("button", { name: "Grant access" }).click();
+  await expect(page.getByText("Workspace access updated successfully.")).toBeVisible();
+  await expect(page.getByText("new.member@acme.test")).toBeVisible();
+
+  const staffMemberCard = page.locator("div.rounded-lg").filter({
+    has: page.getByText("Staff Member"),
+  });
+  await staffMemberCard.locator("select").selectOption("ADMIN");
+  await expect(page.getByText("Member role updated successfully.")).toBeVisible();
 });
 
 test("review queue resolves a task from the UI", async ({ page }) => {

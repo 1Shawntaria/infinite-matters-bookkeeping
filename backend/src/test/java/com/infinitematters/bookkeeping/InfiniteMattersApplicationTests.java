@@ -36,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -258,6 +259,77 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", otherOrganizationId))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("User does not have access to organization " + otherOrganizationId));
+    }
+
+    @Test
+    void ownerCanListAndUpdateOrganizationMemberships() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "membership-owner-" + suffix + "@example.test";
+        String adminEmail = "membership-admin-" + suffix + "@example.test";
+        String memberEmail = "membership-member-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Membership Owner", password);
+        String adminUserId = createUser(adminEmail, "Membership Admin", password);
+        String memberUserId = createUser(memberEmail, "Membership Member", password);
+        String organizationId = createOrganization("Membership Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        addMembership(organizationId, adminUserId, ownerTokens.accessToken());
+
+        mockMvc.perform(post("/api/users/memberships/by-email")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organizationId": "%s",
+                                  "email": "%s",
+                                  "role": "MEMBER"
+                                }
+                                """.formatted(organizationId, memberEmail)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("MEMBER"));
+
+        MvcResult membershipsResult = mockMvc.perform(get("/api/users/memberships")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[*].user.email", hasItems(ownerEmail, adminEmail, memberEmail)))
+                .andReturn();
+
+        JsonNode memberships = objectMapper.readTree(membershipsResult.getResponse().getContentAsString());
+        String memberMembershipId = null;
+        for (JsonNode membership : memberships) {
+            if (memberEmail.equals(membership.path("user").path("email").asText())) {
+                memberMembershipId = membership.path("id").asText();
+                break;
+            }
+        }
+        assertThat(memberMembershipId).isNotNull();
+
+        mockMvc.perform(patch("/api/users/memberships/{membershipId}", memberMembershipId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "role": "ADMIN"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("ADMIN"))
+                .andExpect(jsonPath("$.user.email").value(memberEmail));
+
+        AuthTokens memberTokens = issueToken(memberEmail, password);
+        mockMvc.perform(get("/api/users/memberships")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(memberTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].user.email", hasItems(ownerEmail, adminEmail, memberEmail)));
     }
 
     @Test
