@@ -298,6 +298,18 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       active: true,
     },
   ];
+  const auditEvents = [
+    {
+      id: "audit-1",
+      organizationId: "org-primary",
+      actorUserId: "user-1",
+      eventType: "ORGANIZATION_MEMBER_ADDED",
+      entityType: "organization_membership",
+      entityId: "membership-1",
+      details: "Added teammate to the bookkeeping workspace.",
+      createdAt: "2026-04-24T12:05:00Z",
+    },
+  ];
 
   async function fulfillJson(
     route: Parameters<Parameters<typeof page.route>[1]>[0],
@@ -349,6 +361,11 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
 
     if (url.pathname === "/api/auth/activity" && request.method() === "GET") {
       await fulfillJson(route, authActivity);
+      return;
+    }
+
+    if (url.pathname === "/api/audit/events" && request.method() === "GET") {
+      await fulfillJson(route, auditEvents);
       return;
     }
 
@@ -564,6 +581,20 @@ test("workspace switching reloads dashboard data for the selected organization",
   await workspaceSelect.selectOption("org-secondary");
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("$8450.55")).toBeVisible();
+});
+
+test("activity page shows merged operational timeline and filter views", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/activity");
+
+  await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+  await expect(page.getByText("Auth Login Succeeded")).toBeVisible();
+  await expect(page.getByText("Organization Member Added").last()).toBeVisible();
+  await expect(page.getByText("Operating Checking: CLOUDCO")).toBeVisible();
+
+  await page.getByRole("button", { name: "Audit" }).click();
+  await expect(page.getByText("Organization Member Added").last()).toBeVisible();
+  await expect(page.getByText("Added teammate to the bookkeeping workspace.")).toBeVisible();
 });
 
 test("review queue resolves a task from the UI", async ({ page }) => {

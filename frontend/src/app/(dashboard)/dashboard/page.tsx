@@ -595,6 +595,14 @@ export default function DashboardPage() {
                     eyebrow="Recent activity"
                     title="What just happened in this workspace"
                     description="This timeline keeps imports, security events, and operational notifications visible together."
+                    actions={
+                        <Link
+                            href="/activity"
+                            className="inline-flex rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                        >
+                            Open full activity
+                        </Link>
+                    }
                 >
                     <div className="grid gap-4">
                         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
