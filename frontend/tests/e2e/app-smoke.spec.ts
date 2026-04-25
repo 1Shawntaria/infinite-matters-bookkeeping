@@ -306,6 +306,22 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       },
       acceptedByUser: null,
       inviteUrl: "http://localhost:3000/invite/token-existing",
+      delivery: {
+        notificationId: "notification-invite-1",
+        category: "WORKSPACE_ACCESS",
+        channel: "EMAIL",
+        status: "PENDING",
+        deliveryState: "PENDING",
+        attemptCount: 0,
+        lastError: null,
+        lastFailureCode: null,
+        providerName: null,
+        providerMessageId: null,
+        scheduledFor: "2026-04-24T12:40:00Z",
+        lastAttemptedAt: null,
+        sentAt: null,
+        createdAt: "2026-04-24T12:40:00Z",
+      },
     },
   ];
   let financialAccounts = [
@@ -374,6 +390,16 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
   ];
   const auditEvents = [
     {
+      id: "audit-0",
+      organizationId: "org-primary",
+      actorUserId: "user-1",
+      eventType: "ORGANIZATION_INVITATION_CREATED",
+      entityType: "organization_invitation",
+      entityId: "invite-pending-1",
+      details: "Invitation created for pending@acme.test as MEMBER.",
+      createdAt: "2026-04-24T12:15:00Z",
+    },
+    {
       id: "audit-1",
       organizationId: "org-primary",
       actorUserId: "user-1",
@@ -382,6 +408,16 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       entityId: "membership-1",
       details: "Added teammate to the bookkeeping workspace.",
       createdAt: "2026-04-24T12:05:00Z",
+    },
+    {
+      id: "audit-2",
+      organizationId: "org-primary",
+      actorUserId: "user-1",
+      eventType: "PERIOD_CLOSE_ATTEMPTED",
+      entityType: "accounting_period",
+      entityId: "2026-04",
+      details: "Close readiness reviewed for April 2026.",
+      createdAt: "2026-04-24T11:40:00Z",
     },
   ];
   const authNotifications = [
@@ -833,6 +869,22 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         },
         acceptedByUser: null,
         inviteUrl: `http://localhost:3000/invite/token-${invitations.length + 1}`,
+        delivery: {
+          notificationId: `notification-invite-${invitations.length + 1}`,
+          category: "WORKSPACE_ACCESS",
+          channel: "EMAIL",
+          status: "PENDING",
+          deliveryState: "PENDING",
+          attemptCount: 0,
+          lastError: null,
+          lastFailureCode: null,
+          providerName: null,
+          providerMessageId: null,
+          scheduledFor: "2026-04-24T13:20:00Z",
+          lastAttemptedAt: null,
+          sentAt: null,
+          createdAt: "2026-04-24T13:20:00Z",
+        },
       };
       invitations = [createdInvitation, ...invitations];
       await fulfillJson(route, createdInvitation);
@@ -1074,8 +1126,12 @@ test("activity page shows merged operational timeline and filter views", async (
   await expect(page.getByText("REVOKED", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Audit" }).click();
-  await expect(page.getByText("Organization Member Added").last()).toBeVisible();
-  await expect(page.getByText("Added teammate to the bookkeeping workspace.")).toBeVisible();
+  await expect(page.getByText("Period Close Attempted")).toBeVisible();
+  await expect(page.getByText("Close readiness reviewed for April 2026.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Access" }).click();
+  await expect(page.getByText("Organization Invitation Created").last()).toBeVisible();
+  await expect(page.getByText("Invitation created for pending@acme.test as MEMBER.")).toBeVisible();
 });
 
 test("notifications inbox merges auth and workflow delivery signals", async ({ page }) => {
@@ -1132,8 +1188,12 @@ test("access workspace lets operators review and update memberships", async ({ p
 
   await page.getByPlaceholder("new.hire@company.com").fill("invitee@acme.test");
   await page.getByRole("button", { name: "Create invite" }).click();
-  await expect(page.getByText("Invitation created successfully.")).toBeVisible();
+  await expect(page.getByText("Invitation created successfully and queued for delivery.")).toBeVisible();
   await expect(page.getByText("http://localhost:3000/invite/token-2")).toBeVisible();
+  const createdInviteCard = page.locator("div.rounded-lg").filter({
+    has: page.getByText("invitee@acme.test"),
+  });
+  await expect(createdInviteCard.getByText("Delivery queued")).toBeVisible();
 
   const pendingInviteCard = page.locator("div.rounded-lg").filter({
     has: page.getByText("pending@acme.test"),

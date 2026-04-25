@@ -5,6 +5,7 @@ import com.infinitematters.bookkeeping.users.OrganizationInvitationStatus;
 import com.infinitematters.bookkeeping.users.UserRole;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 public record OrganizationInvitationResponse(
@@ -20,12 +21,19 @@ public record OrganizationInvitationResponse(
         Instant createdAt,
         UserResponse invitedByUser,
         UserResponse acceptedByUser,
-        String inviteUrl) {
+        String inviteUrl,
+        InvitationDeliverySummary delivery) {
     public static OrganizationInvitationResponse from(OrganizationInvitation invitation) {
-        return from(invitation, null);
+        return from(invitation, null, null);
     }
 
     public static OrganizationInvitationResponse from(OrganizationInvitation invitation, String inviteUrl) {
+        return from(invitation, inviteUrl, null);
+    }
+
+    public static OrganizationInvitationResponse from(OrganizationInvitation invitation,
+                                                      String inviteUrl,
+                                                      InvitationDeliverySummary delivery) {
         return new OrganizationInvitationResponse(
                 invitation.getId(),
                 invitation.getOrganization().getId(),
@@ -39,6 +47,7 @@ public record OrganizationInvitationResponse(
                 invitation.getCreatedAt(),
                 invitation.getInvitedByUser() != null ? UserResponse.from(invitation.getInvitedByUser()) : null,
                 invitation.getAcceptedByUser() != null ? UserResponse.from(invitation.getAcceptedByUser()) : null,
-                inviteUrl);
+                inviteUrl,
+                delivery);
     }
 }

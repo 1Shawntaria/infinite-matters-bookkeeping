@@ -22,15 +22,18 @@ public class OrganizationInvitationService {
     private final OrganizationMembershipRepository membershipRepository;
     private final OrganizationService organizationService;
     private final UserService userService;
+    private final OrganizationInvitationDeliveryGateway invitationDeliveryGateway;
 
     public OrganizationInvitationService(OrganizationInvitationRepository invitationRepository,
                                          OrganizationMembershipRepository membershipRepository,
                                          OrganizationService organizationService,
-                                         UserService userService) {
+                                         UserService userService,
+                                         OrganizationInvitationDeliveryGateway invitationDeliveryGateway) {
         this.invitationRepository = invitationRepository;
         this.membershipRepository = membershipRepository;
         this.organizationService = organizationService;
         this.userService = userService;
+        this.invitationDeliveryGateway = invitationDeliveryGateway;
     }
 
     @Transactional
@@ -66,6 +69,7 @@ public class OrganizationInvitationService {
         invitation.setStatus(OrganizationInvitationStatus.PENDING);
         invitation.setExpiresAt(Instant.now().plus(INVITATION_TTL));
         invitation = invitationRepository.save(invitation);
+        invitationDeliveryGateway.sendInvitation(invitation, token);
         return new CreatedInvitation(invitation, token);
     }
 

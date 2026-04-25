@@ -15,7 +15,7 @@ import {
 import { AuditEventSummary, listAuditEvents } from "@/lib/api/audit";
 import { ImportedTransactionHistoryItem, listImportHistory } from "@/lib/api/imports";
 
-type TimelineFilter = "ALL" | "SECURITY" | "IMPORT" | "AUDIT";
+type TimelineFilter = "ALL" | "SECURITY" | "IMPORT" | "ACCESS" | "AUDIT";
 
 type TimelineEntry = {
     id: string;
@@ -62,9 +62,12 @@ function authEntry(item: AuthActivityItem): TimelineEntry {
 }
 
 function auditEntry(item: AuditEventSummary): TimelineEntry {
+    const accessEvent =
+        item.entityType === "organization_invitation" ||
+        item.entityType === "organization_membership";
     return {
         id: `audit-${item.id}`,
-        lane: "AUDIT",
+        lane: accessEvent ? "ACCESS" : "AUDIT",
         title: formatEventLabel(item.eventType),
         detail: item.details,
         timestamp: item.createdAt,
@@ -236,6 +239,11 @@ export default function ActivityPage() {
                     detail="Visible imported transactions in recent history."
                 />
                 <SummaryMetric
+                    label="Access events"
+                    value={`${(auditEventsQuery.data ?? []).filter((item) => item.entityType === "organization_invitation" || item.entityType === "organization_membership").length}`}
+                    detail="Invitations, membership changes, and workspace access actions."
+                />
+                <SummaryMetric
                     label="Most recent event"
                     value={allEntries[0] ? formatTimestamp(allEntries[0].timestamp) : "Quiet"}
                     detail={allEntries[0]?.title ?? "No recent activity yet."}
@@ -357,7 +365,7 @@ export default function ActivityPage() {
                 description="Use these filters to focus on security checks, imports, or organization changes without losing the full sequence."
                 actions={
                     <div className="flex flex-wrap gap-2">
-                        {(["ALL", "SECURITY", "IMPORT", "AUDIT"] as TimelineFilter[]).map((item) => (
+                        {(["ALL", "SECURITY", "IMPORT", "ACCESS", "AUDIT"] as TimelineFilter[]).map((item) => (
                             <button
                                 key={item}
                                 onClick={() => setFilter(item)}

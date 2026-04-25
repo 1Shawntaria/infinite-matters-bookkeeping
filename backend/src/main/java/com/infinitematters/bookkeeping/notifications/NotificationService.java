@@ -75,6 +75,17 @@ public class NotificationService {
     }
 
     @Transactional(readOnly = true)
+    public java.util.Optional<NotificationSummary> latestForReference(UUID organizationId,
+                                                                      String referenceType,
+                                                                      String referenceId) {
+        organizationService.get(organizationId);
+        return notificationRepository
+                .findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                        organizationId, referenceType, referenceId)
+                .map(NotificationSummary::from);
+    }
+
+    @Transactional(readOnly = true)
     public Notification requireNotification(UUID notificationId) {
         return notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown notification: " + notificationId));
@@ -394,6 +405,49 @@ public class NotificationService {
         notification = notificationRepository.save(notification);
         auditService.record(null,
                 channel == NotificationChannel.IN_APP ? "AUTH_NOTIFICATION_SENT" : "AUTH_NOTIFICATION_QUEUED",
+                "notification",
+                notification.getId().toString(),
+                message);
+        return NotificationSummary.from(notification);
+    }
+
+    @Transactional
+    public NotificationSummary sendOrganizationNotification(UUID organizationId,
+                                                            String recipientEmail,
+                                                            NotificationCategory category,
+                                                            NotificationChannel channel,
+                                                            String message,
+                                                            String referenceType,
+                                                            String referenceId) {
+        Notification notification = new Notification();
+        notification.setOrganization(organizationService.get(organizationId));
+        notification.setUser(userService.findByEmail(recipientEmail).orElse(null));
+        notification.setCategory(category);
+        notification.setChannel(channel);
+        notification.setStatus(channel == NotificationChannel.IN_APP ? NotificationStatus.SENT : NotificationStatus.PENDING);
+        notification.setDeliveryState(channel == NotificationChannel.IN_APP
+                ? NotificationDeliveryState.DELIVERED
+                : NotificationDeliveryState.PENDING);
+        notification.setMessage(message);
+        notification.setReferenceType(referenceType);
+        notification.setReferenceId(referenceId);
+        notification.setRecipientEmail(recipientEmail);
+        notification.setScheduledFor(Instant.now());
+        notification.setAttemptCount(0);
+        notification.setLastFailureCode(null);
+        notification.setDeadLetterResolutionStatus(null);
+        notification.setDeadLetterResolutionReasonCode(null);
+        notification.setDeadLetterResolutionNote(null);
+        notification.setDeadLetterResolvedAt(null);
+        notification.setDeadLetterResolvedByUser(null);
+        if (channel == NotificationChannel.IN_APP) {
+            notification.setSentAt(Instant.now());
+        }
+        notification = notificationRepository.save(notification);
+        auditService.record(organizationId,
+                channel == NotificationChannel.IN_APP
+                        ? "WORKSPACE_NOTIFICATION_SENT"
+                        : "WORKSPACE_NOTIFICATION_QUEUED",
                 "notification",
                 notification.getId().toString(),
                 message);

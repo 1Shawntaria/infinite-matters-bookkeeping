@@ -37,6 +37,22 @@ export type OrganizationInvitation = {
         createdAt: string;
     } | null;
     inviteUrl: string | null;
+    delivery: {
+        notificationId: string;
+        category: string;
+        channel: string;
+        status: string;
+        deliveryState: string;
+        attemptCount: number;
+        lastError: string | null;
+        lastFailureCode: string | null;
+        providerName: string | null;
+        providerMessageId: string | null;
+        scheduledFor: string | null;
+        lastAttemptedAt: string | null;
+        sentAt: string | null;
+        createdAt: string;
+    } | null;
 };
 
 export async function listMemberships(organizationId: string): Promise<MembershipDetail[]> {

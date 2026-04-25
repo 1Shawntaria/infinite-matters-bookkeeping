@@ -411,6 +411,8 @@ class InfiniteMattersApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.inviteUrl").isNotEmpty())
+                .andExpect(jsonPath("$.delivery.status").value("PENDING"))
+                .andExpect(jsonPath("$.delivery.channel").value("EMAIL"))
                 .andReturn();
 
         String invitationId = objectMapper.readTree(invitationResult.getResponse().getContentAsString())
@@ -423,7 +425,8 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].status").value("PENDING"));
+                .andExpect(jsonPath("$[0].status").value("PENDING"))
+                .andExpect(jsonPath("$[0].delivery.status").value("PENDING"));
 
         mockMvc.perform(delete("/api/users/invitations/{invitationId}", invitationId)
                         .header(ORG_HEADER, organizationId)

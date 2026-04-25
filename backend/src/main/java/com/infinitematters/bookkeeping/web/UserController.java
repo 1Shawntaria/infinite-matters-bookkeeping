@@ -1,6 +1,7 @@
 package com.infinitematters.bookkeeping.web;
 
 import com.infinitematters.bookkeeping.audit.AuditService;
+import com.infinitematters.bookkeeping.notifications.NotificationService;
 import com.infinitematters.bookkeeping.security.RequestIdentityService;
 import com.infinitematters.bookkeeping.security.TenantAccessService;
 import com.infinitematters.bookkeeping.users.OrganizationInvitationService;
@@ -40,6 +41,7 @@ public class UserController {
     private final RequestIdentityService requestIdentityService;
     private final AuditService auditService;
     private final OrganizationInvitationService invitationService;
+    private final NotificationService notificationService;
     private final String frontendBaseUrl;
 
     public UserController(UserService userService,
@@ -47,12 +49,14 @@ public class UserController {
                           RequestIdentityService requestIdentityService,
                           AuditService auditService,
                           OrganizationInvitationService invitationService,
+                          NotificationService notificationService,
                           @Value("${bookkeeping.frontend.base-url:http://localhost:3000}") String frontendBaseUrl) {
         this.userService = userService;
         this.tenantAccessService = tenantAccessService;
         this.requestIdentityService = requestIdentityService;
         this.auditService = auditService;
         this.invitationService = invitationService;
+        this.notificationService = notificationService;
         this.frontendBaseUrl = frontendBaseUrl;
     }
 
@@ -114,14 +118,19 @@ public class UserController {
                 "Invitation created by user " + actorUserId + " for " + request.email() + " as " + request.role());
         return OrganizationInvitationResponse.from(
                 createdInvitation.invitation(),
-                inviteUrl(createdInvitation.rawToken()));
+                inviteUrl(createdInvitation.rawToken()),
+                latestDelivery(createdInvitation.invitation().getOrganization().getId(),
+                        createdInvitation.invitation().getId()));
     }
 
     @GetMapping("/invitations")
     public List<OrganizationInvitationResponse> listInvitations(@RequestParam UUID organizationId) {
         tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
         return invitationService.invitationsForOrganization(organizationId).stream()
-                .map(OrganizationInvitationResponse::from)
+                .map(invitation -> OrganizationInvitationResponse.from(
+                        invitation,
+                        null,
+                        latestDelivery(organizationId, invitation.getId())))
                 .toList();
     }
 
@@ -166,7 +175,9 @@ public class UserController {
                                                            @PathVariable UUID invitationId) {
         UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
         OrganizationInvitationResponse response = OrganizationInvitationResponse.from(
-                invitationService.revokeInvitation(organizationId, invitationId));
+                invitationService.revokeInvitation(organizationId, invitationId),
+                null,
+                latestDelivery(organizationId, invitationId));
         auditService.record(organizationId, "ORGANIZATION_INVITATION_REVOKED",
                 "organization_invitation", response.id().toString(),
                 "Invitation revoked by user " + actorUserId + " for " + response.email());
@@ -184,5 +195,13 @@ public class UserController {
 
     private String inviteUrl(String token) {
         return frontendBaseUrl.replaceAll("/+$", "") + "/invite/" + token;
+    }
+
+    private com.infinitematters.bookkeeping.web.dto.InvitationDeliverySummary latestDelivery(UUID organizationId,
+                                                                                              UUID invitationId) {
+        return notificationService
+                .latestForReference(organizationId, "organization_invitation", invitationId.toString())
+                .map(com.infinitematters.bookkeeping.web.dto.InvitationDeliverySummary::from)
+                .orElse(null);
     }
 }

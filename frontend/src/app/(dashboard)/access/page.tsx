@@ -33,6 +33,22 @@ function formatTimestamp(value: string) {
     });
 }
 
+function formatDeliveryState(invitation: OrganizationInvitation) {
+    if (!invitation.delivery) {
+        return "No delivery event";
+    }
+    if (invitation.delivery.status === "FAILED") {
+        return "Delivery failed";
+    }
+    if (invitation.delivery.sentAt) {
+        return "Email accepted";
+    }
+    if (invitation.delivery.status === "PENDING") {
+        return "Delivery queued";
+    }
+    return invitation.delivery.deliveryState.replaceAll("_", " ");
+}
+
 export default function AccessPage() {
     const { organizationId, hydrated } = useOrganizationSession();
     const queryClient = useQueryClient();
@@ -136,7 +152,7 @@ export default function AccessPage() {
             await refreshInvitations();
             setInvitationEmail("");
             setInvitationRole("MEMBER");
-            setBannerMessage("Invitation created successfully.");
+            setBannerMessage("Invitation created successfully and queued for delivery.");
             setInviteLink(invitation.inviteUrl ?? "");
         } catch (error) {
             setBannerError(error instanceof Error ? error.message : "Unable to create that invitation.");
@@ -423,6 +439,19 @@ export default function AccessPage() {
                                                     <p className="text-xs text-zinc-500">
                                                         Expires {formatTimestamp(invitation.expiresAt)}
                                                     </p>
+                                                    <p className="text-xs text-zinc-500">
+                                                        {formatDeliveryState(invitation)}
+                                                        {invitation.delivery?.sentAt
+                                                            ? ` · ${formatTimestamp(invitation.delivery.sentAt)}`
+                                                            : invitation.delivery?.scheduledFor
+                                                              ? ` · queued ${formatTimestamp(invitation.delivery.scheduledFor)}`
+                                                              : ""}
+                                                    </p>
+                                                    {invitation.delivery?.lastError ? (
+                                                        <p className="text-xs text-amber-200">
+                                                            {invitation.delivery.lastError}
+                                                        </p>
+                                                    ) : null}
                                                 </div>
 
                                                 {pending ? (
