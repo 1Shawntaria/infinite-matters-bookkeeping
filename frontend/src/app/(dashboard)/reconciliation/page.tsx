@@ -12,6 +12,7 @@ import {
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     LoadingPanel,
+    NextStepsList,
     PageHero,
     SectionBand,
     StatusBanner,
@@ -185,11 +186,21 @@ export default function ReconciliationPage() {
             >
                 <div className="mt-4 space-y-4">
                     {unreconciledAccounts.length === 0 ? (
-                        <StatusBanner
-                            tone="success"
-                            title="No unreconciled accounts remaining"
-                            message="The close workflow is clear on account-level balance checks for this period."
-                        />
+                        <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                            <StatusBanner
+                                tone="success"
+                                title="No unreconciled accounts remaining"
+                                message="The close workflow is clear on account-level balance checks for this period."
+                            />
+                            <NextStepsList
+                                title="What to do next"
+                                items={[
+                                    "Move to the period-close workflow if the rest of your checklist is already clear.",
+                                    "Import any late-arriving transactions before you finalize the period.",
+                                    "Use the dashboard to confirm workflow pressure stays low while close is underway.",
+                                ]}
+                            />
+                        </div>
                     ) : (
                         unreconciledAccounts.map((account) => (
                             <div

@@ -11,7 +11,9 @@ import { mapBackendActionPathToFrontend } from "@/lib/navigation";
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     LoadingPanel,
+    NextStepsList,
     PageHero,
+    ProgressMeter,
     SectionBand,
     StatusBanner,
     SummaryMetric,
@@ -38,6 +40,25 @@ export default function DashboardPage() {
     const expenseCategories = Array.isArray(data?.expenseCategories)
         ? data.expenseCategories
         : [];
+    const workflowCounts = data?.workflowInbox ?? {
+        openCount: 0,
+        overdueCount: 0,
+        dueTodayCount: 0,
+        highPriorityCount: 0,
+        unassignedCount: 0,
+        assignedToCurrentUserCount: 0,
+    };
+    const reviewTaskPressure = workflowCounts.openCount + (data?.period?.unreconciledAccountCount ?? 0);
+    const closeCompletionDenominator = Math.max(
+        1,
+        (data?.period?.unreconciledAccountCount ?? 0) + 1
+    );
+    const closeCompletionValue = data?.period?.closeReady ? closeCompletionDenominator : 1;
+    const lowDataWorkspace =
+        (data?.postedTransactionCount ?? 0) === 0 &&
+        workflowCounts.openCount === 0 &&
+        (data?.period?.unreconciledAccountCount ?? 0) === 0 &&
+        expenseCategories.length === 0;
 
     if (!hydrated || loading) {
         return (
@@ -124,6 +145,30 @@ export default function DashboardPage() {
                 />
             </div>
 
+            {lowDataWorkspace ? (
+                <SectionBand
+                    eyebrow="Getting started"
+                    title="This workspace is ready for its first operating cycle"
+                    description="A quiet workspace is normal at the beginning. The fastest path is to bring in transactions, clear any review work, and then close out reconciliations."
+                >
+                    <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                        <NextStepsList
+                            title="Suggested first run"
+                            items={[
+                                "Import a recent bank or card statement so the dashboard can start tracking transaction volume and category trends.",
+                                "Resolve any review-queue items created by ambiguous merchants before you move into reconciliation.",
+                                "Start reconciliation once balances are available so period close stays grounded in the real statement data.",
+                            ]}
+                        />
+                        <StatusBanner
+                            tone="muted"
+                            title="What will appear next"
+                            message="As activity lands, this dashboard will light up with category movement, workflow pressure, and close-readiness signals."
+                        />
+                    </div>
+                </SectionBand>
+            ) : null}
+
             {data?.primaryAction ? (
                 <SectionBand
                     eyebrow="Recommended next step"
@@ -148,6 +193,75 @@ export default function DashboardPage() {
                     </div>
                 </SectionBand>
             ) : null}
+
+            <SectionBand
+                eyebrow="Operational pulse"
+                title="How the workspace is trending"
+                description="Use these lightweight signals to decide whether to focus on queue cleanup, reconciliation, or simply keeping imports moving."
+            >
+                <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+                    <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                        <ProgressMeter
+                            label="Close readiness"
+                            value={closeCompletionValue}
+                            total={closeCompletionDenominator}
+                            tone={data?.period?.closeReady ? "success" : "warning"}
+                        />
+                        <ProgressMeter
+                            label="High-priority workflow pressure"
+                            value={workflowCounts.highPriorityCount}
+                            total={Math.max(1, workflowCounts.openCount)}
+                            tone={workflowCounts.highPriorityCount > 0 ? "warning" : "success"}
+                        />
+                        <ProgressMeter
+                            label="Assigned vs. unassigned work"
+                            value={workflowCounts.assignedToCurrentUserCount}
+                            total={Math.max(1, workflowCounts.assignedToCurrentUserCount + workflowCounts.unassignedCount)}
+                            tone={workflowCounts.unassignedCount > 0 ? "warning" : "success"}
+                        />
+                    </div>
+
+                    <div className="grid gap-3">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                Workflow lane
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-white">
+                                {workflowCounts.openCount > 0 ? "Review Queue" : "Clean"}
+                            </p>
+                            <p className="mt-2 text-sm text-zinc-400">
+                                {workflowCounts.openCount > 0
+                                    ? `${workflowCounts.openCount} task(s) are open, with ${workflowCounts.overdueCount} overdue and ${workflowCounts.dueTodayCount} due today.`
+                                    : "No open review or workflow pressure is currently visible."}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                Close lane
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-white">
+                                {data?.period?.closeReady ? "Ready to close" : "Needs reconciliation work"}
+                            </p>
+                            <p className="mt-2 text-sm text-zinc-400">
+                                {data?.period?.closeReady
+                                    ? "Reconciliations are no longer blocking this period."
+                                    : `${data?.period?.unreconciledAccountCount ?? 0} account(s) still need attention before close can move forward.`}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                Attention score
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-white">
+                                {reviewTaskPressure === 0 ? "Low" : reviewTaskPressure <= 2 ? "Moderate" : "High"}
+                            </p>
+                            <p className="mt-2 text-sm text-zinc-400">
+                                This combines workflow pressure and unreconciled accounts into a simple operating signal.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </SectionBand>
 
             {expenseCategories.length > 0 ? (
                 <SectionBand

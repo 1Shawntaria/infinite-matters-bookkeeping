@@ -134,6 +134,68 @@ export function StatusBanner({ tone, title, message }: StatusBannerProps) {
     );
 }
 
+export function ProgressMeter({
+    label,
+    value,
+    total,
+    tone = "default",
+}: {
+    label: string;
+    value: number;
+    total: number;
+    tone?: "default" | "success" | "warning";
+}) {
+    const safeTotal = total <= 0 ? 1 : total;
+    const percentage = Math.max(0, Math.min(100, (value / safeTotal) * 100));
+    const barTone =
+        tone === "success"
+            ? "bg-emerald-300"
+            : tone === "warning"
+              ? "bg-amber-300"
+              : "bg-white";
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-zinc-300">{label}</span>
+                <span className="text-zinc-500">
+                    {value}/{total}
+                </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                    className={["h-full rounded-full", barTone].join(" ")}
+                    style={{ width: `${percentage}%` }}
+                />
+            </div>
+        </div>
+    );
+}
+
+export function NextStepsList({
+    title,
+    items,
+}: {
+    title: string;
+    items: string[];
+}) {
+    return (
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+            <h3 className="text-sm font-semibold text-white">{title}</h3>
+            <div className="mt-3 space-y-3">
+                {items.map((item, index) => (
+                    <div key={item} className="flex gap-3">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-xs text-zinc-300">
+                            {index + 1}
+                        </span>
+                        <p className="pt-0.5 text-sm text-zinc-400">{item}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export function LoadingPanel({
     title,
     message,

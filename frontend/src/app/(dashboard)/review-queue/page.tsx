@@ -6,6 +6,7 @@ import { getReviewTasks, resolveReviewTask, ReviewTask } from "@/lib/api/reviews
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     LoadingPanel,
+    NextStepsList,
     PageHero,
     SectionBand,
     StatusBanner,
@@ -165,17 +166,20 @@ export default function ReviewQueuePage() {
                     title="No review tasks remaining"
                     description="Your current queue is clear. New ambiguous imports will appear here automatically."
                 >
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                         <SummaryMetric
                             label="Open items"
                             value="0"
                             detail="Nothing is currently waiting on manual categorization."
                             tone="success"
                         />
-                        <SummaryMetric
-                            label="Next focus"
-                            value="Keep imports moving"
-                            detail="The fastest win now is importing the next batch or moving to reconciliation."
+                        <NextStepsList
+                            title="Good next moves"
+                            items={[
+                                "Import the next statement or transaction batch to keep categorization momentum going.",
+                                "Check reconciliation for any accounts that still need statement balances or session work.",
+                                "Use the dashboard to confirm workflow pressure stays low as new activity arrives.",
+                            ]}
                         />
                     </div>
                 </SectionBand>
