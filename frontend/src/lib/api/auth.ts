@@ -50,6 +50,34 @@ export type AuthActivityItem = {
     createdAt: string;
 };
 
+export type NotificationSummaryItem = {
+    id: string;
+    workflowTaskId: string | null;
+    userId: string | null;
+    category: string;
+    channel: string;
+    status: string;
+    deliveryState: string;
+    message: string;
+    referenceType: string | null;
+    referenceId: string | null;
+    recipientEmail: string | null;
+    providerName: string | null;
+    providerMessageId: string | null;
+    attemptCount: number;
+    lastError: string | null;
+    lastFailureCode: string | null;
+    deadLetterResolutionStatus: string | null;
+    deadLetterResolutionReasonCode: string | null;
+    deadLetterResolutionNote: string | null;
+    deadLetterResolvedAt: string | null;
+    deadLetterResolvedByUserId: string | null;
+    scheduledFor: string | null;
+    lastAttemptedAt: string | null;
+    sentAt: string | null;
+    createdAt: string;
+};
+
 export async function login(payload: LoginRequest): Promise<LoginResponse> {
     return apiFetch<LoginResponse>("/api/auth/token", {
         method: "POST",
@@ -98,6 +126,13 @@ export async function revokeAuthSession(sessionId: string, reason: string): Prom
 
 export async function listAuthActivity(): Promise<AuthActivityItem[]> {
     return apiFetch<AuthActivityItem[]>("/api/auth/activity", {
+        method: "GET",
+        includeOrganizationId: false,
+    });
+}
+
+export async function listAuthNotifications(): Promise<NotificationSummaryItem[]> {
+    return apiFetch<NotificationSummaryItem[]>("/api/auth/notifications", {
         method: "GET",
         includeOrganizationId: false,
     });

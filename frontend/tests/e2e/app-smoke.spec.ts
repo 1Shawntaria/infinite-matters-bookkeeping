@@ -321,6 +321,91 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       createdAt: "2026-04-24T12:05:00Z",
     },
   ];
+  const authNotifications = [
+    {
+      id: "auth-notification-1",
+      workflowTaskId: null,
+      userId: "user-1",
+      category: "AUTH_SECURITY",
+      channel: "EMAIL",
+      status: "SENT",
+      deliveryState: "DELIVERED",
+      message: "Your password was changed successfully.",
+      referenceType: "app_user",
+      referenceId: "user-1",
+      recipientEmail: "owner@acme.test",
+      providerName: "sendgrid",
+      providerMessageId: "provider-auth-1",
+      attemptCount: 1,
+      lastError: null,
+      lastFailureCode: null,
+      deadLetterResolutionStatus: null,
+      deadLetterResolutionReasonCode: null,
+      deadLetterResolutionNote: null,
+      deadLetterResolvedAt: null,
+      deadLetterResolvedByUserId: null,
+      scheduledFor: "2026-04-24T12:01:00Z",
+      lastAttemptedAt: "2026-04-24T12:01:10Z",
+      sentAt: "2026-04-24T12:01:12Z",
+      createdAt: "2026-04-24T12:01:00Z",
+    },
+  ];
+  const workflowNotifications = [
+    {
+      id: "workflow-notification-1",
+      workflowTaskId: "task-1",
+      userId: null,
+      category: "WORKFLOW_TASK",
+      channel: "EMAIL",
+      status: "FAILED",
+      deliveryState: "FAILED",
+      message: "Review queue escalation could not be delivered.",
+      referenceType: "workflow_task",
+      referenceId: "task-1",
+      recipientEmail: "ops@acme.test",
+      providerName: "sendgrid",
+      providerMessageId: "provider-workflow-1",
+      attemptCount: 3,
+      lastError: "Mailbox unavailable",
+      lastFailureCode: "550",
+      deadLetterResolutionStatus: null,
+      deadLetterResolutionReasonCode: null,
+      deadLetterResolutionNote: null,
+      deadLetterResolvedAt: null,
+      deadLetterResolvedByUserId: null,
+      scheduledFor: "2026-04-24T12:02:00Z",
+      lastAttemptedAt: "2026-04-24T12:03:10Z",
+      sentAt: null,
+      createdAt: "2026-04-24T12:02:00Z",
+    },
+    {
+      id: "workflow-notification-2",
+      workflowTaskId: "task-2",
+      userId: null,
+      category: "WORKFLOW_TASK",
+      channel: "EMAIL",
+      status: "SENT",
+      deliveryState: "DELIVERED",
+      message: "Monthly close reminder delivered successfully.",
+      referenceType: "workflow_task",
+      referenceId: "task-2",
+      recipientEmail: "owner@acme.test",
+      providerName: "sendgrid",
+      providerMessageId: "provider-workflow-2",
+      attemptCount: 1,
+      lastError: null,
+      lastFailureCode: null,
+      deadLetterResolutionStatus: null,
+      deadLetterResolutionReasonCode: null,
+      deadLetterResolutionNote: null,
+      deadLetterResolvedAt: null,
+      deadLetterResolvedByUserId: null,
+      scheduledFor: "2026-04-24T12:04:00Z",
+      lastAttemptedAt: "2026-04-24T12:04:10Z",
+      sentAt: "2026-04-24T12:04:12Z",
+      createdAt: "2026-04-24T12:04:00Z",
+    },
+  ];
 
   async function fulfillJson(
     route: Parameters<Parameters<typeof page.route>[1]>[0],
@@ -395,8 +480,23 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/auth/notifications" && request.method() === "GET") {
+      await fulfillJson(route, authNotifications);
+      return;
+    }
+
     if (url.pathname === "/api/audit/events" && request.method() === "GET") {
       await fulfillJson(route, auditEvents);
+      return;
+    }
+
+    if (url.pathname === "/api/workflows/notifications" && request.method() === "GET") {
+      await fulfillJson(route, workflowNotifications);
+      return;
+    }
+
+    if (url.pathname === "/api/workflows/notifications/attention" && request.method() === "GET") {
+      await fulfillJson(route, [workflowNotifications[0]]);
       return;
     }
 
@@ -630,6 +730,23 @@ test("activity page shows merged operational timeline and filter views", async (
   await page.getByRole("button", { name: "Audit" }).click();
   await expect(page.getByText("Organization Member Added").last()).toBeVisible();
   await expect(page.getByText("Added teammate to the bookkeeping workspace.")).toBeVisible();
+});
+
+test("notifications inbox merges auth and workflow delivery signals", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/notifications");
+
+  await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
+  await expect(page.getByText("Your password was changed successfully.")).toBeVisible();
+  await expect(page.getByText("Review queue escalation could not be delivered.")).toBeVisible();
+  await expect(page.getByText("Mailbox unavailable")).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "Attention" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Auth" }).click();
+  await expect(page.getByText("Your password was changed successfully.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Attention" }).click();
+  await expect(page.getByText("Review queue escalation could not be delivered.")).toBeVisible();
 });
 
 test("review queue resolves a task from the UI", async ({ page }) => {
