@@ -4,6 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { getReviewTasks, resolveReviewTask, ReviewTask } from "@/lib/api/reviews";
 import { useOrganizationSession } from "@/lib/auth/session";
+import {
+    LoadingPanel,
+    PageHero,
+    SectionBand,
+    StatusBanner,
+    SummaryMetric,
+} from "@/components/app-surfaces";
 
 const CATEGORY_OPTIONS = [
     "SOFTWARE",
@@ -40,6 +47,7 @@ export default function ReviewQueuePage() {
     const tasks = (reviewTasksQuery.data ?? []).filter((task) => !dismissedTaskIds.includes(task.taskId));
     const loading = hydrated && organizationId ? reviewTasksQuery.isLoading : false;
     const queryError = reviewTasksQuery.error?.message ?? "";
+    const highPriorityCount = tasks.filter((task) => task.priority === "HIGH").length;
 
     function handleCategoryChange(taskId: string, category: string) {
         setSelectedCategories((prev) => ({
@@ -85,71 +93,103 @@ export default function ReviewQueuePage() {
     }
 
     if (!hydrated || loading) {
-        return <main className="p-6">Loading review queue...</main>;
+        return (
+            <LoadingPanel
+                title="Loading review queue."
+                message="Gathering transactions that still need a human decision."
+            />
+        );
     }
 
     if (!organizationId) {
         return (
-            <main className="p-6">
-                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    No organization ID found. Please sign in again.
-                </div>
+            <main className="p-4 sm:p-6 lg:p-8">
+                <StatusBanner
+                    tone="error"
+                    title="Review queue unavailable"
+                    message="No organization ID found. Please sign in again."
+                />
             </main>
         );
     }
 
     return (
         <main className="space-y-8 p-4 sm:p-6 lg:p-8">
-            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
-                            Workflow attention
-                        </p>
-                        <h1 className="mt-2 text-3xl font-semibold text-white">Review Queue</h1>
-                        <p className="mt-2 text-sm text-zinc-400">
-                            Review transactions that need human confirmation before the books are finalized.
-                        </p>
+            <PageHero
+                eyebrow="Workflow attention"
+                title="Review Queue"
+                description="Confirm ambiguous transactions quickly so period close stays smooth and the books stay trustworthy."
+                aside={
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                        <SummaryMetric
+                            label="Open items"
+                            value={`${tasks.length}`}
+                            detail="Transactions still waiting on a final category."
+                            tone={tasks.length === 0 ? "success" : "warning"}
+                        />
+                        <SummaryMetric
+                            label="High priority"
+                            value={`${highPriorityCount}`}
+                            detail="Start with the highest-risk categorization decisions."
+                            tone={highPriorityCount > 0 ? "warning" : "default"}
+                        />
                     </div>
-
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                            Open items
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-white">{tasks.length}</p>
-                    </div>
-                </div>
-            </div>
+                }
+            />
 
             {error ? (
-                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {error}
-                </div>
+                <StatusBanner
+                    tone="error"
+                    title="Unable to resolve task"
+                    message={error}
+                />
             ) : queryError ? (
-                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {queryError}
-                </div>
+                <StatusBanner
+                    tone="error"
+                    title="Review queue unavailable"
+                    message={queryError}
+                />
             ) : null}
 
             {successMessage ? (
-                <div className="rounded-md border border-green-200 bg-green-50 p-4 text-green-700">
-                    {successMessage}
-                </div>
+                <StatusBanner
+                    tone="success"
+                    title="Task resolved"
+                    message={successMessage}
+                />
             ) : null}
 
             {tasks.length === 0 ? (
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
-                    <p className="text-white">No review tasks remaining.</p>
-                    <p className="mt-2 text-sm text-zinc-400">
-                        Your current review queue is clear.
-                    </p>
-                </div>
+                <SectionBand
+                    eyebrow="Queue status"
+                    title="No review tasks remaining"
+                    description="Your current queue is clear. New ambiguous imports will appear here automatically."
+                >
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <SummaryMetric
+                            label="Open items"
+                            value="0"
+                            detail="Nothing is currently waiting on manual categorization."
+                            tone="success"
+                        />
+                        <SummaryMetric
+                            label="Next focus"
+                            value="Keep imports moving"
+                            detail="The fastest win now is importing the next batch or moving to reconciliation."
+                        />
+                    </div>
+                </SectionBand>
             ) : (
+                <SectionBand
+                    eyebrow="Open tasks"
+                    title="Transactions that need a decision"
+                    description="Resolve these in order of urgency so downstream close and reconciliation work has clean inputs."
+                >
                 <div className="space-y-4">
                     {tasks.map((task) => (
                         <div
                             key={task.taskId}
-                            className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur"
+                            className="rounded-lg border border-white/10 bg-white/[0.03] p-5"
                         >
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                 <div className="space-y-2">
@@ -157,11 +197,11 @@ export default function ReviewQueuePage() {
                                         <h2 className="text-lg font-semibold text-white">
                                             {task.merchant}
                                         </h2>
-                                        <span className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+                                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-zinc-200">
                       {task.priority}
                     </span>
                                         {task.route ? (
-                                            <span className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+                                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-zinc-300">
                         {task.route}
                       </span>
                                         ) : null}
@@ -213,7 +253,7 @@ export default function ReviewQueuePage() {
                                     <button
                                         onClick={() => handleResolve(task.taskId)}
                                         disabled={resolvingTaskId === task.taskId}
-                                        className="rounded-md bg-white px-4 py-2 text-black disabled:opacity-50"
+                                        className="rounded-md bg-emerald-300 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
                                     >
                                         {resolvingTaskId === task.taskId
                                             ? "Resolving..."
@@ -224,6 +264,7 @@ export default function ReviewQueuePage() {
                         </div>
                     ))}
                 </div>
+                </SectionBand>
             )}
         </main>
     );

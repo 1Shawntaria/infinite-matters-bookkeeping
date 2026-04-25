@@ -64,7 +64,7 @@ export function WorkspaceSwitcher() {
 
     if (error) {
         return (
-            <p className="mt-6 rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+            <p className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
                 Workspace unavailable.
             </p>
         );
@@ -72,7 +72,7 @@ export function WorkspaceSwitcher() {
 
     if (organizations.length === 0) {
         return (
-            <div className="mt-6 space-y-2">
+            <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
                     Workspace
                 </p>
@@ -84,7 +84,7 @@ export function WorkspaceSwitcher() {
     }
 
     return (
-        <label className="mt-6 block space-y-2">
+        <label className="block space-y-2">
             <span className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
                 Workspace
             </span>

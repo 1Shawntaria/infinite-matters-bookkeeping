@@ -10,7 +10,7 @@ export default function DashboardLayout({
 }) {
     return (
         <div className="min-h-screen bg-[linear-gradient(180deg,#101312_0%,#070808_100%)] text-white">
-            <div className="border-b border-zinc-900/80 bg-black/60 backdrop-blur lg:hidden">
+            <div className="border-b border-white/10 bg-black/55 backdrop-blur lg:hidden">
                 <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4">
                     <div className="flex items-center justify-between gap-4">
                         <div>
@@ -30,7 +30,7 @@ export default function DashboardLayout({
             </div>
 
             <div className="mx-auto flex min-h-screen max-w-7xl">
-                <aside className="hidden w-72 border-r border-zinc-900/80 bg-black/50 px-6 py-8 backdrop-blur lg:flex lg:flex-col">
+                <aside className="hidden w-72 border-r border-white/10 bg-black/45 px-6 py-8 backdrop-blur lg:flex lg:flex-col">
                     <Link href="/dashboard" className="space-y-2">
                         <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
                             Infinite Matters
@@ -43,8 +43,10 @@ export default function DashboardLayout({
                         </p>
                     </Link>
 
-                    <WorkspaceSwitcher />
-                    <div className="mt-6">
+                    <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                        <WorkspaceSwitcher />
+                    </div>
+                    <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.03] p-3">
                         <DashboardNav />
                     </div>
 

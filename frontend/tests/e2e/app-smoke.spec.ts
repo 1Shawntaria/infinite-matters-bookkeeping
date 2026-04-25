@@ -352,7 +352,7 @@ test("review queue resolves a task from the UI", async ({ page }) => {
   await page.getByRole("button", { name: "Resolve Task" }).click();
 
   await expect(page.getByText("Task resolved successfully.")).toBeVisible();
-  await expect(page.getByText("No review tasks remaining.")).toBeVisible();
+  await expect(page.getByText("No review tasks remaining")).toBeVisible();
 });
 
 test("reconciliation flow starts from the account card and opens real account details", async ({ page }) => {

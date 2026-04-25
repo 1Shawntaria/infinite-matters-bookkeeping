@@ -10,6 +10,13 @@ import {
     ReconciliationDashboard,
 } from "@/lib/api/reconciliation";
 import { useOrganizationSession } from "@/lib/auth/session";
+import {
+    LoadingPanel,
+    PageHero,
+    SectionBand,
+    StatusBanner,
+    SummaryMetric,
+} from "@/components/app-surfaces";
 
 type BalanceInputs = Record<
     string,
@@ -88,15 +95,22 @@ export default function ReconciliationPage() {
     }
 
     if (!hydrated || loading) {
-        return <main className="p-6">Loading reconciliation workspace...</main>;
+        return (
+            <LoadingPanel
+                title="Loading reconciliation workspace."
+                message="Pulling account-level blockers and close readiness into one place."
+            />
+        );
     }
 
     if (!organizationId || error || queryError) {
         return (
-            <main className="p-6">
-                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {error || queryError || "No organization ID found. Please sign in again."}
-                </div>
+            <main className="p-4 sm:p-6 lg:p-8">
+                <StatusBanner
+                    tone="error"
+                    title="Reconciliation unavailable"
+                    message={error || queryError || "No organization ID found. Please sign in again."}
+                />
             </main>
         );
     }
@@ -105,101 +119,82 @@ export default function ReconciliationPage() {
 
     return (
         <main className="space-y-8 p-4 sm:p-6 lg:p-8">
-            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
-                            Period close readiness
-                        </p>
-                        <h1 className="mt-2 text-3xl font-semibold text-white">Reconciliation</h1>
-                        <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-                            Manage account-level balance checks and keep close blockers visible
-                            before they turn into period-end surprises.
-                        </p>
-                    </div>
-
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                            Focus Month
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-white">
-                            {data?.focusMonth ?? "-"}
-                        </p>
-                    </div>
-                </div>
-            </div>
+            <PageHero
+                eyebrow="Period close readiness"
+                title="Reconciliation"
+                description="Manage account-level balance checks and keep close blockers visible before they turn into period-end surprises."
+                aside={
+                    <SummaryMetric
+                        label="Focus Month"
+                        value={data?.focusMonth ?? "-"}
+                        detail="The current accounting period driving reconciliation work."
+                    />
+                }
+            />
 
             <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
-                    <p className="text-sm text-zinc-400">Focus Month</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
-                        {data?.focusMonth ?? "-"}
-                    </p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
-                    <p className="text-sm text-zinc-400">Unreconciled Accounts</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
-                        {data?.period?.unreconciledAccountCount ?? unreconciledAccounts.length}
-                    </p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
-                    <p className="text-sm text-zinc-400">Close Ready</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
-                        {data?.period?.closeReady ? "Yes" : "No"}
-                    </p>
-                </div>
+                <SummaryMetric
+                    label="Focus Month"
+                    value={data?.focusMonth ?? "-"}
+                    detail="The close period currently under review."
+                />
+                <SummaryMetric
+                    label="Unreconciled Accounts"
+                    value={`${data?.period?.unreconciledAccountCount ?? unreconciledAccounts.length}`}
+                    detail="Accounts still blocking a clean period close."
+                    tone={unreconciledAccounts.length > 0 ? "warning" : "success"}
+                />
+                <SummaryMetric
+                    label="Close Ready"
+                    value={data?.period?.closeReady ? "Yes" : "No"}
+                    detail={data?.period?.closeReady ? "No reconciliation blockers remain." : "At least one account still needs work."}
+                    tone={data?.period?.closeReady ? "success" : "warning"}
+                />
             </div>
 
-            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
-                <p className="text-sm text-zinc-400">Period Close Status</p>
-
-                <h2 className="mt-2 text-lg font-semibold text-white">
-                    {data?.period?.closeReady
+            <SectionBand
+                eyebrow="Period close status"
+                title={
+                    data?.period?.closeReady
                         ? "This period is ready to close"
-                        : "This period is not ready to close"}
-                </h2>
-
-                <p className="mt-2 text-sm text-zinc-300">
-                    {data?.period?.recommendedActionLabel ??
-                        "No recommended action is currently available."}
-                </p>
-
-                {data?.period?.recommendedActionUrgency ? (
-                    <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">
-                        Urgency: {data.period.recommendedActionUrgency}
-                    </p>
-                ) : null}
-
-                {!data?.period?.closeReady && unreconciledAccounts.length > 0 ? (
-                    <p className="mt-4 text-sm text-zinc-400">
-                        Start or resume reconciliation from the specific account card below so the
-                        statement balances stay attached to the correct account.
-                    </p>
-                ) : null}
-            </div>
-
-            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-sm text-zinc-400">Unreconciled Accounts</p>
-                        <h2 className="mt-1 text-xl font-semibold text-white">
-                            Accounts needing attention
-                        </h2>
-                    </div>
+                        : "This period is not ready to close"
+                }
+                description={
+                    data?.period?.recommendedActionLabel ??
+                    "No recommended action is currently available."
+                }
+            >
+                <div className="flex flex-wrap gap-3 text-sm">
+                    {data?.period?.recommendedActionUrgency ? (
+                        <span className="rounded-full border border-amber-400/30 bg-amber-300/10 px-3 py-1 text-amber-100">
+                            Urgency: {data.period.recommendedActionUrgency}
+                        </span>
+                    ) : null}
+                    {!data?.period?.closeReady && unreconciledAccounts.length > 0 ? (
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-zinc-300">
+                            Start or resume from the account cards below.
+                        </span>
+                    ) : null}
                 </div>
+            </SectionBand>
 
+            <SectionBand
+                eyebrow="Unreconciled accounts"
+                title="Accounts needing attention"
+                description="Keep statement balances tied to the right account and start work from the specific account that needs attention."
+            >
                 <div className="mt-4 space-y-4">
                     {unreconciledAccounts.length === 0 ? (
-                        <p className="text-sm text-green-400">
-                            No unreconciled accounts remaining.
-                        </p>
+                        <StatusBanner
+                            tone="success"
+                            title="No unreconciled accounts remaining"
+                            message="The close workflow is clear on account-level balance checks for this period."
+                        />
                     ) : (
                         unreconciledAccounts.map((account) => (
                             <div
                                 key={account.itemId}
-                                className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-5 transition hover:border-zinc-700"
+                                className="rounded-lg border border-white/10 bg-white/[0.03] p-5 transition hover:border-white/20"
                             >
                                 <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                                     <div className="space-y-2">
@@ -238,7 +233,7 @@ export default function ReconciliationPage() {
                                     <div className="flex min-w-[260px] flex-col gap-3">
                                         <Link
                                             href={account.actionPath}
-                                            className="rounded-md bg-red-500 px-4 py-2 text-center text-sm font-medium text-white hover:bg-red-600 transition"
+                                            className="rounded-md bg-red-500 px-4 py-2 text-center text-sm font-medium text-white hover:bg-red-600"
                                         >
                                             {account.sessionStarted ? "Resume Reconciliation" : "Review Account"}
                                         </Link>
@@ -296,7 +291,7 @@ export default function ReconciliationPage() {
                                                         )
                                                     }
                                                     disabled={startingAccountId === account.accountId}
-                                                    className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-900 transition disabled:opacity-50"
+                                                    className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
                                                 >
                                                     {startingAccountId === account.accountId
                                                         ? "Starting..."
@@ -310,22 +305,39 @@ export default function ReconciliationPage() {
                         ))
                     )}
                 </div>
-            </div>
+            </SectionBand>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-                <p className="text-sm text-zinc-400">Reconciliation Tasks</p>
-
-                {unreconciledAccounts.length === 0 ? (
-                    <p className="mt-2 text-sm text-green-400">
-                        All accounts are reconciled for this period.
-                    </p>
-                ) : (
-                    <p className="mt-2 text-sm text-zinc-300">
-                        You have {unreconciledAccounts.length} account(s)
-                        remaining to reconcile.
-                    </p>
-                )}
-            </div>
+            <SectionBand
+                eyebrow="Reconciliation progress"
+                title={
+                    unreconciledAccounts.length === 0
+                        ? "All accounts are reconciled for this period"
+                        : `${unreconciledAccounts.length} account(s) still need attention`
+                }
+                description={
+                    unreconciledAccounts.length === 0
+                        ? "This period is clear on balance checks and ready for the next close step."
+                        : "Work through the accounts above to clear the remaining blockers."
+                }
+            >
+                <div className="grid gap-4 md:grid-cols-2">
+                    <SummaryMetric
+                        label="Accounts remaining"
+                        value={`${unreconciledAccounts.length}`}
+                        detail="This count should trend to zero before close."
+                        tone={unreconciledAccounts.length === 0 ? "success" : "warning"}
+                    />
+                    <SummaryMetric
+                        label="Next move"
+                        value={
+                            unreconciledAccounts.length === 0
+                                ? "Move to close"
+                                : "Start the next account"
+                        }
+                        detail="The fastest path is always the next account card above."
+                    />
+                </div>
+            </SectionBand>
         </main>
     );
 }

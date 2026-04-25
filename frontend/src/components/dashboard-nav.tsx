@@ -34,10 +34,10 @@ export function DashboardNav({
                         key={item.href}
                         href={item.href}
                         className={[
-                            "rounded-md px-3 py-2 text-sm font-medium transition",
+                            "rounded-md px-3 py-2 text-sm font-medium",
                             active
-                                ? "bg-emerald-400 text-black"
-                                : "text-zinc-400 hover:bg-zinc-900 hover:text-white",
+                                ? "bg-emerald-300 text-black shadow-[0_10px_28px_rgba(110,231,183,0.18)]"
+                                : "text-zinc-400 hover:bg-white/[0.05] hover:text-white",
                         ].join(" ")}
                     >
                         {item.label}

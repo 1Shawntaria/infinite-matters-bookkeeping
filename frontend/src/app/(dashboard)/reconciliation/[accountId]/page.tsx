@@ -11,6 +11,13 @@ import {
     startReconciliation,
 } from "@/lib/api/reconciliation";
 import { useOrganizationSession } from "@/lib/auth/session";
+import {
+    LoadingPanel,
+    PageHero,
+    SectionBand,
+    StatusBanner,
+    SummaryMetric,
+} from "@/components/app-surfaces";
 
 type AccountReconciliationPageProps = {
     params: Promise<{
@@ -103,93 +110,87 @@ export default function AccountReconciliationPage({
     }
 
     if (!hydrated || loading) {
-        return <main className="p-6">Loading reconciliation account...</main>;
+        return (
+            <LoadingPanel
+                title="Loading reconciliation account."
+                message="Preparing account balances, transactions, and session status."
+            />
+        );
     }
 
     if (!organizationId || error || queryError) {
         return (
-            <main className="p-6">
-                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    {error || queryError || "No organization ID found. Please sign in again."}
-                </div>
+            <main className="p-4 sm:p-6 lg:p-8">
+                <StatusBanner
+                    tone="error"
+                    title="Account reconciliation unavailable"
+                    message={error || queryError || "No organization ID found. Please sign in again."}
+                />
             </main>
         );
     }
 
     if (!detail) {
         return (
-            <main className="p-6">
-                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-                    Unable to load reconciliation details for this account.
-                </div>
+            <main className="p-4 sm:p-6 lg:p-8">
+                <StatusBanner
+                    tone="error"
+                    title="Account details unavailable"
+                    message="Unable to load reconciliation details for this account."
+                />
             </main>
         );
     }
 
     return (
         <main className="space-y-8 p-4 sm:p-6 lg:p-8">
-            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
-                            Account reconciliation
-                        </p>
-                        <h1 className="mt-2 text-3xl font-semibold text-white">
-                            {detail.accountName}
-                        </h1>
-                        <p className="mt-2 text-sm text-zinc-400">
-                            Reviewing {detail.accountName} for {detail.focusMonth}.
-                        </p>
+            <PageHero
+                eyebrow="Account reconciliation"
+                title={detail.accountName}
+                description={`Reviewing ${detail.accountName} for ${detail.focusMonth}.`}
+                aside={
+                    <div className="flex flex-col gap-3">
+                        <Link
+                            href="/reconciliation"
+                            className="rounded-md border border-zinc-800 px-4 py-2 text-center text-sm text-zinc-300 hover:bg-zinc-950 hover:text-white"
+                        >
+                            Back to overview
+                        </Link>
+                        <button
+                            type="button"
+                            onClick={() => router.refresh()}
+                            className="rounded-md border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-950 hover:text-white"
+                        >
+                            Refresh
+                        </button>
                     </div>
-                    <Link
-                        href="/reconciliation"
-                        className="rounded-md border border-zinc-800 px-4 py-2 text-sm text-zinc-300 transition hover:bg-zinc-950 hover:text-white"
-                    >
-                        Back to overview
-                    </Link>
+                }
+            >
+                <div className="flex flex-wrap gap-3 text-sm">
+                    <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-red-200">
+                        {detail.session?.status === "COMPLETED"
+                            ? "Reconciled"
+                            : detail.session
+                              ? "In Progress"
+                              : "Needs Reconciliation"}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-zinc-300">
+                        {detail.institutionName || "Institution not provided"}
+                    </span>
                 </div>
-            </div>
+            </PageHero>
 
-            <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-6 backdrop-blur">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="text-xl font-semibold text-white">{detail.accountName}</h2>
-                            <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs font-medium text-red-300">
-                                {detail.session?.status === "COMPLETED"
-                                    ? "Reconciled"
-                                    : detail.session
-                                      ? "In Progress"
-                                      : "Needs Reconciliation"}
-                            </span>
-                        </div>
-
-                        <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
-                            <p>
-                                <span className="text-zinc-500">Institution:</span>{" "}
-                                {detail.institutionName || "Not provided"}
-                            </p>
-                            <p>
-                                <span className="text-zinc-500">Type:</span> {detail.accountType}
-                            </p>
-                            <p>
-                                <span className="text-zinc-500">Currency:</span> {detail.currency}
-                            </p>
-                            <p>
-                                <span className="text-zinc-500">Posted Transactions:</span>{" "}
-                                {detail.postedTransactionCount}
-                            </p>
-                        </div>
-
-                        <p className="text-sm text-zinc-400">{detail.statusMessage}</p>
-                    </div>
-
-                    <div className="flex min-w-[260px] flex-col gap-3">
+            <SectionBand
+                eyebrow="Account status"
+                title={detail.statusMessage}
+                description="Use the current session status and transaction list below to clear remaining variance and finish the account cleanly."
+                actions={
+                    <div className="flex min-w-[240px] flex-col gap-3">
                         {detail.canStartReconciliation ? (
                             <button
                                 onClick={handleStart}
                                 disabled={starting}
-                                className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 transition disabled:opacity-50"
+                                className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
                             >
                                 {starting ? "Starting..." : "Start Reconciliation"}
                             </button>
@@ -199,57 +200,50 @@ export default function AccountReconciliationPage({
                             <button
                                 onClick={handleComplete}
                                 disabled={completing}
-                                className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-950 transition disabled:opacity-50"
+                                className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-950 disabled:opacity-50"
                             >
                                 {completing ? "Completing..." : "Complete Reconciliation"}
                             </button>
                         ) : null}
-
-                        <button
-                            type="button"
-                            onClick={() => router.refresh()}
-                            className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-950 transition"
-                        >
-                            Refresh
-                        </button>
                     </div>
+                }
+            >
+                <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+                    <p>
+                        <span className="text-zinc-500">Institution:</span>{" "}
+                        {detail.institutionName || "Not provided"}
+                    </p>
+                    <p>
+                        <span className="text-zinc-500">Type:</span> {detail.accountType}
+                    </p>
+                    <p>
+                        <span className="text-zinc-500">Currency:</span> {detail.currency}
+                    </p>
+                    <p>
+                        <span className="text-zinc-500">Posted Transactions:</span>{" "}
+                        {detail.postedTransactionCount}
+                    </p>
                 </div>
-            </div>
+            </SectionBand>
 
             <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
-                    <p className="text-sm text-zinc-400">Opening Balance</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
-                        {detail.session ? `$${Number(detail.session.openingBalance).toFixed(2)}` : "-"}
-                    </p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
-                    <p className="text-sm text-zinc-400">Statement Ending Balance</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
-                        {detail.session
-                            ? `$${Number(detail.session.statementEndingBalance).toFixed(2)}`
-                            : "-"}
-                    </p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
-                    <p className="text-sm text-zinc-400">Book Ending Balance</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
-                        {detail.bookEndingBalance != null
-                            ? `$${Number(detail.bookEndingBalance).toFixed(2)}`
-                            : "-"}
-                    </p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-900/80 bg-black/45 p-5 backdrop-blur">
-                    <p className="text-sm text-zinc-400">Variance</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
-                        {detail.varianceAmount != null
-                            ? `$${Number(detail.varianceAmount).toFixed(2)}`
-                            : "-"}
-                    </p>
-                </div>
+                <SummaryMetric
+                    label="Opening Balance"
+                    value={detail.session ? `$${Number(detail.session.openingBalance).toFixed(2)}` : "-"}
+                />
+                <SummaryMetric
+                    label="Statement Ending Balance"
+                    value={detail.session ? `$${Number(detail.session.statementEndingBalance).toFixed(2)}` : "-"}
+                />
+                <SummaryMetric
+                    label="Book Ending Balance"
+                    value={detail.bookEndingBalance != null ? `$${Number(detail.bookEndingBalance).toFixed(2)}` : "-"}
+                />
+                <SummaryMetric
+                    label="Variance"
+                    value={detail.varianceAmount != null ? `$${Number(detail.varianceAmount).toFixed(2)}` : "-"}
+                    tone={detail.varianceAmount === 0 ? "success" : "warning"}
+                />
             </div>
 
             {detail.canStartReconciliation ? (
