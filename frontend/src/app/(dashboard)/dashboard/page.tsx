@@ -1,6 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import {
+    FinancialAccount,
+    listFinancialAccounts,
+} from "@/lib/api/accounts";
+import {
+    ImportedTransactionHistoryItem,
+    listImportHistory,
+} from "@/lib/api/imports";
 import { useState } from "react";
 import {
     getDashboardSnapshot,
@@ -23,6 +31,16 @@ import {
 export default function DashboardPage() {
     const { organizationId, hydrated } = useOrganizationSession();
     const [error, setError] = useState("");
+    const accountsQuery = useQuery<FinancialAccount[], Error>({
+        queryKey: ["financialAccounts", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listFinancialAccounts(organizationId),
+    });
+    const importHistoryQuery = useQuery<ImportedTransactionHistoryItem[], Error>({
+        queryKey: ["importHistory", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listImportHistory(organizationId),
+    });
     const dashboardQuery = useQuery<DashboardSnapshot, Error>({
         queryKey: ["dashboardSnapshot", organizationId],
         enabled: hydrated && Boolean(organizationId),
@@ -33,8 +51,17 @@ export default function DashboardPage() {
         },
     });
     const data = organizationId ? (dashboardQuery.data ?? null) : null;
-    const loading = hydrated && organizationId ? dashboardQuery.isLoading : false;
-    const queryError = dashboardQuery.error?.message ?? "";
+    const accounts = accountsQuery.data ?? [];
+    const importHistory = importHistoryQuery.data ?? [];
+    const loading =
+        hydrated && organizationId
+            ? dashboardQuery.isLoading || accountsQuery.isLoading || importHistoryQuery.isLoading
+            : false;
+    const queryError =
+        dashboardQuery.error?.message ??
+        accountsQuery.error?.message ??
+        importHistoryQuery.error?.message ??
+        "";
     const actionHref = data?.primaryAction
         ? mapBackendActionPathToFrontend(data.primaryAction.actionPath)
         : null;
@@ -96,6 +123,21 @@ export default function DashboardPage() {
         },
     ];
     const completedSetupSteps = setupSteps.filter((step) => step.complete).length;
+    const latestImport = importHistory[0] ?? null;
+    const importsByAccount = accounts.map((account) => {
+        const accountImports = importHistory.filter(
+            (item) => item.financialAccountId === account.id
+        );
+
+        return {
+            account,
+            importCount: accountImports.length,
+            latestImport: accountImports[0] ?? null,
+        };
+    });
+    const activeImportAccounts = importsByAccount
+        .filter((item) => item.importCount > 0)
+        .slice(0, 3);
 
     if (!hydrated || loading) {
         return (
@@ -181,6 +223,96 @@ export default function DashboardPage() {
                     tone={data?.period?.closeReady ? "success" : "warning"}
                 />
             </div>
+
+            <SectionBand
+                eyebrow="Import activity"
+                title="What the latest imports changed"
+                description="This keeps recent transaction ingestion visible from the dashboard so the team can see which account moved, what landed, and where the next follow-up is likely to show up."
+                actions={
+                    <Link
+                        href="/setup"
+                        className="inline-flex rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                    >
+                        Open setup & import
+                    </Link>
+                }
+            >
+                <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <SummaryMetric
+                            label="Tracked accounts"
+                            value={`${accounts.length}`}
+                            detail="Financial accounts available for import and reconciliation."
+                        />
+                        <SummaryMetric
+                            label="Latest import"
+                            value={
+                                latestImport
+                                    ? new Date(latestImport.importedAt).toLocaleDateString("en-US", {
+                                          month: "short",
+                                          day: "numeric",
+                                      })
+                                    : "Not started"
+                            }
+                            detail={
+                                latestImport
+                                    ? `${latestImport.financialAccountName} · ${latestImport.merchant}`
+                                    : "The setup flow will start surfacing imports here once the first CSV lands."
+                            }
+                            tone={latestImport ? "success" : "default"}
+                        />
+                    </div>
+
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <h3 className="text-sm font-semibold text-white">Account import summaries</h3>
+                            <span className="text-xs text-zinc-500">
+                                {activeImportAccounts.length} active
+                            </span>
+                        </div>
+                        {activeImportAccounts.length > 0 ? (
+                            <div className="mt-4 space-y-3">
+                                {activeImportAccounts.map(({ account, importCount, latestImport: accountLatestImport }) => (
+                                    <div
+                                        key={account.id}
+                                        className="rounded-md border border-white/10 bg-black/20 px-3 py-3"
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-medium text-white">
+                                                    {account.name}
+                                                </p>
+                                                <p className="mt-1 text-xs text-zinc-400">
+                                                    {account.accountType} · {account.currency} · {importCount} imported row(s)
+                                                </p>
+                                            </div>
+                                            <span className="text-xs text-zinc-500">
+                                                {accountLatestImport
+                                                    ? new Date(accountLatestImport.importedAt).toLocaleDateString("en-US", {
+                                                          month: "short",
+                                                          day: "numeric",
+                                                      })
+                                                    : "No imports"}
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-xs text-zinc-400">
+                                            {accountLatestImport
+                                                ? `${accountLatestImport.merchant} landed ${accountLatestImport.status.toLowerCase().replaceAll("_", " ")} through ${accountLatestImport.route.toLowerCase()}.`
+                                                : "No import activity yet."}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <StatusBanner
+                                tone="muted"
+                                title="No import activity yet"
+                                message="Run the setup flow to create an account and import the first statement. This dashboard section will then show the freshest account movement."
+                            />
+                        )}
+                    </div>
+                </div>
+            </SectionBand>
 
             {lowDataWorkspace ? (
                 <SectionBand

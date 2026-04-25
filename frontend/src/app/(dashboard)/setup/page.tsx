@@ -31,6 +31,14 @@ const ACCOUNT_TYPE_OPTIONS: Array<FinancialAccount["accountType"]> = [
     "CASH",
     "LOAN",
 ];
+const EXPECTED_CSV_HEADERS = ["id", "date", "merchant", "memo", "amount", "mcc"] as const;
+
+type CsvPreview = {
+    headers: string[];
+    sampleRowCount: number;
+    hasExpectedHeaders: boolean;
+    missingHeaders: string[];
+};
 
 export default function SetupPage() {
     const queryClient = useQueryClient();
@@ -46,6 +54,7 @@ export default function SetupPage() {
     const [importError, setImportError] = useState("");
     const [importSuccess, setImportSuccess] = useState("");
     const [importResult, setImportResult] = useState<ImportBatchResult | null>(null);
+    const [csvPreview, setCsvPreview] = useState<CsvPreview | null>(null);
     const [creatingAccount, setCreatingAccount] = useState(false);
     const [importing, setImporting] = useState(false);
 
@@ -104,6 +113,39 @@ export default function SetupPage() {
     ];
     const completedSteps = setupCompletionSteps.filter(Boolean).length;
 
+    async function inspectCsvFile(file: File | null) {
+        if (!file) {
+            setCsvPreview(null);
+            return;
+        }
+
+        const fileText = await file.text();
+        const lines = fileText
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+
+        if (lines.length === 0) {
+            setCsvPreview({
+                headers: [],
+                sampleRowCount: 0,
+                hasExpectedHeaders: false,
+                missingHeaders: [...EXPECTED_CSV_HEADERS],
+            });
+            return;
+        }
+
+        const headers = lines[0].split(",").map((header) => header.trim().toLowerCase());
+        const missingHeaders = EXPECTED_CSV_HEADERS.filter((header) => !headers.includes(header));
+
+        setCsvPreview({
+            headers,
+            sampleRowCount: Math.max(0, lines.length - 1),
+            hasExpectedHeaders: missingHeaders.length === 0,
+            missingHeaders,
+        });
+    }
+
     async function handleCreateAccount(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
         if (!organizationId) {
@@ -151,6 +193,12 @@ export default function SetupPage() {
             setImportError("Attach a CSV file before starting the import.");
             return;
         }
+        if (csvPreview && !csvPreview.hasExpectedHeaders) {
+            setImportError(
+                `CSV headers are incomplete. Missing: ${csvPreview.missingHeaders.join(", ")}.`
+            );
+            return;
+        }
 
         setImporting(true);
         setImportError("");
@@ -161,6 +209,7 @@ export default function SetupPage() {
             setImportResult(result);
             setImportSuccess("Import completed successfully.");
             setCsvFile(null);
+            setCsvPreview(null);
             await queryClient.invalidateQueries({ queryKey: ["dashboardSnapshot", organizationId] });
             await queryClient.invalidateQueries({ queryKey: ["reviewTasks", organizationId] });
             await queryClient.invalidateQueries({ queryKey: ["reconciliationDashboard", organizationId] });
@@ -498,7 +547,12 @@ export default function SetupPage() {
                             <input
                                 type="file"
                                 accept=".csv,text/csv"
-                                onChange={(event) => setCsvFile(event.target.files?.[0] ?? null)}
+                                onChange={async (event) => {
+                                    const file = event.target.files?.[0] ?? null;
+                                    setCsvFile(file);
+                                    setImportError("");
+                                    await inspectCsvFile(file);
+                                }}
                                 className="w-full rounded-md border border-dashed border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none file:mr-4 file:rounded-md file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:text-zinc-200"
                             />
                             <p className="text-xs text-zinc-500">
@@ -525,9 +579,51 @@ export default function SetupPage() {
                         </div>
                     </div>
 
+                    {csvFile ? (
+                        <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                            <StatusBanner
+                                tone={csvPreview?.hasExpectedHeaders ? "success" : "error"}
+                                title={
+                                    csvPreview?.hasExpectedHeaders
+                                        ? "CSV shape looks ready"
+                                        : "CSV headers need attention"
+                                }
+                                message={
+                                    csvPreview?.hasExpectedHeaders
+                                        ? `Detected ${csvPreview.sampleRowCount} transaction row(s) with the expected import headers.`
+                                        : `Expected headers: ${EXPECTED_CSV_HEADERS.join(", ")}. Missing: ${
+                                              csvPreview?.missingHeaders.join(", ") || "unknown"
+                                          }.`
+                                }
+                            />
+                            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                                <h3 className="text-sm font-semibold text-white">Pre-submit check</h3>
+                                <div className="mt-3 space-y-2 text-sm text-zinc-400">
+                                    <p>File: {csvFile.name}</p>
+                                    <p>
+                                        Headers:{" "}
+                                        {csvPreview?.headers.length
+                                            ? csvPreview.headers.join(", ")
+                                            : "Not detected"}
+                                    </p>
+                                    <p>
+                                        Recommendation:{" "}
+                                        {csvPreview?.hasExpectedHeaders
+                                            ? "Safe to import with duplicate protection."
+                                            : "Re-export from the provider before importing."}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
+
                     <button
                         type="submit"
-                        disabled={importing || accounts.length === 0}
+                        disabled={
+                            importing ||
+                            accounts.length === 0 ||
+                            (csvFile != null && csvPreview != null && !csvPreview.hasExpectedHeaders)
+                        }
                         className="rounded-md bg-amber-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
                     >
                         {importing ? "Importing..." : "Import Transactions"}

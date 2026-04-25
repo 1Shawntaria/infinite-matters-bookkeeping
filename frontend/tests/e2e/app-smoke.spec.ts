@@ -472,6 +472,7 @@ test("workspace switching reloads dashboard data for the selected organization",
 
   await expect(workspaceSelect).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
+  await expect(page.getByText("Operating Checking · CLOUDCO")).toBeVisible();
 
   await workspaceSelect.selectOption("org-secondary");
   await expect(page).toHaveURL(/\/dashboard$/);
@@ -530,6 +531,17 @@ test("setup flow creates an account and imports a csv", async ({ page }) => {
       mimeType: "text/csv",
       buffer: Buffer.from("id,date,amount,merchant\n1,2026-04-06,49.99,UNKNOWN VENDOR\n"),
     });
+  await expect(page.getByText("CSV headers need attention")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import Transactions" })).toBeDisabled();
+
+  await page
+    .getByLabel("CSV File")
+    .setInputFiles({
+      name: "demo.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("id,date,merchant,memo,amount,mcc\n1,2026-04-06,UNKNOWN VENDOR,Needs review,49.99,5734\n"),
+    });
+  await expect(page.getByText("CSV shape looks ready")).toBeVisible();
   await page.getByRole("button", { name: "Import Transactions" }).click();
 
   await expect(page.getByText("Import completed successfully.")).toBeVisible();
