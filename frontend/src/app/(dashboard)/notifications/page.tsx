@@ -1,11 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import { NotificationSummaryItem, listAuthNotifications } from "@/lib/api/auth";
-import { listAttentionNotifications, listWorkflowNotifications } from "@/lib/api/notifications";
+import {
+    listAttentionNotifications,
+    listDeadLetterNotifications,
+    listWorkflowNotifications,
+    requeueFailedNotification,
+    resolveDeadLetterNotification,
+    retryDeadLetterNotification,
+} from "@/lib/api/notifications";
 import { useOrganizationSession } from "@/lib/auth/session";
 
 type NotificationFilter = "ALL" | "AUTH" | "WORKFLOW" | "ATTENTION";
@@ -32,6 +39,10 @@ function titleCase(value: string) {
 export default function NotificationsPage() {
     const { organizationId, hydrated } = useOrganizationSession();
     const [filter, setFilter] = useState<NotificationFilter>("ALL");
+    const [actionMessage, setActionMessage] = useState("");
+    const [actionError, setActionError] = useState("");
+    const [actingNotificationId, setActingNotificationId] = useState<string | null>(null);
+    const queryClient = useQueryClient();
 
     const authNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
         queryKey: ["authNotifications"],
@@ -48,17 +59,24 @@ export default function NotificationsPage() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listAttentionNotifications(organizationId),
     });
+    const deadLetterNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
+        queryKey: ["deadLetterNotifications", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listDeadLetterNotifications(organizationId),
+    });
 
     const loading =
         hydrated && organizationId
             ? authNotificationsQuery.isLoading ||
               workflowNotificationsQuery.isLoading ||
-              attentionNotificationsQuery.isLoading
+              attentionNotificationsQuery.isLoading ||
+              deadLetterNotificationsQuery.isLoading
             : false;
     const queryError =
         authNotificationsQuery.error?.message ??
         workflowNotificationsQuery.error?.message ??
         attentionNotificationsQuery.error?.message ??
+        deadLetterNotificationsQuery.error?.message ??
         "";
 
     const mergedNotifications = useMemo<NotificationEntry[]>(
@@ -81,6 +99,67 @@ export default function NotificationsPage() {
     const deliveryIssues = mergedNotifications.filter(
         (item) => item.deliveryState === "FAILED" || item.deliveryState === "DEAD_LETTER"
     );
+    const deadLetterNotifications = deadLetterNotificationsQuery.data ?? [];
+
+    async function refreshNotificationData() {
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["workflowNotifications", organizationId] }),
+            queryClient.invalidateQueries({ queryKey: ["attentionNotifications", organizationId] }),
+            queryClient.invalidateQueries({ queryKey: ["deadLetterNotifications", organizationId] }),
+        ]);
+    }
+
+    async function handleRetry(notificationId: string, deadLetter: boolean) {
+        if (!organizationId) return;
+
+        setActionMessage("");
+        setActionError("");
+        setActingNotificationId(notificationId);
+
+        try {
+            if (deadLetter) {
+                await retryDeadLetterNotification(
+                    organizationId,
+                    notificationId,
+                    "Retried from notifications workspace"
+                );
+            } else {
+                await requeueFailedNotification(organizationId, notificationId);
+            }
+            await refreshNotificationData();
+            setActionMessage("Delivery retry queued successfully.");
+        } catch (error) {
+            setActionError(
+                error instanceof Error ? error.message : "Unable to retry this notification."
+            );
+        } finally {
+            setActingNotificationId(null);
+        }
+    }
+
+    async function handleResolve(notificationId: string) {
+        if (!organizationId) return;
+
+        setActionMessage("");
+        setActionError("");
+        setActingNotificationId(notificationId);
+
+        try {
+            await resolveDeadLetterNotification(
+                organizationId,
+                notificationId,
+                "Resolved from notifications workspace"
+            );
+            await refreshNotificationData();
+            setActionMessage("Dead-letter notification marked resolved.");
+        } catch (error) {
+            setActionError(
+                error instanceof Error ? error.message : "Unable to resolve this notification."
+            );
+        } finally {
+            setActingNotificationId(null);
+        }
+    }
 
     if (!hydrated || loading) {
         return (
@@ -164,6 +243,104 @@ export default function NotificationsPage() {
                     detail={mergedNotifications[0]?.message ?? "No recent notifications yet."}
                 />
             </div>
+
+            {actionError ? (
+                <StatusBanner
+                    tone="error"
+                    title="Notification action failed"
+                    message={actionError}
+                />
+            ) : null}
+
+            {actionMessage ? (
+                <StatusBanner
+                    tone="success"
+                    title="Notification updated"
+                    message={actionMessage}
+                />
+            ) : null}
+
+            <SectionBand
+                eyebrow="Delivery operations"
+                title="Resolve delivery issues"
+                description="Owners can retry failed sends or close out dead-letter items here without leaving the product."
+            >
+                {deliveryIssues.length > 0 || deadLetterNotifications.length > 0 ? (
+                    <div className="space-y-3">
+                        {[...deliveryIssues, ...deadLetterNotifications.filter(
+                            (item) => !deliveryIssues.some((issue) => issue.id === item.id)
+                        )].map((notification) => {
+                            const isDeadLetter =
+                                notification.deliveryState === "DEAD_LETTER" ||
+                                deadLetterNotifications.some((item) => item.id === notification.id);
+                            const busy = actingNotificationId === notification.id;
+
+                            return (
+                                <div
+                                    key={`ops-${notification.id}`}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4"
+                                >
+                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="space-y-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <p className="text-sm font-semibold text-white">
+                                                    {titleCase(notification.category)}
+                                                </p>
+                                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                    {notification.deliveryState}
+                                                </span>
+                                                {isDeadLetter ? (
+                                                    <span className="rounded-full border border-rose-300/40 bg-rose-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-rose-100">
+                                                        Dead letter
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                            <p className="text-sm text-zinc-300">{notification.message}</p>
+                                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+                                                <span>Recipient {notification.recipientEmail ?? "Unknown"}</span>
+                                                <span>Attempts {notification.attemptCount}</span>
+                                                <span>Last attempted {formatTimestamp(notification.lastAttemptedAt)}</span>
+                                            </div>
+                                            {notification.lastError ? (
+                                                <p className="text-xs text-rose-200">
+                                                    Last error: {notification.lastError}
+                                                </p>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRetry(notification.id, isDeadLetter)}
+                                                disabled={busy}
+                                                className="rounded-md bg-emerald-300 px-3 py-2 text-sm font-semibold text-black hover:bg-emerald-200 disabled:opacity-50"
+                                            >
+                                                {busy ? "Working..." : "Retry delivery"}
+                                            </button>
+                                            {isDeadLetter ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleResolve(notification.id)}
+                                                    disabled={busy}
+                                                    className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-100 hover:bg-white/[0.05] disabled:opacity-50"
+                                                >
+                                                    Mark resolved
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <StatusBanner
+                        tone="success"
+                        title="Delivery pipeline looks healthy"
+                        message="No failed or dead-letter workflow notifications need attention right now."
+                    />
+                )}
+            </SectionBand>
 
             <SectionBand
                 eyebrow="Inbox filters"

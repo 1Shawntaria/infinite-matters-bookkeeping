@@ -405,6 +405,33 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       sentAt: "2026-04-24T12:04:12Z",
       createdAt: "2026-04-24T12:04:00Z",
     },
+    {
+      id: "workflow-notification-3",
+      workflowTaskId: "task-3",
+      userId: null,
+      category: "WORKFLOW_TASK",
+      channel: "EMAIL",
+      status: "FAILED",
+      deliveryState: "DEAD_LETTER",
+      message: "Monthly close escalation entered dead-letter handling.",
+      referenceType: "workflow_task",
+      referenceId: "task-3",
+      recipientEmail: "finance@acme.test",
+      providerName: "sendgrid",
+      providerMessageId: "provider-workflow-3",
+      attemptCount: 4,
+      lastError: "Remote mailbox rejected message repeatedly",
+      lastFailureCode: "554",
+      deadLetterResolutionStatus: null,
+      deadLetterResolutionReasonCode: null,
+      deadLetterResolutionNote: null,
+      deadLetterResolvedAt: null,
+      deadLetterResolvedByUserId: null,
+      scheduledFor: "2026-04-24T12:06:00Z",
+      lastAttemptedAt: "2026-04-24T12:07:10Z",
+      sentAt: null,
+      createdAt: "2026-04-24T12:06:00Z",
+    },
   ];
 
   async function fulfillJson(
@@ -496,7 +523,64 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
     }
 
     if (url.pathname === "/api/workflows/notifications/attention" && request.method() === "GET") {
-      await fulfillJson(route, [workflowNotifications[0]]);
+      await fulfillJson(route, [workflowNotifications[0], workflowNotifications[2]]);
+      return;
+    }
+
+    if (url.pathname === "/api/workflows/notifications/dead-letter" && request.method() === "GET") {
+      await fulfillJson(route, [workflowNotifications[2]]);
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/workflows/notifications/") &&
+      url.pathname.endsWith("/dead-letter/retry") &&
+      request.method() === "POST"
+    ) {
+      const notificationId = url.pathname.split("/")[4];
+      const index = workflowNotifications.findIndex((item) => item.id === notificationId);
+      workflowNotifications[index] = {
+        ...workflowNotifications[index],
+        deliveryState: "PENDING",
+        status: "QUEUED",
+        lastError: null,
+        lastAttemptedAt: "2026-04-24T12:09:00Z",
+      };
+      await fulfillJson(route, workflowNotifications[index]);
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/workflows/notifications/") &&
+      url.pathname.endsWith("/dead-letter/resolve") &&
+      request.method() === "POST"
+    ) {
+      const notificationId = url.pathname.split("/")[4];
+      const index = workflowNotifications.findIndex((item) => item.id === notificationId);
+      workflowNotifications[index] = {
+        ...workflowNotifications[index],
+        deadLetterResolutionStatus: "RESOLVED",
+        deadLetterResolutionNote: "Resolved from notifications workspace",
+      };
+      await fulfillJson(route, workflowNotifications[index]);
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/workflows/notifications/") &&
+      url.pathname.endsWith("/requeue") &&
+      request.method() === "POST"
+    ) {
+      const notificationId = url.pathname.split("/")[4];
+      const index = workflowNotifications.findIndex((item) => item.id === notificationId);
+      workflowNotifications[index] = {
+        ...workflowNotifications[index],
+        deliveryState: "PENDING",
+        status: "QUEUED",
+        lastError: null,
+        lastAttemptedAt: "2026-04-24T12:08:00Z",
+      };
+      await fulfillJson(route, workflowNotifications[index]);
       return;
     }
 
@@ -738,15 +822,22 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
 
   await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
   await expect(page.getByText("Your password was changed successfully.")).toBeVisible();
-  await expect(page.getByText("Review queue escalation could not be delivered.")).toBeVisible();
-  await expect(page.getByText("Mailbox unavailable")).toBeVisible();
-  await expect(page.locator("span").filter({ hasText: "Attention" })).toBeVisible();
+  await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();
+  await expect(page.getByText("Mailbox unavailable").first()).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "Attention" }).first()).toBeVisible();
+  await expect(page.getByText("Monthly close escalation entered dead-letter handling.").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Retry delivery" }).first().click();
+  await expect(page.getByText("Delivery retry queued successfully.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Mark resolved" }).click();
+  await expect(page.getByText("Dead-letter notification marked resolved.")).toBeVisible();
 
   await page.getByRole("button", { name: "Auth" }).click();
   await expect(page.getByText("Your password was changed successfully.")).toBeVisible();
 
   await page.getByRole("button", { name: "Attention" }).click();
-  await expect(page.getByText("Review queue escalation could not be delivered.")).toBeVisible();
+  await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();
 });
 
 test("review queue resolves a task from the UI", async ({ page }) => {
