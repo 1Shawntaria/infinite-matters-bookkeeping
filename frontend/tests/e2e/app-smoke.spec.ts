@@ -323,6 +323,42 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         createdAt: "2026-04-24T12:40:00Z",
       },
     },
+    {
+      id: "invite-expired-1",
+      organizationId: "org-primary",
+      organizationName: "Acme Books Demo",
+      email: "expired@acme.test",
+      role: "ADMIN",
+      status: "EXPIRED",
+      expiresAt: "2026-04-20T12:00:00Z",
+      acceptedAt: null,
+      revokedAt: null,
+      createdAt: "2026-04-10T12:40:00Z",
+      invitedByUser: {
+        id: "user-1",
+        email: "owner@acme.test",
+        fullName: "Acme Owner",
+        createdAt: "2026-04-20T12:00:00Z",
+      },
+      acceptedByUser: null,
+      inviteUrl: null,
+      delivery: {
+        notificationId: "notification-invite-expired-1",
+        category: "WORKSPACE_ACCESS",
+        channel: "EMAIL",
+        status: "FAILED",
+        deliveryState: "FAILED",
+        attemptCount: 3,
+        lastError: "Mailbox unavailable",
+        lastFailureCode: "BOUNCED",
+        providerName: "sendgrid",
+        providerMessageId: "sg-expired-1",
+        scheduledFor: "2026-04-20T12:00:00Z",
+        lastAttemptedAt: "2026-04-20T12:05:00Z",
+        sentAt: null,
+        createdAt: "2026-04-10T12:40:00Z",
+      },
+    },
   ];
   let financialAccounts = [
     {
@@ -903,6 +939,35 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname.startsWith("/api/users/invitations/") && url.pathname.endsWith("/resend") && request.method() === "POST") {
+      const invitationId = url.pathname.split("/")[4];
+      const index = invitations.findIndex((invitation) => invitation.id === invitationId);
+      invitations[index] = {
+        ...invitations[index],
+        status: "PENDING",
+        expiresAt: "2026-05-02T12:00:00Z",
+        inviteUrl: `http://localhost:3000/invite/token-resend-${invitationId}`,
+        delivery: {
+          notificationId: `notification-${invitationId}-resent`,
+          category: "WORKSPACE_ACCESS",
+          channel: "EMAIL",
+          status: "PENDING",
+          deliveryState: "PENDING",
+          attemptCount: 0,
+          lastError: null,
+          lastFailureCode: null,
+          providerName: null,
+          providerMessageId: null,
+          scheduledFor: "2026-04-24T13:50:00Z",
+          lastAttemptedAt: null,
+          sentAt: null,
+          createdAt: "2026-04-24T13:50:00Z",
+        },
+      };
+      await fulfillJson(route, invitations[index]);
+      return;
+    }
+
     if (url.pathname === "/api/accounts" && request.method() === "GET") {
       await fulfillJson(route, financialAccounts);
       return;
@@ -1189,11 +1254,19 @@ test("access workspace lets operators review and update memberships", async ({ p
   await page.getByPlaceholder("new.hire@company.com").fill("invitee@acme.test");
   await page.getByRole("button", { name: "Create invite" }).click();
   await expect(page.getByText("Invitation created successfully and queued for delivery.")).toBeVisible();
-  await expect(page.getByText("http://localhost:3000/invite/token-2")).toBeVisible();
+  await expect(page.getByText(/http:\/\/localhost:3000\/invite\/token-/)).toBeVisible();
   const createdInviteCard = page.locator("div.rounded-lg").filter({
     has: page.getByText("invitee@acme.test"),
   });
   await expect(createdInviteCard.getByText("Delivery queued")).toBeVisible();
+
+  const expiredInviteCard = page.locator("div.rounded-lg").filter({
+    has: page.getByText("expired@acme.test"),
+  });
+  await expect(expiredInviteCard.getByText("Delivery failed")).toBeVisible();
+  await expiredInviteCard.getByRole("button", { name: "Resend invite" }).click();
+  await expect(page.getByText("Invitation for expired@acme.test was resent and expiry was renewed.")).toBeVisible();
+  await expect(page.getByText("http://localhost:3000/invite/token-resend-invite-expired-1")).toBeVisible();
 
   const pendingInviteCard = page.locator("div.rounded-lg").filter({
     has: page.getByText("pending@acme.test"),

@@ -125,3 +125,16 @@ export async function revokeInvitation(
         method: "DELETE",
     });
 }
+
+export async function resendInvitation(
+    organizationId: string,
+    invitationId: string
+): Promise<OrganizationInvitation> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<OrganizationInvitation>(
+        `/api/users/invitations/${invitationId}/resend?${query.toString()}`,
+        {
+            method: "POST",
+        }
+    );
+}

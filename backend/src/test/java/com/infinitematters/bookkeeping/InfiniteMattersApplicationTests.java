@@ -428,6 +428,22 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$[0].status").value("PENDING"))
                 .andExpect(jsonPath("$[0].delivery.status").value("PENDING"));
 
+        MvcResult resentInvitation = mockMvc.perform(post("/api/users/invitations/{invitationId}/resend", invitationId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.inviteUrl").isNotEmpty())
+                .andExpect(jsonPath("$.delivery.status").value("PENDING"))
+                .andReturn();
+
+        String resentInviteUrl = objectMapper.readTree(resentInvitation.getResponse().getContentAsString())
+                .path("inviteUrl")
+                .asText();
+
+        org.assertj.core.api.Assertions.assertThat(resentInviteUrl).isNotBlank();
+
         mockMvc.perform(delete("/api/users/invitations/{invitationId}", invitationId)
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))

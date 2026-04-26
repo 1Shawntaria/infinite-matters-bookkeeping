@@ -59,7 +59,7 @@ public class OrganizationInvitationService {
             throw new IllegalArgumentException("A pending invitation already exists for that email");
         }
 
-        String token = UUID.randomUUID() + "." + UUID.randomUUID();
+        String token = generateToken();
         OrganizationInvitation invitation = new OrganizationInvitation();
         invitation.setOrganization(organization);
         invitation.setInvitedByUser(userService.get(invitedByUserId));
@@ -90,6 +90,26 @@ public class OrganizationInvitationService {
         invitation.setStatus(OrganizationInvitationStatus.REVOKED);
         invitation.setRevokedAt(Instant.now());
         return invitationRepository.save(invitation);
+    }
+
+    @Transactional
+    public CreatedInvitation resendInvitation(UUID organizationId, UUID invitationId) {
+        OrganizationInvitation invitation = invitationForOrganization(organizationId, invitationId);
+        if (invitation.getStatus() == OrganizationInvitationStatus.ACCEPTED) {
+            throw new IllegalArgumentException("Accepted invitations cannot be resent");
+        }
+        if (invitation.getStatus() == OrganizationInvitationStatus.REVOKED) {
+            throw new IllegalArgumentException("Revoked invitations cannot be resent");
+        }
+
+        String token = generateToken();
+        invitation.setTokenHash(hashToken(token));
+        invitation.setStatus(OrganizationInvitationStatus.PENDING);
+        invitation.setExpiresAt(Instant.now().plus(INVITATION_TTL));
+        invitation.setRevokedAt(null);
+        invitation = invitationRepository.save(invitation);
+        invitationDeliveryGateway.sendInvitation(invitation, token);
+        return new CreatedInvitation(invitation, token);
     }
 
     @Transactional
@@ -139,6 +159,10 @@ public class OrganizationInvitationService {
 
     private static String normalizeEmail(String email) {
         return email.trim().toLowerCase();
+    }
+
+    private static String generateToken() {
+        return UUID.randomUUID() + "." + UUID.randomUUID();
     }
 
     private static String hashToken(String token) {

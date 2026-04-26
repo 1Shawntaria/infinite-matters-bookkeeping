@@ -184,6 +184,21 @@ public class UserController {
         return response;
     }
 
+    @PostMapping("/invitations/{invitationId}/resend")
+    public OrganizationInvitationResponse resendInvitation(@RequestParam UUID organizationId,
+                                                           @PathVariable UUID invitationId) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        OrganizationInvitationService.CreatedInvitation resentInvitation =
+                invitationService.resendInvitation(organizationId, invitationId);
+        auditService.record(organizationId, "ORGANIZATION_INVITATION_RESENT",
+                "organization_invitation", invitationId.toString(),
+                "Invitation resent by user " + actorUserId + " for " + resentInvitation.invitation().getEmail());
+        return OrganizationInvitationResponse.from(
+                resentInvitation.invitation(),
+                inviteUrl(resentInvitation.rawToken()),
+                latestDelivery(organizationId, invitationId));
+    }
+
     @GetMapping("/organizations")
     public List<OrganizationResponse> listOrganizationsForCurrentUser() {
         UUID userId = requestIdentityService.requireUserId();

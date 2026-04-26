@@ -12,6 +12,7 @@ import {
     MembershipDetail,
     OrganizationInvitation,
     removeMembership,
+    resendInvitation,
     revokeInvitation,
     updateMembershipRole,
 } from "@/lib/api/access";
@@ -211,6 +212,26 @@ export default function AccessPage() {
             setBannerMessage(`Invitation for ${invitation.email} has been revoked.`);
         } catch (error) {
             setBannerError(error instanceof Error ? error.message : "Unable to revoke that invitation.");
+        } finally {
+            setWorkingMembershipId(null);
+        }
+    }
+
+    async function handleResendInvitation(invitation: OrganizationInvitation) {
+        if (!organizationId) return;
+
+        setBannerError("");
+        setBannerMessage("");
+        setInviteLink("");
+        setWorkingMembershipId(`resend-${invitation.id}`);
+
+        try {
+            const resentInvitation = await resendInvitation(organizationId, invitation.id);
+            await refreshInvitations();
+            setInviteLink(resentInvitation.inviteUrl ?? "");
+            setBannerMessage(`Invitation for ${invitation.email} was resent and expiry was renewed.`);
+        } catch (error) {
+            setBannerError(error instanceof Error ? error.message : "Unable to resend that invitation.");
         } finally {
             setWorkingMembershipId(null);
         }
@@ -418,8 +439,12 @@ export default function AccessPage() {
                                 <p className="text-sm text-zinc-500">No invitations have been created for this workspace yet.</p>
                             ) : (
                                 invitations.map((invitation) => {
-                                    const busy = workingMembershipId === `revoke-${invitation.id}`;
+                                    const busy =
+                                        workingMembershipId === `revoke-${invitation.id}` ||
+                                        workingMembershipId === `resend-${invitation.id}`;
                                     const pending = invitation.status === "PENDING";
+                                    const canResend =
+                                        invitation.status === "PENDING" || invitation.status === "EXPIRED";
                                     return (
                                         <div
                                             key={invitation.id}
@@ -454,16 +479,28 @@ export default function AccessPage() {
                                                     ) : null}
                                                 </div>
 
-                                                {pending ? (
+                                                {pending || canResend ? (
                                                     <div className="flex items-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRevokeInvitation(invitation)}
-                                                            disabled={busy}
-                                                            className="rounded-md border border-rose-400/30 px-3 py-2 text-sm text-rose-100 hover:bg-rose-400/10 disabled:opacity-50"
-                                                        >
-                                                            Revoke invite
-                                                        </button>
+                                                        {canResend ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleResendInvitation(invitation)}
+                                                                disabled={busy}
+                                                                className="rounded-md border border-sky-400/30 px-3 py-2 text-sm text-sky-100 hover:bg-sky-400/10 disabled:opacity-50"
+                                                            >
+                                                                Resend invite
+                                                            </button>
+                                                        ) : null}
+                                                        {pending ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRevokeInvitation(invitation)}
+                                                                disabled={busy}
+                                                                className="rounded-md border border-rose-400/30 px-3 py-2 text-sm text-rose-100 hover:bg-rose-400/10 disabled:opacity-50"
+                                                            >
+                                                                Revoke invite
+                                                            </button>
+                                                        ) : null}
                                                         {busy ? <span className="text-xs text-zinc-500">Saving...</span> : null}
                                                     </div>
                                                 ) : null}
