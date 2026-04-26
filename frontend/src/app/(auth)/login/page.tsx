@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 import { listOrganizations, login } from "@/lib/api/auth";
 import { storeAuthSession } from "@/lib/auth/session";
 
@@ -49,9 +50,12 @@ export default function LoginPage() {
             <section className="flex flex-col justify-between border-b border-zinc-900/80 p-8 md:border-b-0 md:border-r md:p-10">
                 <div className="space-y-6">
                     <div className="space-y-3">
-                        <p className="text-xs uppercase tracking-[0.24em] text-emerald-300">
-                            Infinite Matters
-                        </p>
+                        <BrandLogo
+                            variant="alternate"
+                            className="h-12 w-auto"
+                            alt="Infinite Matters"
+                            priority
+                        />
                         <h1 className="max-w-lg text-4xl font-semibold leading-tight text-white">
                             Keep the books moving, even when the work gets messy.
                         </h1>

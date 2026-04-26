@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 import { DashboardNav } from "@/components/dashboard-nav";
 import { SignOutButton } from "@/components/sign-out-button";
 import { WorkspaceTrustPanel } from "@/components/workspace-trust-panel";
@@ -14,10 +15,13 @@ export default function DashboardLayout({
             <div className="border-b border-white/10 bg-black/55 backdrop-blur lg:hidden">
                 <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4">
                     <div className="flex items-center justify-between gap-4">
-                        <div>
-                            <p className="text-xs uppercase tracking-[0.18em] text-emerald-300">
-                                Infinite Matters
-                            </p>
+                        <div className="space-y-2">
+                            <BrandLogo
+                                variant="alternate"
+                                className="h-9 w-auto"
+                                alt="Infinite Matters"
+                                priority
+                            />
                             <p className="text-sm text-zinc-400">
                                 Bookkeeping operations workspace
                             </p>
@@ -33,10 +37,13 @@ export default function DashboardLayout({
 
             <div className="mx-auto flex min-h-screen max-w-7xl">
                 <aside className="hidden w-72 border-r border-white/10 bg-black/45 px-6 py-8 backdrop-blur lg:flex lg:flex-col">
-                    <Link href="/dashboard" className="space-y-2">
-                        <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">
-                            Infinite Matters
-                        </p>
+                    <Link href="/dashboard" className="space-y-4">
+                        <BrandLogo
+                            variant="stacked"
+                            className="h-auto w-40"
+                            alt="Infinite Matters"
+                            priority
+                        />
                         <h2 className="text-2xl font-semibold text-white">
                             Books that stay moving
                         </h2>

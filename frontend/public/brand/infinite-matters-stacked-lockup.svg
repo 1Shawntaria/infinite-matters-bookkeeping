@@ -1,0 +1,22 @@
+<svg width="280" height="260" viewBox="0 0 280 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="stacked-gradient" x1="74" y1="22" x2="162" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#66E0D3"/>
+      <stop offset="1" stop-color="#2EB1A6"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(54 20)">
+    <path d="M20 64C20 48.536 32.536 36 48 36H80C95.464 36 108 48.536 108 64C108 79.464 95.464 92 80 92H48C32.536 92 20 79.464 20 64Z" stroke="url(#stacked-gradient)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M64 18V110" stroke="url(#stacked-gradient)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M24 64H104" stroke="url(#stacked-gradient)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M64 64L46 46" stroke="url(#stacked-gradient)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M64 64L82 82" stroke="url(#stacked-gradient)" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(38 154)">
+    <text x="0" y="28" fill="white" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="4">INFINITE</text>
+    <text x="10" y="64" fill="white" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="4">MATTERS</text>
+    <line x1="12" y1="86" x2="58" y2="86" stroke="#2EB1A6" stroke-width="3" stroke-linecap="round"/>
+    <text x="66" y="92" fill="#2EB1A6" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="4">BOOKKEEPING</text>
+    <line x1="206" y1="86" x2="252" y2="86" stroke="#2EB1A6" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

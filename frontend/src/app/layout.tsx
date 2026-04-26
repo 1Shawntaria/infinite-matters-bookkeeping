@@ -4,6 +4,10 @@ import { QueryProvider } from "@/providers/query-provider";
 export const metadata = {
     title: "Infinite Matters",
     description: "Bookkeeping workflow platform",
+    icons: {
+        icon: "/brand/infinite-matters-favicon.svg",
+        apple: "/brand/infinite-matters-app-icon.svg",
+    },
 };
 
 export default function RootLayout({

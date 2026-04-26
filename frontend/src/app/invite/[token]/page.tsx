@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 import {
     acceptInvitation,
     getInvitationPreview,
@@ -149,7 +150,12 @@ export default function InvitationPage() {
         <main className="mx-auto grid min-h-screen w-full max-w-5xl items-center gap-6 p-6 lg:grid-cols-[1.05fr_0.95fr]">
             <section className="space-y-6 rounded-xl border border-zinc-900/80 bg-black/60 p-8">
                 <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.24em] text-sky-300">Infinite Matters</p>
+                    <BrandLogo
+                        variant="alternate"
+                        className="h-12 w-auto"
+                        alt="Infinite Matters"
+                        priority
+                    />
                     <h1 className="text-4xl font-semibold text-white">You&apos;ve been invited into a workspace.</h1>
                     <p className="text-base text-zinc-400">
                         Accept this invitation to join the bookkeeping workspace and pick up exactly where the team wants you involved.
