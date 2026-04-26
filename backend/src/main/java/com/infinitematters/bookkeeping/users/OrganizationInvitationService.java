@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -16,8 +15,6 @@ import java.util.UUID;
 
 @Service
 public class OrganizationInvitationService {
-    private static final Duration INVITATION_TTL = Duration.ofDays(7);
-
     private final OrganizationInvitationRepository invitationRepository;
     private final OrganizationMembershipRepository membershipRepository;
     private final OrganizationService organizationService;
@@ -67,7 +64,7 @@ public class OrganizationInvitationService {
         invitation.setRole(role);
         invitation.setTokenHash(hashToken(token));
         invitation.setStatus(OrganizationInvitationStatus.PENDING);
-        invitation.setExpiresAt(Instant.now().plus(INVITATION_TTL));
+        invitation.setExpiresAt(Instant.now().plusSeconds((long) organization.getInvitationTtlDays() * 24 * 60 * 60));
         invitation = invitationRepository.save(invitation);
         invitationDeliveryGateway.sendInvitation(invitation, token);
         return new CreatedInvitation(invitation, token);
@@ -105,7 +102,8 @@ public class OrganizationInvitationService {
         String token = generateToken();
         invitation.setTokenHash(hashToken(token));
         invitation.setStatus(OrganizationInvitationStatus.PENDING);
-        invitation.setExpiresAt(Instant.now().plus(INVITATION_TTL));
+        invitation.setExpiresAt(Instant.now().plusSeconds(
+                (long) invitation.getOrganization().getInvitationTtlDays() * 24 * 60 * 60));
         invitation.setRevokedAt(null);
         invitation = invitationRepository.save(invitation);
         invitationDeliveryGateway.sendInvitation(invitation, token);

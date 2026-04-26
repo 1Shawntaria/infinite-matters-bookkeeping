@@ -6,6 +6,7 @@ const organizations = [
     name: "Acme Books Demo",
     planTier: "GROWTH",
     timezone: "America/Los_Angeles",
+    invitationTtlDays: 7,
     role: "OWNER",
   },
   {
@@ -13,6 +14,7 @@ const organizations = [
     name: "Sunrise Client Ops",
     planTier: "STARTER",
     timezone: "America/New_York",
+    invitationTtlDays: 5,
     role: "ADMIN",
   },
   {
@@ -20,6 +22,7 @@ const organizations = [
     name: "Northwind New Books",
     planTier: "STARTER",
     timezone: "America/Chicago",
+    invitationTtlDays: 7,
     role: "MEMBER",
   },
 ];
@@ -798,6 +801,31 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/organizations/settings" && request.method() === "GET") {
+      const targetOrganizationId = url.searchParams.get("organizationId") ?? "org-primary";
+      const organization = organizations.find((item) => item.id === targetOrganizationId) ?? organizations[0];
+      await fulfillJson(route, organization);
+      return;
+    }
+
+    if (url.pathname === "/api/organizations/settings" && request.method() === "PATCH") {
+      const targetOrganizationId = url.searchParams.get("organizationId") ?? "org-primary";
+      const body = request.postDataJSON() as {
+        name?: string;
+        timezone?: string;
+        invitationTtlDays?: number;
+      };
+      const index = organizations.findIndex((item) => item.id === targetOrganizationId);
+      organizations[index] = {
+        ...organizations[index],
+        name: body.name ?? organizations[index].name,
+        timezone: body.timezone ?? organizations[index].timezone,
+        invitationTtlDays: body.invitationTtlDays ?? organizations[index].invitationTtlDays,
+      };
+      await fulfillJson(route, organizations[index]);
+      return;
+    }
+
     if (url.pathname === "/api/users/invitations" && request.method() === "GET") {
       const targetOrganizationId = url.searchParams.get("organizationId") ?? "org-primary";
       await fulfillJson(
@@ -1273,6 +1301,29 @@ test("access workspace lets operators review and update memberships", async ({ p
   });
   await pendingInviteCard.getByRole("button", { name: "Revoke invite" }).click();
   await expect(page.getByText("Invitation for pending@acme.test has been revoked.")).toBeVisible();
+});
+
+test("settings page lets operators update workspace profile and invitation policy", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/settings");
+
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+
+  await page.getByLabel("Workspace name").fill("Acme Finance Ops");
+  await page.getByLabel("Timezone").fill("America/New_York");
+  await page.getByRole("button", { name: "Save profile" }).click();
+
+  await expect(page.getByText("Workspace profile updated for Acme Finance Ops.")).toBeVisible();
+  await expect(page.getByLabel("Workspace name")).toHaveValue("Acme Finance Ops");
+  await expect(page.getByLabel("Timezone")).toHaveValue("America/New_York");
+
+  const ttlInput = page.getByLabel("Invitation expiry window (days)");
+  await expect(ttlInput).toHaveValue("7");
+  await ttlInput.fill("14");
+  await page.getByRole("button", { name: "Save policy" }).click();
+
+  await expect(page.getByText("Invitation expiry updated to 14 days.")).toBeVisible();
+  await expect(ttlInput).toHaveValue("14");
 });
 
 test("invite page creates an account and accepts a workspace invitation", async ({ page }) => {

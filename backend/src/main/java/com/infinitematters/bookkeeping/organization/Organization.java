@@ -28,6 +28,9 @@ public class Organization {
     @Column(nullable = false, length = 64)
     private String timezone;
 
+    @Column(name = "invitation_ttl_days", nullable = false)
+    private int invitationTtlDays = 7;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -67,6 +70,14 @@ public class Organization {
 
     public void setTimezone(String timezone) {
         this.timezone = timezone;
+    }
+
+    public int getInvitationTtlDays() {
+        return invitationTtlDays;
+    }
+
+    public void setInvitationTtlDays(int invitationTtlDays) {
+        this.invitationTtlDays = invitationTtlDays;
     }
 
     public Instant getCreatedAt() {

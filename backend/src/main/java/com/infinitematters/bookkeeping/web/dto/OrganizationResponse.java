@@ -13,6 +13,7 @@ public record OrganizationResponse(
         String name,
         PlanTier planTier,
         String timezone,
+        int invitationTtlDays,
         Instant createdAt,
         UserRole role) {
     public static OrganizationResponse from(Organization organization) {
@@ -21,6 +22,7 @@ public record OrganizationResponse(
                 organization.getName(),
                 organization.getPlanTier(),
                 organization.getTimezone(),
+                organization.getInvitationTtlDays(),
                 organization.getCreatedAt(),
                 null);
     }
@@ -32,6 +34,7 @@ public record OrganizationResponse(
                 organization.getName(),
                 organization.getPlanTier(),
                 organization.getTimezone(),
+                organization.getInvitationTtlDays(),
                 organization.getCreatedAt(),
                 membership.getRole());
     }

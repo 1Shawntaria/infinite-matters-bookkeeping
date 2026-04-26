@@ -18,6 +18,7 @@ export type OrganizationSummary = {
     name: string;
     planTier: string;
     timezone: string;
+    invitationTtlDays: number;
     role: string | null;
 };
 

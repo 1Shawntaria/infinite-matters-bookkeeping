@@ -237,6 +237,7 @@ class InfiniteMattersApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[*].id", hasItems(primaryOrganizationId, secondaryOrganizationId)))
+                .andExpect(jsonPath("$[?(@.id=='%s')].invitationTtlDays".formatted(primaryOrganizationId), hasItem(7)))
                 .andExpect(jsonPath("$[?(@.id=='%s')].role".formatted(primaryOrganizationId), hasItem("OWNER")))
                 .andExpect(jsonPath("$[?(@.id=='%s')].role".formatted(secondaryOrganizationId), hasItem("OWNER")));
 
@@ -503,7 +504,78 @@ class InfiniteMattersApplicationTests {
                         .header("Authorization", bearerToken(invitedTokens.accessToken())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(organizationId))
+                .andExpect(jsonPath("$[0].invitationTtlDays").value(7))
                 .andExpect(jsonPath("$[0].role").value("ADMIN"));
+    }
+
+    @Test
+    void ownerCanUpdateWorkspaceSettings() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "settings-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Settings Owner", password);
+        String organizationId = createOrganization("Settings Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(get("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Settings Workspace"))
+                .andExpect(jsonPath("$.timezone").value("America/Los_Angeles"))
+                .andExpect(jsonPath("$.invitationTtlDays").value(7));
+
+        mockMvc.perform(patch("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Settings Workspace East",
+                                  "timezone": "America/New_York",
+                                  "invitationTtlDays": 14
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Settings Workspace East"))
+                .andExpect(jsonPath("$.timezone").value("America/New_York"))
+                .andExpect(jsonPath("$.invitationTtlDays").value(14));
+
+        mockMvc.perform(get("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Settings Workspace East"))
+                .andExpect(jsonPath("$.timezone").value("America/New_York"))
+                .andExpect(jsonPath("$.invitationTtlDays").value(14));
+    }
+
+    @Test
+    void workspaceSettingsRejectInvalidTimezone() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "settings-invalid-timezone-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Settings Owner", password);
+        String organizationId = createOrganization("Settings Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(patch("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "timezone": "Mars/Phobos"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Timezone must be a valid IANA zone ID"));
     }
 
     @Test
