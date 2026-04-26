@@ -1,0 +1,11 @@
+<svg width="700" height="170" viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Infinite Matters brandmark and wordmark">
+  <g transform="translate(8 5) scale(0.62)" fill="none" stroke="#0B1B2B" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M110 100 C72 58 24 72 24 120 C24 168 72 182 110 140 C148 182 196 168 196 120 C196 72 148 58 110 100Z"/>
+    <path d="M110 30V210"/>
+    <path d="M58 120H162"/>
+  </g>
+  <text x="182" y="68" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="800" letter-spacing="7" fill="#0B1B2B">INFINITE MATTERS</text>
+  <line x1="182" y1="104" x2="240" y2="104" stroke="#2FB7A3" stroke-width="3" stroke-linecap="round"/>
+  <text x="394" y="114" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" letter-spacing="7" fill="#2FB7A3">BOOKKEEPING</text>
+  <line x1="548" y1="104" x2="606" y2="104" stroke="#2FB7A3" stroke-width="3" stroke-linecap="round"/>
+</svg>

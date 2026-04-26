@@ -1,15 +1,8 @@
-<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="48" cy="48" r="44" fill="#173B47"/>
-  <circle cx="48" cy="48" r="44" fill="url(#glow)" fill-opacity="0.22"/>
-  <path d="M22 48C22 34.745 32.745 24 46 24H50C63.255 24 74 34.745 74 48C74 61.255 63.255 72 50 72H46C32.745 72 22 61.255 22 48Z" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M48 14V82" stroke="white" stroke-width="6" stroke-linecap="round"/>
-  <path d="M26 48H70" stroke="white" stroke-width="6" stroke-linecap="round"/>
-  <path d="M48 48L38 38" stroke="white" stroke-width="6" stroke-linecap="round"/>
-  <path d="M48 48L58 58" stroke="white" stroke-width="6" stroke-linecap="round"/>
-  <defs>
-    <linearGradient id="glow" x1="20" y1="10" x2="80" y2="84" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#66E0D3"/>
-      <stop offset="1" stop-color="#173B47" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Infinite Matters favicon">
+  <rect width="128" height="128" rx="64" fill="#071523"/>
+  <g transform="translate(22 16) scale(0.38)" fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M110 100 C72 58 24 72 24 120 C24 168 72 182 110 140 C148 182 196 168 196 120 C196 72 148 58 110 100Z"/>
+    <path d="M110 30V210"/>
+    <path d="M58 120H162"/>
+  </g>
 </svg>

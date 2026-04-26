@@ -1,15 +1,14 @@
-<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="18" y="18" width="220" height="220" rx="44" fill="#143540"/>
-  <rect x="18" y="18" width="220" height="220" rx="44" fill="url(#shine)" fill-opacity="0.18"/>
-  <path d="M56 128C56 97.072 81.072 72 112 72H144C174.928 72 200 97.072 200 128C200 158.928 174.928 184 144 184H112C81.072 184 56 158.928 56 128Z" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M128 44V212" stroke="white" stroke-width="14" stroke-linecap="round"/>
-  <path d="M64 128H192" stroke="white" stroke-width="14" stroke-linecap="round"/>
-  <path d="M128 128L99 99" stroke="white" stroke-width="14" stroke-linecap="round"/>
-  <path d="M128 128L157 157" stroke="white" stroke-width="14" stroke-linecap="round"/>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Infinite Matters app icon">
   <defs>
-    <linearGradient id="shine" x1="48" y1="28" x2="214" y2="236" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#66E0D3"/>
-      <stop offset="1" stop-color="#0C141D" stop-opacity="0"/>
+    <linearGradient id="appGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B1B2B"/>
+      <stop offset="100%" stop-color="#123F45"/>
     </linearGradient>
   </defs>
+  <rect width="256" height="256" rx="44" fill="url(#appGradient)"/>
+  <g transform="translate(32 20)" fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M96 88 C62 50 18 64 18 108 C18 152 62 166 96 126 C130 166 174 152 174 108 C174 64 130 50 96 88Z"/>
+    <path d="M96 24V192"/>
+    <path d="M46 108H146"/>
+  </g>
 </svg>

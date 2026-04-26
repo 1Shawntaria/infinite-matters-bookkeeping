@@ -1,17 +1,13 @@
-<svg width="760" height="220" viewBox="0 0 760 220" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="760" height="220" rx="18" fill="white"/>
-  <g transform="translate(32 32)">
-    <path d="M20 64C20 48.536 32.536 36 48 36H80C95.464 36 108 48.536 108 64C108 79.464 95.464 92 80 92H48C32.536 92 20 79.464 20 64Z" stroke="#102033" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M64 18V110" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
-    <path d="M24 64H104" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
-    <path d="M64 64L46 46" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
-    <path d="M64 64L82 82" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
+<svg width="980" height="270" viewBox="0 0 980 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Infinite Matters Bookkeeping primary logo">
+  <g transform="translate(18 18)" fill="none" stroke="#0B1B2B" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M110 100 C72 58 24 72 24 120 C24 168 72 182 110 140 C148 182 196 168 196 120 C196 72 148 58 110 100Z"/>
+    <path d="M110 30V210"/>
+    <path d="M58 120H162"/>
   </g>
-  <g transform="translate(170 56)">
-    <text x="0" y="46" fill="#102033" font-family="Inter, Arial, sans-serif" font-size="40" font-weight="800" letter-spacing="2">INFINITE</text>
-    <text x="0" y="92" fill="#102033" font-family="Inter, Arial, sans-serif" font-size="40" font-weight="800" letter-spacing="2">MATTERS</text>
-    <line x1="2" y1="124" x2="46" y2="124" stroke="#2EB1A6" stroke-width="4" stroke-linecap="round"/>
-    <text x="58" y="132" fill="#2EB1A6" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="4">BOOKKEEPING</text>
-    <text x="0" y="170" fill="#6B7280" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="500">Clarity. Accuracy. Peace of Mind.</text>
-  </g>
+  <text x="300" y="110" font-family="Arial, Helvetica, sans-serif" font-size="60" font-weight="800" letter-spacing="12" fill="#0B1B2B">INFINITE</text>
+  <text x="300" y="180" font-family="Arial, Helvetica, sans-serif" font-size="60" font-weight="800" letter-spacing="12" fill="#0B1B2B">MATTERS</text>
+  <line x1="300" y1="218" x2="405" y2="218" stroke="#2FB7A3" stroke-width="4" stroke-linecap="round"/>
+  <text x="590" y="230" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" letter-spacing="10" fill="#2FB7A3">BOOKKEEPING</text>
+  <line x1="775" y1="218" x2="880" y2="218" stroke="#2FB7A3" stroke-width="4" stroke-linecap="round"/>
+  <text x="300" y="264" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="400" letter-spacing="1.2" fill="#6B7280">Clarity. Accuracy. Peace of Mind.</text>
 </svg>

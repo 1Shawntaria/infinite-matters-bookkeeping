@@ -1,13 +1,7 @@
-<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="stroke-gradient" x1="20" y1="20" x2="108" y2="108" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#66E0D3"/>
-      <stop offset="1" stop-color="#2EB1A6"/>
-    </linearGradient>
-  </defs>
-  <path d="M20 64C20 48.536 32.536 36 48 36H80C95.464 36 108 48.536 108 64C108 79.464 95.464 92 80 92H48C32.536 92 20 79.464 20 64Z" stroke="#102033" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M64 18V110" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
-  <path d="M24 64H104" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
-  <path d="M64 64L46 46" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
-  <path d="M64 64L82 82" stroke="#102033" stroke-width="8" stroke-linecap="round"/>
+<svg width="220" height="240" viewBox="0 0 220 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Infinite Matters icon">
+  <g fill="none" stroke="#0B1B2B" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M110 100 C72 58 24 72 24 120 C24 168 72 182 110 140 C148 182 196 168 196 120 C196 72 148 58 110 100Z"/>
+    <path d="M110 30V210"/>
+    <path d="M58 120H162"/>
+  </g>
 </svg>
