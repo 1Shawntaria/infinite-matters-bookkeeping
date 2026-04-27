@@ -183,6 +183,8 @@ function transactions() {
       mcc: "5942",
       proposedCategory: "OTHER",
       finalCategory: null,
+      ledgerAccountCode: "6900",
+      ledgerAccountName: "Miscellaneous Expense",
       route: "PREMIUM",
       confidenceScore: 0.83,
       status: "REVIEW_REQUIRED",
@@ -202,11 +204,51 @@ function transactions() {
       mcc: "5734",
       proposedCategory: "SOFTWARE",
       finalCategory: "SOFTWARE",
+      ledgerAccountCode: "6100",
+      ledgerAccountName: "Software Expense",
       route: "RULES",
       confidenceScore: 0.92,
       status: "POSTED",
       sourceType: "CSV",
       importedAt: "2026-04-24T12:00:00Z",
+    },
+  ];
+}
+
+function ledgerAccounts() {
+  return [
+    {
+      accountCode: "1000",
+      accountName: "Operating Checking",
+      classification: "ASSET",
+      sourceKinds: ["FINANCIAL_ACCOUNT", "LEDGER_ACTIVITY"],
+      categoryHints: ["BANK"],
+      activityEntryCount: 1,
+      lastEntryDate: "2026-04-05",
+      debitTotal: 0,
+      creditTotal: 89.0,
+    },
+    {
+      accountCode: "6100",
+      accountName: "Software Expense",
+      classification: "EXPENSE",
+      sourceKinds: ["SYSTEM_CATEGORY", "LEDGER_ACTIVITY"],
+      categoryHints: ["SOFTWARE"],
+      activityEntryCount: 1,
+      lastEntryDate: "2026-04-05",
+      debitTotal: 89.0,
+      creditTotal: 0,
+    },
+    {
+      accountCode: "6900",
+      accountName: "Miscellaneous Expense",
+      classification: "EXPENSE",
+      sourceKinds: ["SYSTEM_CATEGORY"],
+      categoryHints: ["OTHER"],
+      activityEntryCount: 0,
+      lastEntryDate: null,
+      debitTotal: 0,
+      creditTotal: 0,
     },
   ];
 }
@@ -1220,6 +1262,11 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/ledger/accounts" && request.method() === "GET") {
+      await fulfillJson(route, ledgerAccounts());
+      return;
+    }
+
     if (url.pathname === "/api/adjustments" && request.method() === "POST") {
       const requestBody = JSON.parse(request.postData() || "{}");
       ledgerEntries = [
@@ -1557,6 +1604,18 @@ test("transactions workspace helps investigate imported and posted activity", as
   await page.getByLabel("Status").selectOption("POSTED");
   await expect(page.getByText("CLOUDCO")).toBeVisible();
   await expect(page.getByText("AMZN MKTP")).toHaveCount(0);
+});
+
+test("accounting workspace ties account references back to transactions and close", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/accounting?accountCode=6100");
+
+  await expect(page.getByRole("heading", { name: "Chart of Accounts" })).toBeVisible();
+  await expect(page.getByLabel("Search code, name, or category hint")).toHaveValue("6100");
+  await expect(page.getByText("6100 · Software Expense")).toBeVisible();
+  await expect(page.getByText("SYSTEM_CATEGORY, LEDGER_ACTIVITY")).toBeVisible();
+  await expect(page.getByRole("link", { name: "View related transactions" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Use in close" })).toBeVisible();
 });
 
 test("reconciliation flow starts from the account card and opens real account details", async ({ page }) => {

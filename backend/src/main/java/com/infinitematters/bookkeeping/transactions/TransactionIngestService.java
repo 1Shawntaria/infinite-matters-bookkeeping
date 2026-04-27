@@ -7,6 +7,7 @@ import com.infinitematters.bookkeeping.domain.CategorizationResult;
 import com.infinitematters.bookkeeping.domain.Transaction;
 import com.infinitematters.bookkeeping.ingest.CsvIngestor;
 import com.infinitematters.bookkeeping.ingest.Normalizer;
+import com.infinitematters.bookkeeping.ledger.LedgerAccountMapping;
 import com.infinitematters.bookkeeping.ledger.LedgerService;
 import com.infinitematters.bookkeeping.organization.Organization;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
@@ -158,6 +159,8 @@ public class TransactionIngestService {
                     transaction.getMcc(),
                     decision.getProposedCategory(),
                     decision.getFinalCategory(),
+                    ledgerAccountCode(decision),
+                    ledgerAccountName(decision),
                     decision.getRoute(),
                     decision.getConfidenceScore(),
                     transaction.getStatus(),
@@ -194,6 +197,8 @@ public class TransactionIngestService {
                             transaction.getMcc(),
                             decision.getProposedCategory(),
                             decision.getFinalCategory(),
+                            ledgerAccountCode(decision),
+                            ledgerAccountName(decision),
                             decision.getRoute(),
                             decision.getConfidenceScore(),
                             transaction.getStatus(),
@@ -242,6 +247,26 @@ public class TransactionIngestService {
         return "RULES".equals(result.route())
                 || "MEMORY".equals(result.route())
                 || result.confidence().score() >= AUTO_ACCEPT_THRESHOLD;
+    }
+
+    private String ledgerAccountCode(CategorizationDecision decision) {
+        if (decision.getFinalCategory() != null) {
+            return LedgerAccountMapping.forCategory(decision.getFinalCategory()).code();
+        }
+        if (decision.getProposedCategory() != null) {
+            return LedgerAccountMapping.forCategory(decision.getProposedCategory()).code();
+        }
+        return null;
+    }
+
+    private String ledgerAccountName(CategorizationDecision decision) {
+        if (decision.getFinalCategory() != null) {
+            return LedgerAccountMapping.forCategory(decision.getFinalCategory()).name();
+        }
+        if (decision.getProposedCategory() != null) {
+            return LedgerAccountMapping.forCategory(decision.getProposedCategory()).name();
+        }
+        return null;
     }
 
     private String fingerprint(UUID accountId, Transaction transaction) {

@@ -13,6 +13,8 @@ export type ImportedTransactionSummary = {
     mcc: string | null;
     proposedCategory: string | null;
     finalCategory: string | null;
+    ledgerAccountCode: string | null;
+    ledgerAccountName: string | null;
     route: string;
     confidenceScore: number;
     status: string;

@@ -1,7 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 import { listFinancialAccounts, FinancialAccount } from "@/lib/api/accounts";
 import { listTransactions } from "@/lib/api/transactions";
 import { ImportedTransactionSummary } from "@/lib/api/imports";
@@ -15,9 +17,11 @@ import {
     SummaryMetric,
 } from "@/components/app-surfaces";
 
-export default function TransactionsPage() {
+function TransactionsPageContent() {
+    const searchParams = useSearchParams();
+    const accountCodeParam = searchParams.get("accountCode") ?? "";
     const { organizationId, hydrated } = useOrganizationSession();
-    const [search, setSearch] = useState("");
+    const [search, setSearch] = useState(accountCodeParam);
     const [statusFilter, setStatusFilter] = useState("ALL");
     const [accountFilter, setAccountFilter] = useState("ALL");
 
@@ -57,6 +61,8 @@ export default function TransactionsPage() {
                 transaction.financialAccountId === accountFilter;
             const matchesSearch =
                 normalizedSearch.length === 0 ||
+                transaction.ledgerAccountCode?.toLowerCase().includes(normalizedSearch) ||
+                transaction.ledgerAccountName?.toLowerCase().includes(normalizedSearch) ||
                 transaction.merchant?.toLowerCase().includes(normalizedSearch) ||
                 transaction.memo?.toLowerCase().includes(normalizedSearch) ||
                 transaction.financialAccountName.toLowerCase().includes(normalizedSearch) ||
@@ -273,6 +279,12 @@ export default function TransactionsPage() {
                                                 {transaction.finalCategory ?? "Pending review"}
                                             </p>
                                             <p>
+                                                <span className="text-zinc-500">Ledger account:</span>{" "}
+                                                {transaction.ledgerAccountCode && transaction.ledgerAccountName
+                                                    ? `${transaction.ledgerAccountCode} · ${transaction.ledgerAccountName}`
+                                                    : "-"}
+                                            </p>
+                                            <p>
                                                 <span className="text-zinc-500">Confidence:</span>{" "}
                                                 {Math.round((transaction.confidenceScore ?? 0) * 100)}%
                                             </p>
@@ -300,6 +312,32 @@ export default function TransactionsPage() {
                                                   ? "This row is already in the ledger, so use close controls when you need the accounting context."
                                                   : "This row is imported and waiting on the rest of the workflow to finish."}
                                         </p>
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            {transaction.status === "REVIEW_REQUIRED" ? (
+                                                <Link
+                                                    href="/review-queue"
+                                                    className="rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-200 hover:bg-white/[0.05]"
+                                                >
+                                                    Open review queue
+                                                </Link>
+                                            ) : null}
+                                            {transaction.ledgerAccountCode ? (
+                                                <Link
+                                                    href={`/accounting?accountCode=${encodeURIComponent(transaction.ledgerAccountCode)}`}
+                                                    className="rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-200 hover:bg-white/[0.05]"
+                                                >
+                                                    View {transaction.ledgerAccountCode}
+                                                </Link>
+                                            ) : null}
+                                            {transaction.status === "POSTED" ? (
+                                                <Link
+                                                    href="/close"
+                                                    className="rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-200 hover:bg-white/[0.05]"
+                                                >
+                                                    Open close workspace
+                                                </Link>
+                                            ) : null}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -308,5 +346,20 @@ export default function TransactionsPage() {
                 )}
             </SectionBand>
         </main>
+    );
+}
+
+export default function TransactionsPage() {
+    return (
+        <Suspense
+            fallback={
+                <LoadingPanel
+                    title="Loading transactions workspace."
+                    message="Pulling imported activity, account context, and posting status into one investigation surface."
+                />
+            }
+        >
+            <TransactionsPageContent />
+        </Suspense>
     );
 }

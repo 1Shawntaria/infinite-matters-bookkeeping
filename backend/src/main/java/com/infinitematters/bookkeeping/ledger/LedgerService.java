@@ -1,6 +1,8 @@
 package com.infinitematters.bookkeeping.ledger;
 
 import com.infinitematters.bookkeeping.accounts.AccountType;
+import com.infinitematters.bookkeeping.accounts.FinancialAccount;
+import com.infinitematters.bookkeeping.accounts.FinancialAccountService;
 import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.domain.Category;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
@@ -13,8 +15,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class LedgerService {
@@ -23,17 +31,20 @@ public class LedgerService {
     private final AuditService auditService;
     private final PeriodCloseService periodCloseService;
     private final OrganizationService organizationService;
+    private final FinancialAccountService financialAccountService;
 
     public LedgerService(JournalEntryRepository journalEntryRepository,
                          JournalEntryLineRepository journalEntryLineRepository,
                          AuditService auditService,
                          PeriodCloseService periodCloseService,
-                         OrganizationService organizationService) {
+                         OrganizationService organizationService,
+                         FinancialAccountService financialAccountService) {
         this.journalEntryRepository = journalEntryRepository;
         this.journalEntryLineRepository = journalEntryLineRepository;
         this.auditService = auditService;
         this.periodCloseService = periodCloseService;
         this.organizationService = organizationService;
+        this.financialAccountService = financialAccountService;
     }
 
     @Transactional
@@ -78,6 +89,40 @@ public class LedgerService {
         return journalEntryRepository.findByOrganizationIdOrderByEntryDateDescCreatedAtDesc(organizationId)
                 .stream()
                 .map(this::toSummary)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LedgerAccountReference> listAccounts(UUID organizationId) {
+        List<LedgerEntrySummary> entries = listEntries(organizationId);
+        Map<String, AccountAccumulator> accumulators = entries.stream()
+                .flatMap(entry -> entry.lines().stream().map(line -> Map.entry(entry.entryDate(), line)))
+                .collect(Collectors.toMap(
+                        item -> key(item.getValue().accountCode(), item.getValue().accountName()),
+                        item -> AccountAccumulator.fromLedgerLine(item.getValue(), item.getKey()),
+                        AccountAccumulator::merge));
+
+        for (Category category : Category.values()) {
+            LedgerAccountMapping mapping = LedgerAccountMapping.forCategory(category);
+            accumulators.merge(
+                    key(mapping.code(), mapping.name()),
+                    AccountAccumulator.fromCategory(category, mapping),
+                    AccountAccumulator::merge);
+        }
+
+        for (FinancialAccount financialAccount : financialAccountService.listByOrganization(organizationId)) {
+            LedgerAccountMapping mapping = financialAccountMapping(financialAccount);
+            accumulators.merge(
+                    key(mapping.code(), mapping.name()),
+                    AccountAccumulator.fromFinancialAccount(financialAccount, mapping),
+                    AccountAccumulator::merge);
+        }
+
+        return accumulators.values().stream()
+                .map(AccountAccumulator::toReference)
+                .sorted(Comparator
+                        .comparing(LedgerAccountReference::accountCode)
+                        .thenComparing(LedgerAccountReference::accountName))
                 .toList();
     }
 
@@ -163,14 +208,117 @@ public class LedgerService {
     }
 
     private LedgerAccountMapping financialAccountMapping(BookkeepingTransaction transaction) {
-        String name = transaction.getFinancialAccount().getName();
-        AccountType type = transaction.getFinancialAccount().getAccountType();
+        return financialAccountMapping(transaction.getFinancialAccount());
+    }
+
+    private LedgerAccountMapping financialAccountMapping(FinancialAccount financialAccount) {
+        String name = financialAccount.getName();
+        AccountType type = financialAccount.getAccountType();
         return switch (type) {
             case BANK -> new LedgerAccountMapping("1000", name);
             case CREDIT_CARD -> new LedgerAccountMapping("2000", name);
             case CASH -> new LedgerAccountMapping("1010", name);
             case LOAN -> new LedgerAccountMapping("2300", name);
         };
+    }
+
+    private String key(String accountCode, String accountName) {
+        return accountCode + "|" + accountName;
+    }
+
+    private static String classificationForCode(String accountCode) {
+        if (accountCode == null || accountCode.isBlank()) {
+            return "OTHER";
+        }
+        if (accountCode.startsWith("1")) return "ASSET";
+        if (accountCode.startsWith("2")) return "LIABILITY";
+        if (accountCode.startsWith("4")) return "REVENUE";
+        if (accountCode.startsWith("5") || accountCode.startsWith("6") || accountCode.startsWith("7")) return "EXPENSE";
+        return "OTHER";
+    }
+
+    private static final class AccountAccumulator {
+        private final String accountCode;
+        private final String accountName;
+        private final String classification;
+        private final LinkedHashSet<String> sourceKinds = new LinkedHashSet<>();
+        private final LinkedHashSet<String> categoryHints = new LinkedHashSet<>();
+        private long activityEntryCount;
+        private LocalDate lastEntryDate;
+        private BigDecimal debitTotal = BigDecimal.ZERO;
+        private BigDecimal creditTotal = BigDecimal.ZERO;
+
+        private AccountAccumulator(String accountCode, String accountName, String classification) {
+            this.accountCode = accountCode;
+            this.accountName = accountName;
+            this.classification = classification;
+        }
+
+        static AccountAccumulator fromLedgerLine(
+                LedgerEntrySummary.LedgerLineSummary line,
+                LocalDate entryDate) {
+            AccountAccumulator accumulator = new AccountAccumulator(
+                    line.accountCode(),
+                    line.accountName(),
+                    classificationForCode(line.accountCode()));
+            accumulator.sourceKinds.add("LEDGER_ACTIVITY");
+            accumulator.activityEntryCount = 1;
+            accumulator.lastEntryDate = entryDate;
+            if (line.entrySide() == EntrySide.DEBIT) {
+                accumulator.debitTotal = accumulator.debitTotal.add(line.amount());
+            } else {
+                accumulator.creditTotal = accumulator.creditTotal.add(line.amount());
+            }
+            return accumulator;
+        }
+
+        static AccountAccumulator fromCategory(Category category, LedgerAccountMapping mapping) {
+            AccountAccumulator accumulator = new AccountAccumulator(
+                    mapping.code(),
+                    mapping.name(),
+                    classificationForCode(mapping.code()));
+            accumulator.sourceKinds.add("SYSTEM_CATEGORY");
+            accumulator.categoryHints.add(category.name());
+            return accumulator;
+        }
+
+        static AccountAccumulator fromFinancialAccount(
+                FinancialAccount financialAccount,
+                LedgerAccountMapping mapping) {
+            AccountAccumulator accumulator = new AccountAccumulator(
+                    mapping.code(),
+                    mapping.name(),
+                    classificationForCode(mapping.code()));
+            accumulator.sourceKinds.add("FINANCIAL_ACCOUNT");
+            accumulator.categoryHints.add(financialAccount.getAccountType().name());
+            return accumulator;
+        }
+
+        AccountAccumulator merge(AccountAccumulator other) {
+            this.sourceKinds.addAll(other.sourceKinds);
+            this.categoryHints.addAll(other.categoryHints);
+            this.activityEntryCount += other.activityEntryCount;
+            if (this.lastEntryDate == null
+                    || (other.lastEntryDate != null && other.lastEntryDate.isAfter(this.lastEntryDate))) {
+                this.lastEntryDate = other.lastEntryDate;
+            }
+            this.debitTotal = this.debitTotal.add(other.debitTotal);
+            this.creditTotal = this.creditTotal.add(other.creditTotal);
+            return this;
+        }
+
+        LedgerAccountReference toReference() {
+            return new LedgerAccountReference(
+                    accountCode,
+                    accountName,
+                    classification,
+                    new ArrayList<>(sourceKinds),
+                    new ArrayList<>(categoryHints),
+                    activityEntryCount,
+                    lastEntryDate,
+                    debitTotal,
+                    creditTotal);
+        }
     }
 
     private String buildDescription(BookkeepingTransaction transaction, Category category) {

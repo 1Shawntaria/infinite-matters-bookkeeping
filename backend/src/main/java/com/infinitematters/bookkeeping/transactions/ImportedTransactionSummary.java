@@ -19,6 +19,8 @@ public record ImportedTransactionSummary(
         String mcc,
         Category proposedCategory,
         Category finalCategory,
+        String ledgerAccountCode,
+        String ledgerAccountName,
         String route,
         double confidenceScore,
         TransactionStatus status,

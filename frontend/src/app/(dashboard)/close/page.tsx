@@ -1,7 +1,9 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
     closePeriod,
     CloseChecklistSummary,
@@ -44,7 +46,9 @@ const EMPTY_LINE = (): AdjustmentLineDraft => ({
     amount: "",
 });
 
-export default function ClosePage() {
+function ClosePageContent() {
+    const searchParams = useSearchParams();
+    const accountCodeParam = searchParams.get("accountCode") ?? "";
     const queryClient = useQueryClient();
     const { organizationId, hydrated } = useOrganizationSession();
     const [selectedMonth, setSelectedMonth] = useState("");
@@ -59,7 +63,12 @@ export default function ClosePage() {
     const [entryDate, setEntryDate] = useState("");
     const [description, setDescription] = useState("");
     const [adjustmentReason, setAdjustmentReason] = useState("");
-    const [lines, setLines] = useState<AdjustmentLineDraft[]>([EMPTY_LINE(), EMPTY_LINE()]);
+    const [lines, setLines] = useState<AdjustmentLineDraft[]>([
+        accountCodeParam
+            ? { ...EMPTY_LINE(), accountCode: accountCodeParam }
+            : EMPTY_LINE(),
+        EMPTY_LINE(),
+    ]);
 
     const dashboardQuery = useQuery<DashboardSnapshot, Error>({
         queryKey: ["dashboardSnapshot", organizationId],
@@ -191,6 +200,30 @@ export default function ClosePage() {
         0
     );
     const adjustmentsBalanced = totalDebits > 0 && totalDebits === totalCredits;
+
+    useEffect(() => {
+        if (!accountCodeParam) {
+            return;
+        }
+
+        setLines((current) => {
+            const nextLines = [...current];
+            const firstLine = nextLines[0] ?? EMPTY_LINE();
+            const matchedSuggestion = accountSuggestions.find(
+                (suggestion) => suggestion.accountCode === accountCodeParam
+            );
+
+            nextLines[0] = {
+                ...firstLine,
+                accountCode: accountCodeParam,
+                accountName:
+                    matchedSuggestion?.accountName ??
+                    firstLine.accountName,
+            };
+
+            return nextLines;
+        });
+    }, [accountCodeParam, accountSuggestions]);
 
     function updateLine(index: number, field: keyof AdjustmentLineDraft, value: string) {
         setLines((current) =>
@@ -741,6 +774,15 @@ export default function ClosePage() {
                             <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
                                 Suggested accounts
                             </p>
+                            {accountCodeParam ? (
+                                <p className="mt-2 text-sm text-zinc-400">
+                                    Adjustment lines are prefilled from account{" "}
+                                    <span className="font-medium text-zinc-200">
+                                        {accountCodeParam}
+                                    </span>
+                                    . You can keep it, replace it, or pair it with an offsetting line.
+                                </p>
+                            ) : null}
                             <div className="mt-3 flex flex-wrap gap-2">
                                 {accountSuggestions.slice(0, 10).map((suggestion) => (
                                     <span
@@ -803,9 +845,17 @@ export default function ClosePage() {
                                                 key={`${entry.journalEntryId}-${index}`}
                                                 className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/6 bg-black/20 px-3 py-2 text-sm"
                                             >
-                                                <span className="text-zinc-200">
-                                                    {line.accountCode} · {line.accountName}
-                                                </span>
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <span className="text-zinc-200">
+                                                        {line.accountCode} · {line.accountName}
+                                                    </span>
+                                                    <Link
+                                                        href={`/accounting?accountCode=${encodeURIComponent(line.accountCode)}`}
+                                                        className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/[0.05]"
+                                                    >
+                                                        View {line.accountCode}
+                                                    </Link>
+                                                </div>
                                                 <span className="text-zinc-400">
                                                     {line.entrySide} · ${Number(line.amount).toFixed(2)}
                                                 </span>
@@ -819,5 +869,20 @@ export default function ClosePage() {
                 </SectionBand>
             </div>
         </main>
+    );
+}
+
+export default function ClosePage() {
+    return (
+        <Suspense
+            fallback={
+                <LoadingPanel
+                    title="Loading close workspace."
+                    message="Gathering checklist items, ledger activity, and period controls into one place."
+                />
+            }
+        >
+            <ClosePageContent />
+        </Suspense>
     );
 }
