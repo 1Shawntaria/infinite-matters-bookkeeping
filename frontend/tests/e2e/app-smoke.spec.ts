@@ -391,6 +391,55 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       status: "POSTED",
     },
   ];
+  const accountingPeriods = [
+    {
+      id: "period-2026-04",
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-30",
+      status: "OPEN",
+      closeMethod: null,
+      overrideReason: null,
+      overrideApprovedByUserId: null,
+      closedAt: null,
+      createdAt: "2026-04-01T00:00:00Z",
+    },
+    {
+      id: "period-2026-03",
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      status: "CLOSED",
+      closeMethod: "CHECKLIST",
+      overrideReason: null,
+      overrideApprovedByUserId: null,
+      closedAt: "2026-04-02T18:00:00Z",
+      createdAt: "2026-03-01T00:00:00Z",
+    },
+  ];
+  let ledgerEntries = [
+    {
+      journalEntryId: "journal-1",
+      transactionId: "txn-history-1",
+      entryDate: "2026-04-05",
+      description: "Imported CLOUDCO transaction",
+      entryType: "TRANSACTION_IMPORT",
+      adjustmentReason: null,
+      createdAt: "2026-04-24T12:00:00Z",
+      lines: [
+        {
+          accountCode: "6100",
+          accountName: "Software Expense",
+          entrySide: "DEBIT",
+          amount: 89.0,
+        },
+        {
+          accountCode: "1000",
+          accountName: "Operating Checking",
+          entrySide: "CREDIT",
+          amount: 89.0,
+        },
+      ],
+    },
+  ];
   const authActivity = [
     {
       id: "auth-activity-1",
@@ -1058,6 +1107,90 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/periods" && request.method() === "GET") {
+      await fulfillJson(route, accountingPeriods);
+      return;
+    }
+
+    if (url.pathname === "/api/periods/checklist" && request.method() === "GET") {
+      await fulfillJson(route, {
+        periodStart: "2026-04-01",
+        periodEnd: "2026-04-30",
+        closeReady: false,
+        items: [
+          {
+            itemType: "WORKFLOW_REVIEW",
+            label: "Review queue cleared",
+            complete: remainingReviewTasks.length === 0,
+            detail:
+              remainingReviewTasks.length === 0
+                ? "No review tasks are blocking close."
+                : `${remainingReviewTasks.length} review task(s) still need a final category.`,
+          },
+          {
+            itemType: "ACCOUNT_RECONCILIATION",
+            label: "Account reconciliations complete",
+            complete: false,
+            detail: "Operating Checking still needs reconciliation before close.",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/periods/close" && request.method() === "POST") {
+      const requestBody = JSON.parse(request.postData() || "{}");
+      const matchingPeriod = accountingPeriods.find(
+        (period) => period.periodStart.slice(0, 7) === requestBody.month
+      );
+      if (matchingPeriod) {
+        matchingPeriod.status = "CLOSED";
+        matchingPeriod.closeMethod = "CHECKLIST";
+        matchingPeriod.closedAt = "2026-04-24T13:15:00Z";
+      }
+      await fulfillJson(route, matchingPeriod ?? accountingPeriods[0]);
+      return;
+    }
+
+    if (url.pathname === "/api/periods/force-close" && request.method() === "POST") {
+      const requestBody = JSON.parse(request.postData() || "{}");
+      const matchingPeriod = accountingPeriods.find(
+        (period) => period.periodStart.slice(0, 7) === requestBody.month
+      );
+      if (matchingPeriod) {
+        matchingPeriod.status = "CLOSED";
+        matchingPeriod.closeMethod = "OVERRIDE";
+        matchingPeriod.overrideReason = requestBody.reason;
+        matchingPeriod.closedAt = "2026-04-24T13:20:00Z";
+      }
+      await fulfillJson(route, matchingPeriod ?? accountingPeriods[0]);
+      return;
+    }
+
+    if (url.pathname === "/api/ledger/entries" && request.method() === "GET") {
+      await fulfillJson(route, ledgerEntries);
+      return;
+    }
+
+    if (url.pathname === "/api/adjustments" && request.method() === "POST") {
+      const requestBody = JSON.parse(request.postData() || "{}");
+      ledgerEntries = [
+        {
+          journalEntryId: "journal-adjustment-1",
+          transactionId: null,
+          entryDate: requestBody.entryDate,
+          description: requestBody.description,
+          entryType: "ADJUSTMENT",
+          adjustmentReason: requestBody.adjustmentReason,
+          createdAt: "2026-04-24T13:25:00Z",
+          lines: requestBody.lines,
+        },
+        ...ledgerEntries,
+      ];
+      await fulfillJson(route, ledgerEntries[0]);
+      return;
+    }
+
     if (url.pathname === "/api/transactions/import/csv" && request.method() === "POST") {
       const destinationAccountId = url.searchParams.get("financialAccountId") ?? "acct-operating";
       const destinationAccount =
@@ -1347,11 +1480,21 @@ test("review queue resolves a task from the UI", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Review Queue" })).toBeVisible();
   await expect(page.getByText("AMZN MKTP")).toBeVisible();
 
-  await page.locator("select").last().selectOption("OTHER");
   await page.getByRole("button", { name: "Resolve Task" }).click();
 
   await expect(page.getByText("Task resolved successfully.")).toBeVisible();
   await expect(page.getByText("No review tasks remaining")).toBeVisible();
+});
+
+test("close workspace exposes checklist, ledger, and adjustment controls", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/close");
+
+  await expect(page.getByRole("heading", { name: "Close Management" })).toBeVisible();
+  await expect(page.getByText("Review queue cleared")).toBeVisible();
+  await expect(page.getByText("Account reconciliations complete")).toBeVisible();
+  await expect(page.getByText("Imported CLOUDCO transaction")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Post adjustment" })).toBeVisible();
 });
 
 test("reconciliation flow starts from the account card and opens real account details", async ({ page }) => {

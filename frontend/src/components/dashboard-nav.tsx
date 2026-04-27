@@ -12,6 +12,7 @@ const NAV_ITEMS = [
     { href: "/setup", label: "Setup & Import" },
     { href: "/review-queue", label: "Review Queue" },
     { href: "/reconciliation", label: "Reconciliation" },
+    { href: "/close", label: "Close" },
 ];
 
 type DashboardNavProps = {

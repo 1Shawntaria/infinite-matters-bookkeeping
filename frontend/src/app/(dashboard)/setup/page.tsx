@@ -14,6 +14,7 @@ import {
     ImportedTransactionHistoryItem,
     listImportHistory,
 } from "@/lib/api/imports";
+import { getReviewTasks, ReviewTask } from "@/lib/api/reviews";
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     LoadingPanel,
@@ -82,14 +83,23 @@ export default function SetupPage() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listImportHistory(organizationId),
     });
+    const reviewTasksQuery = useQuery<ReviewTask[], Error>({
+        queryKey: ["reviewTasks", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => getReviewTasks(organizationId),
+    });
     const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
     const importHistory = useMemo(() => importHistoryQuery.data ?? [], [importHistoryQuery.data]);
+    const reviewTasks = useMemo(() => reviewTasksQuery.data ?? [], [reviewTasksQuery.data]);
     const loading =
         hydrated && organizationId
-            ? accountsQuery.isLoading || importHistoryQuery.isLoading
+            ? accountsQuery.isLoading || importHistoryQuery.isLoading || reviewTasksQuery.isLoading
             : false;
     const queryError =
-        accountsQuery.error?.message ?? importHistoryQuery.error?.message ?? "";
+        accountsQuery.error?.message ??
+        importHistoryQuery.error?.message ??
+        reviewTasksQuery.error?.message ??
+        "";
 
     useEffect(() => {
         if (!selectedAccountId && accounts[0]?.id) {
@@ -120,10 +130,12 @@ export default function SetupPage() {
                 : importHistory,
         [importHistory, selectedAccountId]
     );
+    const hasImportedActivity = importHistory.length > 0;
+    const outstandingReviewTasks = reviewTasks.length;
     const setupCompletionSteps = [
         accounts.length > 0,
-        importResult != null || importSuccess.length > 0,
-        importResult != null && (importResult.reviewRequiredCount ?? 0) === 0,
+        hasImportedActivity,
+        hasImportedActivity && outstandingReviewTasks === 0,
     ];
     const completedSteps = setupCompletionSteps.filter(Boolean).length;
 
@@ -491,15 +503,15 @@ export default function SetupPage() {
                         <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3">
                             <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">2. Import</p>
                             <p className="mt-2 text-sm font-medium text-white">
-                                {importResult ? "Completed" : "Still needed"}
+                                {hasImportedActivity ? "Completed" : "Still needed"}
                             </p>
                         </div>
                         <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3">
                             <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">3. Review follow-up</p>
                             <p className="mt-2 text-sm font-medium text-white">
-                                {importResult
-                                    ? importResult.reviewRequiredCount > 0
-                                        ? `${importResult.reviewRequiredCount} item(s) next`
+                                {hasImportedActivity
+                                    ? outstandingReviewTasks > 0
+                                        ? `${outstandingReviewTasks} item(s) next`
                                         : "Clear"
                                     : "Pending import"}
                             </p>

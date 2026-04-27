@@ -63,7 +63,9 @@ export default function ReviewQueuePage() {
             return;
         }
 
-        const finalCategory = selectedCategories[taskId];
+        const task = tasks.find((item) => item.taskId === taskId);
+        const finalCategory =
+            selectedCategories[taskId] ?? task?.proposedCategory ?? "OTHER";
         if (!finalCategory) {
             setError("Please select a category before resolving.");
             return;
