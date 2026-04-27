@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     closePeriod,
     CloseChecklistSummary,
@@ -13,6 +13,7 @@ import {
     listLedgerEntries,
     AccountingPeriodSummary,
 } from "@/lib/api/close";
+import { listFinancialAccounts, FinancialAccount } from "@/lib/api/accounts";
 import { getDashboardSnapshot, DashboardSnapshot } from "@/lib/api/dashboard";
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
@@ -29,6 +30,11 @@ type AdjustmentLineDraft = {
     accountName: string;
     entrySide: "DEBIT" | "CREDIT";
     amount: string;
+};
+
+type AccountSuggestion = {
+    accountCode: string;
+    accountName: string;
 };
 
 const EMPTY_LINE = (): AdjustmentLineDraft => ({
@@ -75,6 +81,11 @@ export default function ClosePage() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listLedgerEntries(organizationId),
     });
+    const accountsQuery = useQuery<FinancialAccount[], Error>({
+        queryKey: ["financialAccounts", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listFinancialAccounts(organizationId),
+    });
 
     useEffect(() => {
         if (!selectedMonth && dashboardQuery.data?.focusMonth) {
@@ -93,6 +104,7 @@ export default function ClosePage() {
             ? dashboardQuery.isLoading ||
               periodsQuery.isLoading ||
               ledgerQuery.isLoading ||
+              accountsQuery.isLoading ||
               (Boolean(selectedMonth) && checklistQuery.isLoading)
             : false;
     const queryError =
@@ -100,11 +112,19 @@ export default function ClosePage() {
         periodsQuery.error?.message ??
         checklistQuery.error?.message ??
         ledgerQuery.error?.message ??
+        accountsQuery.error?.message ??
         "";
 
     const periods = periodsQuery.data ?? [];
     const checklist = checklistQuery.data ?? null;
-    const ledgerEntries = ledgerQuery.data ?? [];
+    const ledgerEntries = useMemo(
+        () => ledgerQuery.data ?? [],
+        [ledgerQuery.data]
+    );
+    const financialAccounts = useMemo(
+        () => accountsQuery.data ?? [],
+        [accountsQuery.data]
+    );
     const currentPeriod = periods.find(
         (period) => period.periodStart.slice(0, 7) === selectedMonth
     ) ?? null;
@@ -112,6 +132,52 @@ export default function ClosePage() {
         checklist?.items.filter((item) => item.complete).length ?? 0;
     const totalChecklistItems = checklist?.items.length ?? 0;
     const ledgerPreview = ledgerEntries.slice(0, 8);
+    const accountSuggestions = useMemo(() => {
+        const suggestions = new Map<string, AccountSuggestion>();
+        const commonAccounts: AccountSuggestion[] = [
+            { accountCode: "1100", accountName: "Accounts Receivable" },
+            { accountCode: "1200", accountName: "Prepaid Expenses" },
+            { accountCode: "2100", accountName: "Accounts Payable" },
+            { accountCode: "2200", accountName: "Accrued Expenses" },
+            { accountCode: "4000", accountName: "Income" },
+            { accountCode: "6100", accountName: "Software Expense" },
+            { accountCode: "6200", accountName: "Travel Expense" },
+            { accountCode: "6300", accountName: "Meals Expense" },
+            { accountCode: "6900", accountName: "Miscellaneous Expense" },
+        ];
+
+        for (const account of commonAccounts) {
+            suggestions.set(account.accountCode, account);
+        }
+
+        for (const financialAccount of financialAccounts) {
+            const mappedCode =
+                financialAccount.accountType === "BANK"
+                    ? "1000"
+                    : financialAccount.accountType === "CREDIT_CARD"
+                      ? "2000"
+                      : financialAccount.accountType === "CASH"
+                        ? "1010"
+                        : "2300";
+            suggestions.set(mappedCode, {
+                accountCode: mappedCode,
+                accountName: financialAccount.name,
+            });
+        }
+
+        for (const entry of ledgerEntries) {
+            for (const line of entry.lines) {
+                suggestions.set(line.accountCode, {
+                    accountCode: line.accountCode,
+                    accountName: line.accountName,
+                });
+            }
+        }
+
+        return Array.from(suggestions.values()).sort((left, right) =>
+            left.accountCode.localeCompare(right.accountCode)
+        );
+    }, [financialAccounts, ledgerEntries]);
     const totalDebits = lines.reduce(
         (sum, line) =>
             sum +
@@ -130,6 +196,37 @@ export default function ClosePage() {
         setLines((current) =>
             current.map((line, lineIndex) =>
                 lineIndex === index ? { ...line, [field]: value } : line
+            )
+        );
+    }
+
+    function applySuggestionToLine(index: number, suggestionValue: string) {
+        const [accountCode] = suggestionValue.split(" - ");
+        const matchedSuggestion =
+            accountSuggestions.find(
+                (suggestion) =>
+                    suggestion.accountCode === accountCode ||
+                    suggestion.accountName === suggestionValue
+            ) ??
+            accountSuggestions.find(
+                (suggestion) =>
+                    suggestion.accountCode === suggestionValue ||
+                    suggestion.accountName === suggestionValue
+            );
+
+        if (!matchedSuggestion) {
+            return;
+        }
+
+        setLines((current) =>
+            current.map((line, lineIndex) =>
+                lineIndex === index
+                    ? {
+                          ...line,
+                          accountCode: matchedSuggestion.accountCode,
+                          accountName: matchedSuggestion.accountName,
+                      }
+                    : line
             )
         );
     }
@@ -549,16 +646,44 @@ export default function ClosePage() {
                                 >
                                     <input
                                         value={line.accountCode}
-                                        onChange={(event) => updateLine(index, "accountCode", event.target.value)}
+                                        onChange={(event) => {
+                                            updateLine(index, "accountCode", event.target.value);
+                                            applySuggestionToLine(index, event.target.value);
+                                        }}
+                                        list={`account-code-suggestions-${index}`}
                                         className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
                                         placeholder="Account code"
                                     />
+                                    <datalist id={`account-code-suggestions-${index}`}>
+                                        {accountSuggestions.map((suggestion) => (
+                                            <option
+                                                key={`${suggestion.accountCode}-${suggestion.accountName}`}
+                                                value={suggestion.accountCode}
+                                            >
+                                                {suggestion.accountName}
+                                            </option>
+                                        ))}
+                                    </datalist>
                                     <input
                                         value={line.accountName}
-                                        onChange={(event) => updateLine(index, "accountName", event.target.value)}
+                                        onChange={(event) => {
+                                            updateLine(index, "accountName", event.target.value);
+                                            applySuggestionToLine(index, event.target.value);
+                                        }}
+                                        list={`account-name-suggestions-${index}`}
                                         className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
                                         placeholder="Account name"
                                     />
+                                    <datalist id={`account-name-suggestions-${index}`}>
+                                        {accountSuggestions.map((suggestion) => (
+                                            <option
+                                                key={`${suggestion.accountCode}-${suggestion.accountName}-name`}
+                                                value={suggestion.accountName}
+                                            >
+                                                {suggestion.accountCode}
+                                            </option>
+                                        ))}
+                                    </datalist>
                                     <select
                                         value={line.entrySide}
                                         onChange={(event) =>
@@ -611,6 +736,21 @@ export default function ClosePage() {
                             >
                                 {adjustmentsBalanced ? "Balanced" : "Needs balancing"}
                             </span>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                Suggested accounts
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {accountSuggestions.slice(0, 10).map((suggestion) => (
+                                    <span
+                                        key={`${suggestion.accountCode}-chip`}
+                                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-zinc-300"
+                                    >
+                                        {suggestion.accountCode} · {suggestion.accountName}
+                                    </span>
+                                ))}
+                            </div>
                         </div>
 
                         <button

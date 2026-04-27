@@ -8,12 +8,20 @@ import java.util.UUID;
 
 public record ImportedTransactionSummary(
         UUID transactionId,
+        UUID financialAccountId,
+        String financialAccountName,
         LocalDate transactionDate,
+        LocalDate postedDate,
         BigDecimal amount,
+        String currency,
         String merchant,
+        String memo,
+        String mcc,
         Category proposedCategory,
         Category finalCategory,
         String route,
         double confidenceScore,
-        TransactionStatus status) {
+        TransactionStatus status,
+        String sourceType,
+        java.time.Instant importedAt) {
 }

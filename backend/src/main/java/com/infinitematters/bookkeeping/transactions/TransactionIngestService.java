@@ -147,14 +147,22 @@ public class TransactionIngestService {
 
             imported.add(new ImportedTransactionSummary(
                     transaction.getId(),
+                    transaction.getFinancialAccount().getId(),
+                    transaction.getFinancialAccount().getName(),
                     transaction.getTransactionDate(),
+                    transaction.getPostedDate(),
                     transaction.getAmount(),
+                    transaction.getCurrency(),
                     transaction.getMerchant(),
+                    transaction.getMemo(),
+                    transaction.getMcc(),
                     decision.getProposedCategory(),
                     decision.getFinalCategory(),
                     decision.getRoute(),
                     decision.getConfidenceScore(),
-                    transaction.getStatus()));
+                    transaction.getStatus(),
+                    transaction.getSourceType(),
+                    transaction.getCreatedAt()));
 
             auditService.record(organizationId, "TRANSACTION_IMPORTED", "transaction", transaction.getId().toString(),
                     "Imported via CSV with route " + decision.getRoute()
@@ -175,14 +183,22 @@ public class TransactionIngestService {
                             .orElseThrow(() -> new IllegalStateException("No decision found for transaction " + transaction.getId()));
                     return new ImportedTransactionSummary(
                             transaction.getId(),
+                            transaction.getFinancialAccount().getId(),
+                            transaction.getFinancialAccount().getName(),
                             transaction.getTransactionDate(),
+                            transaction.getPostedDate(),
                             transaction.getAmount(),
+                            transaction.getCurrency(),
                             transaction.getMerchant(),
+                            transaction.getMemo(),
+                            transaction.getMcc(),
                             decision.getProposedCategory(),
                             decision.getFinalCategory(),
                             decision.getRoute(),
                             decision.getConfidenceScore(),
-                            transaction.getStatus());
+                            transaction.getStatus(),
+                            transaction.getSourceType(),
+                            transaction.getCreatedAt());
                 })
                 .toList();
     }

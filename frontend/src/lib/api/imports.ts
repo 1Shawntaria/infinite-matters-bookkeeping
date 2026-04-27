@@ -2,14 +2,22 @@ import { apiFetch } from "./client";
 
 export type ImportedTransactionSummary = {
     transactionId: string;
+    financialAccountId: string;
+    financialAccountName: string;
     transactionDate: string;
+    postedDate: string | null;
     amount: number;
+    currency: string;
     merchant: string;
+    memo: string | null;
+    mcc: string | null;
     proposedCategory: string | null;
     finalCategory: string | null;
     route: string;
     confidenceScore: number;
     status: string;
+    sourceType: string;
+    importedAt: string;
 };
 
 export type ImportBatchResult = {

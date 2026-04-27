@@ -10,6 +10,7 @@ const NAV_ITEMS = [
     { href: "/access", label: "Access" },
     { href: "/settings", label: "Settings" },
     { href: "/setup", label: "Setup & Import" },
+    { href: "/transactions", label: "Transactions" },
     { href: "/review-queue", label: "Review Queue" },
     { href: "/reconciliation", label: "Reconciliation" },
     { href: "/close", label: "Close" },

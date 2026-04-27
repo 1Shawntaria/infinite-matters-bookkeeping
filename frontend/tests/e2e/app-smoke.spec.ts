@@ -168,6 +168,49 @@ function reviewTasks() {
   ];
 }
 
+function transactions() {
+  return [
+    {
+      transactionId: "txn-1",
+      financialAccountId: "acct-operating",
+      financialAccountName: "Operating Checking",
+      transactionDate: "2026-04-03",
+      postedDate: "2026-04-03",
+      amount: 142.18,
+      currency: "USD",
+      merchant: "AMZN MKTP",
+      memo: "office restock",
+      mcc: "5942",
+      proposedCategory: "OTHER",
+      finalCategory: null,
+      route: "PREMIUM",
+      confidenceScore: 0.83,
+      status: "REVIEW_REQUIRED",
+      sourceType: "CSV",
+      importedAt: "2026-04-24T12:30:00Z",
+    },
+    {
+      transactionId: "txn-2",
+      financialAccountId: "acct-operating",
+      financialAccountName: "Operating Checking",
+      transactionDate: "2026-04-05",
+      postedDate: "2026-04-05",
+      amount: 89.0,
+      currency: "USD",
+      merchant: "CLOUDCO",
+      memo: "monthly software",
+      mcc: "5734",
+      proposedCategory: "SOFTWARE",
+      finalCategory: "SOFTWARE",
+      route: "RULES",
+      confidenceScore: 0.92,
+      status: "POSTED",
+      sourceType: "CSV",
+      importedAt: "2026-04-24T12:00:00Z",
+    },
+  ];
+}
+
 function reconciliationDashboard() {
   return {
     focusMonth: "2026-04",
@@ -1090,6 +1133,11 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/transactions" && request.method() === "GET") {
+      await fulfillJson(route, transactions());
+      return;
+    }
+
     if (url.pathname.startsWith("/api/reviews/tasks/") && request.method() === "POST") {
       const taskId = url.pathname.split("/").at(-2);
       remainingReviewTasks = remainingReviewTasks.filter((task) => task.taskId !== taskId);
@@ -1495,6 +1543,20 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(page.getByText("Account reconciliations complete")).toBeVisible();
   await expect(page.getByText("Imported CLOUDCO transaction")).toBeVisible();
   await expect(page.getByRole("button", { name: "Post adjustment" })).toBeVisible();
+});
+
+test("transactions workspace helps investigate imported and posted activity", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/transactions");
+
+  await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible();
+  await expect(page.getByText("AMZN MKTP")).toBeVisible();
+  await expect(page.getByText("Account: Operating Checking").first()).toBeVisible();
+  await expect(page.getByText("office restock")).toBeVisible();
+
+  await page.getByLabel("Status").selectOption("POSTED");
+  await expect(page.getByText("CLOUDCO")).toBeVisible();
+  await expect(page.getByText("AMZN MKTP")).toHaveCount(0);
 });
 
 test("reconciliation flow starts from the account card and opens real account details", async ({ page }) => {
