@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
@@ -46,13 +45,13 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="grid w-full max-w-6xl overflow-hidden rounded-xl border border-zinc-900/80 bg-black/60 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur md:grid-cols-[1.1fr_0.9fr]">
-            <section className="flex flex-col justify-between border-b border-zinc-900/80 p-8 md:border-b-0 md:border-r md:p-10">
-                <div className="space-y-6">
-                    <div className="space-y-3">
+        <main className="grid w-full max-w-6xl overflow-hidden rounded-xl border border-white/10 bg-black/55 shadow-[0_28px_90px_rgba(0,0,0,0.5)] backdrop-blur md:grid-cols-[1.08fr_0.92fr]">
+            <section className="flex flex-col justify-between border-b border-white/10 bg-[linear-gradient(180deg,rgba(8,20,31,0.9)_0%,rgba(7,16,24,0.94)_100%)] p-8 md:border-b-0 md:border-r md:p-10">
+                <div className="space-y-8">
+                    <div className="space-y-5">
                         <BrandLogo
-                            variant="alternate"
-                            className="h-12 w-auto"
+                            variant="brandmarkWordmarkReverse"
+                            className="h-11 w-auto"
                             alt="Infinite Matters"
                             priority
                         />
@@ -66,13 +65,13 @@ export default function LoginPage() {
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
                             <p className="text-sm font-medium text-white">Close readiness</p>
                             <p className="mt-1 text-sm text-zinc-400">
                                 Reconciliation and task status stay visible in one operating view.
                             </p>
                         </div>
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
                             <p className="text-sm font-medium text-white">Safer handoffs</p>
                             <p className="mt-1 text-sm text-zinc-400">
                                 Workspace context follows the user instead of relying on manual IDs.
@@ -81,23 +80,82 @@ export default function LoginPage() {
                     </div>
                 </div>
 
-                <div className="mt-8 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/80 p-4">
-                    <Image
-                        src="/globe.svg"
-                        alt="Infinite Matters workspace illustration"
-                        width={320}
-                        height={160}
-                        className="h-40 w-full object-contain opacity-90"
-                    />
+                <div className="mt-8 overflow-hidden rounded-lg border border-white/10 bg-black/30 p-5">
+                    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+                        <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+                            <BrandLogo
+                                variant="brandmarkWordmark"
+                                className="h-8 w-auto"
+                                alt="Infinite Matters"
+                            />
+                            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-200">
+                                Illustrative preview
+                            </span>
+                        </div>
+
+                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                                <p className="text-xs uppercase tracking-[0.18em] text-zinc-400">Workflow</p>
+                                <p className="mt-2 text-2xl font-semibold text-emerald-300">Review</p>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                                <p className="text-xs uppercase tracking-[0.18em] text-zinc-400">Month-end</p>
+                                <p className="mt-2 text-2xl font-semibold text-white">Reconcile</p>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                                <p className="text-xs uppercase tracking-[0.18em] text-zinc-400">Access</p>
+                                <p className="mt-2 text-2xl font-semibold text-emerald-300">Secure</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-[1.2fr_0.8fr]">
+                            <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                                <div className="flex items-end justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-medium text-white">Workspace rhythm</p>
+                                        <p className="mt-1 text-sm text-zinc-400">A visual cue for review flow, reconciliation, and operational follow-through.</p>
+                                    </div>
+                                    <p className="text-xs text-zinc-400">Preview</p>
+                                </div>
+                                <svg viewBox="0 0 240 90" className="mt-4 h-24 w-full" aria-hidden="true" focusable="false">
+                                    <path
+                                        d="M8 72 C32 68 42 40 62 46 C82 52 90 28 112 32 C132 36 142 18 160 22 C178 26 188 12 206 16 C220 19 228 10 232 8"
+                                        fill="none"
+                                        stroke="#2FB7A3"
+                                        strokeWidth="4"
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                                <p className="text-sm font-medium text-white">Inside the app</p>
+                                <ul className="mt-3 space-y-3 text-sm text-zinc-400">
+                                    <li className="flex items-center justify-between gap-3">
+                                        <span>Review queue</span>
+                                        <span className="text-white">Guided</span>
+                                    </li>
+                                    <li className="flex items-center justify-between gap-3">
+                                        <span>Reconciliation</span>
+                                        <span className="text-white">Focused</span>
+                                    </li>
+                                    <li className="flex items-center justify-between gap-3">
+                                        <span>Workspace access</span>
+                                        <span className="text-white">Role-aware</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 
-            <section className="p-8 md:p-10">
+            <section className="bg-black/45 p-8 md:p-10">
                 <form
                     onSubmit={handleSubmit}
                     className="mx-auto flex h-full max-w-md flex-col justify-center space-y-5"
                 >
                     <div className="space-y-2">
+                        <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Workspace access</p>
                         <h2 className="text-3xl font-semibold text-white">Sign in</h2>
                         <p className="text-sm text-zinc-400">
                             Use your Infinite Matters account to open your workspace.
@@ -105,7 +163,11 @@ export default function LoginPage() {
                     </div>
 
                     {error ? (
-                        <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
+                        <div
+                            role="alert"
+                            aria-live="assertive"
+                            className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200"
+                        >
                             {error}
                         </div>
                     ) : null}
@@ -116,8 +178,9 @@ export default function LoginPage() {
                         </label>
                         <input
                             id="email"
-                            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-400"
+                            className="w-full rounded-md border border-zinc-800 bg-zinc-950/90 px-3 py-3 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-400"
                             type="email"
+                            autoComplete="username"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="owner@acme.test"
@@ -131,8 +194,9 @@ export default function LoginPage() {
                         </label>
                         <input
                             id="password"
-                            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-400"
+                            className="w-full rounded-md border border-zinc-800 bg-zinc-950/90 px-3 py-3 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-400"
                             type="password"
+                            autoComplete="current-password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="password123"

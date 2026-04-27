@@ -9,6 +9,7 @@ type BrandVariant =
     | "app"
     | "favicon"
     | "brandmarkWordmark"
+    | "brandmarkWordmarkReverse"
     | "wordmarkOnly"
     | "monochromeBlack"
     | "reverseWhite";
@@ -21,6 +22,7 @@ const variantMap: Record<BrandVariant, { src: string; width: number; height: num
     app: { src: "/brand/infinite-matters-app-icon.svg", width: 256, height: 256 },
     favicon: { src: "/brand/infinite-matters-favicon.svg", width: 128, height: 128 },
     brandmarkWordmark: { src: "/brand/infinite-matters-brandmark-wordmark-horizontal.svg", width: 700, height: 170 },
+    brandmarkWordmarkReverse: { src: "/brand/infinite-matters-brandmark-wordmark-reverse.svg", width: 560, height: 130 },
     wordmarkOnly: { src: "/brand/infinite-matters-wordmark-only.svg", width: 560, height: 130 },
     monochromeBlack: { src: "/brand/infinite-matters-monochrome-black.svg", width: 600, height: 170 },
     reverseWhite: { src: "/brand/infinite-matters-reverse-white.svg", width: 600, height: 170 },
