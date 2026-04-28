@@ -1589,6 +1589,20 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();
 });
 
+test("exceptions workspace groups blockers that still stand in the way of close", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/exceptions");
+
+  await expect(page.getByRole("heading", { name: "Exceptions" })).toBeVisible();
+  await expect(page.getByText("Active blockers")).toBeVisible();
+  await expect(page.getByText("Review AMZN MKTP")).toBeVisible();
+  await expect(page.getByText("Operating Checking")).toBeVisible();
+  await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();
+  await expect(page.getByText("Account reconciliations complete", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Open close workspace" }).click();
+  await expect(page).toHaveURL(/\/close$/);
+});
+
 test("access workspace lets operators review and update memberships", async ({ page }) => {
   await seedOrganization(page);
   await page.goto("/access");

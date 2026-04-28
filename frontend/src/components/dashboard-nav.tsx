@@ -7,6 +7,7 @@ const NAV_ITEMS = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/activity", label: "Activity" },
     { href: "/notifications", label: "Notifications" },
+    { href: "/exceptions", label: "Exceptions" },
     { href: "/access", label: "Access" },
     { href: "/settings", label: "Settings" },
     { href: "/setup", label: "Setup & Import" },
