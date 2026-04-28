@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import { useOrganizationSession } from "@/lib/auth/session";
@@ -24,6 +25,7 @@ type TimelineEntry = {
     detail: string;
     timestamp: string;
     helper: string;
+    entityId: string;
 };
 
 function formatTimestamp(value: string) {
@@ -47,6 +49,7 @@ function importEntry(item: ImportedTransactionHistoryItem): TimelineEntry {
         detail: `${item.status.replaceAll("_", " ")} via ${item.route.toLowerCase()}`,
         timestamp: item.importedAt,
         helper: `${item.transactionDate} · $${Number(item.amount).toFixed(2)}`,
+        entityId: item.transactionId,
     };
 }
 
@@ -58,6 +61,7 @@ function authEntry(item: AuthActivityItem): TimelineEntry {
         detail: item.details,
         timestamp: item.createdAt,
         helper: item.entityType ? formatEventLabel(item.entityType) : "Authentication",
+        entityId: item.entityId,
     };
 }
 
@@ -72,12 +76,26 @@ function auditEntry(item: AuditEventSummary): TimelineEntry {
         detail: item.details,
         timestamp: item.createdAt,
         helper: `${formatEventLabel(item.entityType)} · ${item.entityId}`,
+        entityId: item.entityId,
     };
 }
 
-export default function ActivityPage() {
+function ActivityPageContent() {
+    const searchParams = useSearchParams();
+    const initialLane = searchParams.get("lane");
+    const initialEntityId = searchParams.get("entityId") ?? "";
+    const initialSearch = searchParams.get("search") ?? "";
+    const focusLabel = searchParams.get("label") ?? "";
     const { organizationId, hydrated } = useOrganizationSession();
-    const [filter, setFilter] = useState<TimelineFilter>("ALL");
+    const [filter, setFilter] = useState<TimelineFilter>(
+        initialLane === "SECURITY" ||
+            initialLane === "IMPORT" ||
+            initialLane === "ACCESS" ||
+            initialLane === "AUDIT"
+            ? initialLane
+            : "ALL"
+    );
+    const [search, setSearch] = useState(initialSearch || initialEntityId);
     const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
     const [sessionMessage, setSessionMessage] = useState("");
     const [sessionError, setSessionError] = useState("");
@@ -131,10 +149,21 @@ export default function ActivityPage() {
         [auditEventsQuery.data, authActivityQuery.data, importHistoryQuery.data]
     );
 
-    const visibleEntries =
-        filter === "ALL"
-            ? allEntries
-            : allEntries.filter((entry) => entry.lane === filter);
+    const visibleEntries = useMemo(() => {
+        const normalizedSearch = search.trim().toLowerCase();
+        return allEntries.filter((entry) => {
+            const matchesFilter = filter === "ALL" || entry.lane === filter;
+            const matchesEntity =
+                !initialEntityId || entry.entityId === initialEntityId;
+            const matchesSearch =
+                normalizedSearch.length === 0 ||
+                entry.title.toLowerCase().includes(normalizedSearch) ||
+                entry.detail.toLowerCase().includes(normalizedSearch) ||
+                entry.helper.toLowerCase().includes(normalizedSearch) ||
+                entry.entityId.toLowerCase().includes(normalizedSearch);
+            return matchesFilter && matchesEntity && matchesSearch;
+        });
+    }, [allEntries, filter, initialEntityId, search]);
     const activeSessions = (authSessionsQuery.data ?? []).filter((session) => session.active);
     const latestSession = activeSessions[0] ?? authSessionsQuery.data?.[0] ?? null;
 
@@ -267,6 +296,18 @@ export default function ActivityPage() {
                 />
             ) : null}
 
+            {initialEntityId ? (
+                <StatusBanner
+                    tone="muted"
+                    title="Focused activity trace"
+                    message={
+                        focusLabel
+                            ? `Showing activity related to ${focusLabel}. Clear the filter controls to widen the operational picture.`
+                            : `Showing activity for record ${initialEntityId}. Clear the filter controls to widen the operational picture.`
+                    }
+                />
+            ) : null}
+
             <SectionBand
                 eyebrow="Session controls"
                 title="Manage signed-in sessions"
@@ -382,6 +423,29 @@ export default function ActivityPage() {
                     </div>
                 }
             >
+                <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_auto]">
+                    <label className="space-y-2 text-sm text-zinc-300">
+                        <span>Search timeline details</span>
+                        <input
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                            placeholder="Search a transaction, event id, merchant, or explanation..."
+                        />
+                    </label>
+                    <div className="flex items-end">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFilter("ALL");
+                                setSearch("");
+                            }}
+                            className="rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                        >
+                            Clear filters
+                        </button>
+                    </div>
+                </div>
                 {visibleEntries.length > 0 ? (
                     <div className="space-y-3">
                         {visibleEntries.map((entry) => (
@@ -416,5 +480,20 @@ export default function ActivityPage() {
                 )}
             </SectionBand>
         </main>
+    );
+}
+
+export default function ActivityPage() {
+    return (
+        <Suspense
+            fallback={
+                <LoadingPanel
+                    title="Loading activity."
+                    message="Pulling security context, audit history, and import movement into one workspace timeline."
+                />
+            }
+        >
+            <ActivityPageContent />
+        </Suspense>
     );
 }

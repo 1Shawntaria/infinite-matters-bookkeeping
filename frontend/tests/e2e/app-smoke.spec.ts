@@ -462,6 +462,20 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
   ];
   let importHistory = [
     {
+      transactionId: "txn-1",
+      financialAccountId: "acct-operating",
+      financialAccountName: "Operating Checking",
+      importedAt: "2026-04-24T12:30:00Z",
+      transactionDate: "2026-04-03",
+      amount: 142.18,
+      merchant: "AMZN MKTP",
+      proposedCategory: "OTHER",
+      finalCategory: null,
+      route: "PREMIUM",
+      confidenceScore: 0.83,
+      status: "REVIEW_REQUIRED",
+    },
+    {
       transactionId: "txn-history-1",
       financialAccountId: "acct-operating",
       financialAccountName: "Operating Checking",
@@ -1443,7 +1457,8 @@ test("workspace switching reloads dashboard data for the selected organization",
 
   await expect(workspaceSelect).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
-  await expect(page.getByText("Operating Checking · CLOUDCO")).toBeVisible();
+  await expect(page.getByText("Operating Checking").first()).toBeVisible();
+  await expect(page.getByText("CLOUDCO").first()).toBeVisible();
   await expect(page.getByText("AUTH LOGIN SUCCEEDED")).toBeVisible();
 
   await workspaceSelect.selectOption("org-secondary");
@@ -1623,6 +1638,12 @@ test("transactions workspace helps investigate imported and posted activity", as
   await expect(page.getByText("AMZN MKTP")).toBeVisible();
   await expect(page.getByText("Account: Operating Checking").first()).toBeVisible();
   await expect(page.getByText("office restock")).toBeVisible();
+  await page.getByRole("link", { name: "Open activity trail" }).first().click();
+  await expect(page).toHaveURL(/\/activity\?lane=IMPORT&entityId=txn-1/);
+  await expect(page.getByText("Focused activity trace")).toBeVisible();
+  await expect(page.getByText("Operating Checking: AMZN MKTP").first()).toBeVisible();
+
+  await page.goto("/transactions");
 
   await page.getByLabel("Status").selectOption("POSTED");
   await expect(page.getByText("CLOUDCO")).toBeVisible();
@@ -1663,6 +1684,16 @@ test("reconciliation flow starts from the account card and opens real account de
   await expect(page.getByText("Resolve outstanding review items, then complete reconciliation.")).toBeVisible();
   await expect(page.getByText("UNKNOWN VENDOR")).toBeVisible();
   await expect(page.getByRole("button", { name: "Complete Reconciliation" })).toBeVisible();
+});
+
+test("member close access stays read-only in the UI", async ({ page }) => {
+  await seedOrganization(page, "org-empty");
+  await page.goto("/close");
+
+  await expect(page.getByText("Read-only close access")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close period", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Force close period", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Post adjustment" })).toBeDisabled();
 });
 
 test("setup flow creates an account and imports a csv", async ({ page }) => {

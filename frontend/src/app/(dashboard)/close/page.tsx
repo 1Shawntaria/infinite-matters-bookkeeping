@@ -18,6 +18,7 @@ import {
 import { listFinancialAccounts, FinancialAccount } from "@/lib/api/accounts";
 import { getDashboardSnapshot, DashboardSnapshot } from "@/lib/api/dashboard";
 import { useOrganizationSession } from "@/lib/auth/session";
+import { listOrganizations, OrganizationSummary } from "@/lib/api/auth";
 import {
     LoadingPanel,
     NextStepsList,
@@ -144,6 +145,11 @@ function ClosePageContent() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listFinancialAccounts(organizationId),
     });
+    const organizationsQuery = useQuery<OrganizationSummary[], Error>({
+        queryKey: ["workspaceOrganizations"],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listOrganizations(),
+    });
 
     useEffect(() => {
         if (!selectedMonth && dashboardQuery.data?.focusMonth) {
@@ -163,6 +169,7 @@ function ClosePageContent() {
               periodsQuery.isLoading ||
               ledgerQuery.isLoading ||
               accountsQuery.isLoading ||
+              organizationsQuery.isLoading ||
               (Boolean(selectedMonth) && checklistQuery.isLoading)
             : false;
     const queryError =
@@ -171,6 +178,7 @@ function ClosePageContent() {
         checklistQuery.error?.message ??
         ledgerQuery.error?.message ??
         accountsQuery.error?.message ??
+        organizationsQuery.error?.message ??
         "";
 
     const periods = periodsQuery.data ?? [];
@@ -183,6 +191,11 @@ function ClosePageContent() {
         () => accountsQuery.data ?? [],
         [accountsQuery.data]
     );
+    const currentWorkspaceRole =
+        organizationsQuery.data?.find((organization) => organization.id === organizationId)?.role ??
+        null;
+    const canManageClose =
+        currentWorkspaceRole === "OWNER" || currentWorkspaceRole === "ADMIN";
     const currentPeriod = periods.find(
         (period) => period.periodStart.slice(0, 7) === selectedMonth
     ) ?? null;
@@ -355,6 +368,10 @@ function ClosePageContent() {
 
     async function handleClosePeriod() {
         if (!organizationId || !selectedMonth) return;
+        if (!canManageClose) {
+            setCloseError("Only owners and admins can close a period.");
+            return;
+        }
         setCloseError("");
         setCloseSuccess("");
         setClosingPeriod(true);
@@ -374,6 +391,10 @@ function ClosePageContent() {
 
     async function handleForceClosePeriod() {
         if (!organizationId || !selectedMonth) return;
+        if (!canManageClose) {
+            setCloseError("Only owners and admins can force close a period.");
+            return;
+        }
         if (!forceCloseReason.trim()) {
             setCloseError("Provide an override reason before force closing a period.");
             return;
@@ -399,6 +420,10 @@ function ClosePageContent() {
         event.preventDefault();
         if (!organizationId) {
             setAdjustmentError("No organization ID found. Please sign in again.");
+            return;
+        }
+        if (!canManageClose) {
+            setAdjustmentError("Only owners and admins can post adjustments.");
             return;
         }
         if (!adjustmentsBalanced) {
@@ -613,7 +638,12 @@ function ClosePageContent() {
                             <button
                                 type="button"
                                 onClick={handleClosePeriod}
-                                disabled={closingPeriod || forceClosingPeriod || !selectedMonth}
+                                disabled={
+                                    !canManageClose ||
+                                    closingPeriod ||
+                                    forceClosingPeriod ||
+                                    !selectedMonth
+                                }
                                 className="mt-4 rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
                             >
                                 {closingPeriod ? "Closing period..." : "Close period"}
@@ -631,6 +661,7 @@ function ClosePageContent() {
                                     value={forceCloseReason}
                                     onChange={(event) => setForceCloseReason(event.target.value)}
                                     rows={4}
+                                    disabled={!canManageClose}
                                     className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
                                     placeholder="Explain why the period is being force-closed."
                                 />
@@ -638,7 +669,12 @@ function ClosePageContent() {
                             <button
                                 type="button"
                                 onClick={handleForceClosePeriod}
-                                disabled={forceClosingPeriod || closingPeriod || !selectedMonth}
+                                disabled={
+                                    !canManageClose ||
+                                    forceClosingPeriod ||
+                                    closingPeriod ||
+                                    !selectedMonth
+                                }
                                 className="mt-4 rounded-md border border-amber-300/40 bg-amber-300/10 px-4 py-2.5 text-sm font-semibold text-amber-100 disabled:opacity-50"
                             >
                                 {forceClosingPeriod ? "Force-closing..." : "Force close period"}
@@ -693,6 +729,15 @@ function ClosePageContent() {
                     title="Post a manual adjustment"
                     description="Use this when accruals, reclasses, or clean-up entries are needed to get the period truly ready."
                 >
+                    {!canManageClose ? (
+                        <div className="mb-4">
+                            <StatusBanner
+                                tone="muted"
+                                title="Read-only close access"
+                                message="You can inspect close readiness, but only workspace owners and admins can post adjustments or close periods."
+                            />
+                        </div>
+                    ) : null}
                     {adjustmentError ? (
                         <div className="mb-4">
                             <StatusBanner tone="error" title="Adjustment failed" message={adjustmentError} />
@@ -714,6 +759,7 @@ function ClosePageContent() {
                                     key={template.id}
                                     type="button"
                                     onClick={() => applyTemplate(template)}
+                                    disabled={!canManageClose}
                                     className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-left hover:border-white/20"
                                 >
                                     <p className="text-sm font-semibold text-white">
@@ -735,6 +781,7 @@ function ClosePageContent() {
                                     type="date"
                                     value={entryDate}
                                     onChange={(event) => setEntryDate(event.target.value)}
+                                    disabled={!canManageClose}
                                     className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
                                     required
                                 />
@@ -744,6 +791,7 @@ function ClosePageContent() {
                                 <input
                                     value={description}
                                     onChange={(event) => setDescription(event.target.value)}
+                                    disabled={!canManageClose}
                                     className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
                                     placeholder="Accrue April software invoice"
                                     required
@@ -757,6 +805,7 @@ function ClosePageContent() {
                                 value={adjustmentReason}
                                 onChange={(event) => setAdjustmentReason(event.target.value)}
                                 rows={3}
+                                disabled={!canManageClose}
                                 className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
                                 placeholder="Document why this entry is necessary for month-end accuracy."
                                 required
@@ -775,6 +824,7 @@ function ClosePageContent() {
                                             updateLine(index, "accountCode", event.target.value);
                                             applySuggestionToLine(index, event.target.value);
                                         }}
+                                        disabled={!canManageClose}
                                         list={`account-code-suggestions-${index}`}
                                         className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
                                         placeholder="Account code"
@@ -795,6 +845,7 @@ function ClosePageContent() {
                                             updateLine(index, "accountName", event.target.value);
                                             applySuggestionToLine(index, event.target.value);
                                         }}
+                                        disabled={!canManageClose}
                                         list={`account-name-suggestions-${index}`}
                                         className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
                                         placeholder="Account name"
@@ -814,6 +865,7 @@ function ClosePageContent() {
                                         onChange={(event) =>
                                             updateLine(index, "entrySide", event.target.value)
                                         }
+                                        disabled={!canManageClose}
                                         className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
                                     >
                                         <option value="DEBIT">Debit</option>
@@ -825,13 +877,14 @@ function ClosePageContent() {
                                         step="0.01"
                                         value={line.amount}
                                         onChange={(event) => updateLine(index, "amount", event.target.value)}
+                                        disabled={!canManageClose}
                                         className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
                                         placeholder="Amount"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => removeLine(index)}
-                                        disabled={lines.length <= 2}
+                                        disabled={!canManageClose || lines.length <= 2}
                                         className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-300 disabled:opacity-40"
                                     >
                                         Remove
@@ -844,6 +897,7 @@ function ClosePageContent() {
                             <button
                                 type="button"
                                 onClick={addLine}
+                                disabled={!canManageClose}
                                 className="rounded-md border border-white/10 px-4 py-2 text-sm text-zinc-200 hover:bg-white/[0.05]"
                             >
                                 Add line
@@ -889,7 +943,7 @@ function ClosePageContent() {
 
                         <button
                             type="submit"
-                            disabled={postingAdjustment}
+                            disabled={!canManageClose || postingAdjustment}
                             className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
                         >
                             {postingAdjustment ? "Posting adjustment..." : "Post adjustment"}
@@ -947,6 +1001,14 @@ function ClosePageContent() {
                                                     >
                                                         View {line.accountCode}
                                                     </Link>
+                                                    {entry.transactionId ? (
+                                                        <Link
+                                                            href={`/activity?lane=IMPORT&entityId=${encodeURIComponent(entry.transactionId)}&label=${encodeURIComponent(entry.description)}`}
+                                                            className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/[0.05]"
+                                                        >
+                                                            Source activity
+                                                        </Link>
+                                                    ) : null}
                                                 </div>
                                                 <span className="text-zinc-400">
                                                     {line.entrySide} · ${Number(line.amount).toFixed(2)}
