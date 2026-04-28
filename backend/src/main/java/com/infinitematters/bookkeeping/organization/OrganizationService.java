@@ -2,6 +2,7 @@ package com.infinitematters.bookkeeping.organization;
 
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.DateTimeException;
 import java.time.ZoneId;
 import java.util.List;
@@ -12,6 +13,12 @@ public class OrganizationService {
     public static final int DEFAULT_INVITATION_TTL_DAYS = 7;
     public static final int MIN_INVITATION_TTL_DAYS = 1;
     public static final int MAX_INVITATION_TTL_DAYS = 30;
+    public static final BigDecimal DEFAULT_CLOSE_MATERIALITY_THRESHOLD = new BigDecimal("500.00");
+    public static final BigDecimal MIN_CLOSE_MATERIALITY_THRESHOLD = new BigDecimal("0.00");
+    public static final BigDecimal MAX_CLOSE_MATERIALITY_THRESHOLD = new BigDecimal("1000000.00");
+    public static final int DEFAULT_MINIMUM_CLOSE_NOTES_REQUIRED = 1;
+    public static final int MIN_MINIMUM_CLOSE_NOTES_REQUIRED = 0;
+    public static final int MAX_MINIMUM_CLOSE_NOTES_REQUIRED = 10;
 
     private final OrganizationRepository repository;
 
@@ -25,10 +32,19 @@ public class OrganizationService {
         organization.setPlanTier(planTier);
         organization.setTimezone(normalizeTimezone(timezone));
         organization.setInvitationTtlDays(DEFAULT_INVITATION_TTL_DAYS);
+        organization.setCloseMaterialityThreshold(DEFAULT_CLOSE_MATERIALITY_THRESHOLD);
+        organization.setMinimumCloseNotesRequired(DEFAULT_MINIMUM_CLOSE_NOTES_REQUIRED);
+        organization.setRequireSignoffBeforeClose(true);
         return repository.save(organization);
     }
 
-    public Organization updateSettings(UUID organizationId, String name, String timezone, Integer invitationTtlDays) {
+    public Organization updateSettings(UUID organizationId,
+                                       String name,
+                                       String timezone,
+                                       Integer invitationTtlDays,
+                                       BigDecimal closeMaterialityThreshold,
+                                       Integer minimumCloseNotesRequired,
+                                       Boolean requireSignoffBeforeClose) {
         Organization organization = get(organizationId);
 
         if (name != null) {
@@ -39,6 +55,15 @@ public class OrganizationService {
         }
         if (invitationTtlDays != null) {
             organization.setInvitationTtlDays(validateInvitationTtl(invitationTtlDays));
+        }
+        if (closeMaterialityThreshold != null) {
+            organization.setCloseMaterialityThreshold(validateCloseMaterialityThreshold(closeMaterialityThreshold));
+        }
+        if (minimumCloseNotesRequired != null) {
+            organization.setMinimumCloseNotesRequired(validateMinimumCloseNotesRequired(minimumCloseNotesRequired));
+        }
+        if (requireSignoffBeforeClose != null) {
+            organization.setRequireSignoffBeforeClose(requireSignoffBeforeClose);
         }
         return repository.save(organization);
     }
@@ -62,6 +87,27 @@ public class OrganizationService {
                     "Invitation TTL must be between " + MIN_INVITATION_TTL_DAYS + " and " + MAX_INVITATION_TTL_DAYS + " days");
         }
         return invitationTtlDays;
+    }
+
+    private static BigDecimal validateCloseMaterialityThreshold(BigDecimal closeMaterialityThreshold) {
+        if (closeMaterialityThreshold.scale() > 2) {
+            throw new IllegalArgumentException("Close materiality threshold must use two decimal places or fewer");
+        }
+        if (closeMaterialityThreshold.compareTo(MIN_CLOSE_MATERIALITY_THRESHOLD) < 0 ||
+                closeMaterialityThreshold.compareTo(MAX_CLOSE_MATERIALITY_THRESHOLD) > 0) {
+            throw new IllegalArgumentException("Close materiality threshold must be between 0.00 and 1000000.00");
+        }
+        return closeMaterialityThreshold.stripTrailingZeros().scale() < 0
+                ? closeMaterialityThreshold.setScale(0)
+                : closeMaterialityThreshold;
+    }
+
+    private static int validateMinimumCloseNotesRequired(int minimumCloseNotesRequired) {
+        if (minimumCloseNotesRequired < MIN_MINIMUM_CLOSE_NOTES_REQUIRED ||
+                minimumCloseNotesRequired > MAX_MINIMUM_CLOSE_NOTES_REQUIRED) {
+            throw new IllegalArgumentException("Minimum close notes required must be between 0 and 10");
+        }
+        return minimumCloseNotesRequired;
     }
 
     private static String normalizeName(String name) {

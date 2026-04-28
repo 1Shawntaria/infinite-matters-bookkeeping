@@ -75,6 +75,9 @@ public class OrganizationController {
                 organization.getPlanTier(),
                 organization.getTimezone(),
                 organization.getInvitationTtlDays(),
+                organization.getCloseMaterialityThreshold(),
+                organization.getMinimumCloseNotesRequired(),
+                organization.isRequireSignoffBeforeClose(),
                 organization.getCreatedAt(),
                 role);
     }
@@ -87,20 +90,37 @@ public class OrganizationController {
         String previousName = previousOrganization.getName();
         String previousTimezone = previousOrganization.getTimezone();
         int previousInvitationTtlDays = previousOrganization.getInvitationTtlDays();
+        var previousMaterialityThreshold = previousOrganization.getCloseMaterialityThreshold();
+        int previousMinimumCloseNotesRequired = previousOrganization.getMinimumCloseNotesRequired();
+        boolean previousRequireSignoffBeforeClose = previousOrganization.isRequireSignoffBeforeClose();
         var organization = organizationService.updateSettings(
                 organizationId,
                 request.name(),
                 request.timezone(),
-                request.invitationTtlDays());
+                request.invitationTtlDays(),
+                request.closeMaterialityThreshold(),
+                request.minimumCloseNotesRequired(),
+                request.requireSignoffBeforeClose());
         auditService.record(organizationId, "ORGANIZATION_SETTINGS_UPDATED", "organization",
                 organizationId.toString(),
-                buildSettingsAuditDescription(previousName, previousTimezone, previousInvitationTtlDays, organization, actorUserId));
+                buildSettingsAuditDescription(
+                        previousName,
+                        previousTimezone,
+                        previousInvitationTtlDays,
+                        previousMaterialityThreshold,
+                        previousMinimumCloseNotesRequired,
+                        previousRequireSignoffBeforeClose,
+                        organization,
+                        actorUserId));
         return new OrganizationResponse(
                 organization.getId(),
                 organization.getName(),
                 organization.getPlanTier(),
                 organization.getTimezone(),
                 organization.getInvitationTtlDays(),
+                organization.getCloseMaterialityThreshold(),
+                organization.getMinimumCloseNotesRequired(),
+                organization.isRequireSignoffBeforeClose(),
                 organization.getCreatedAt(),
                 userService.roleForOrganization(organizationId, actorUserId));
     }
@@ -108,6 +128,9 @@ public class OrganizationController {
     private static String buildSettingsAuditDescription(String previousName,
                                                         String previousTimezone,
                                                         int previousInvitationTtlDays,
+                                                        java.math.BigDecimal previousMaterialityThreshold,
+                                                        int previousMinimumCloseNotesRequired,
+                                                        boolean previousRequireSignoffBeforeClose,
                                                         com.infinitematters.bookkeeping.organization.Organization updatedOrganization,
                                                         UUID actorUserId) {
         StringBuilder description = new StringBuilder("Workspace settings updated by user " + actorUserId + ":");
@@ -131,6 +154,27 @@ public class OrganizationController {
                     .append(" -> ")
                     .append(updatedOrganization.getInvitationTtlDays())
                     .append(" days;");
+        }
+        if (previousMaterialityThreshold.compareTo(updatedOrganization.getCloseMaterialityThreshold()) != 0) {
+            description.append(" close materiality ")
+                    .append(previousMaterialityThreshold)
+                    .append(" -> ")
+                    .append(updatedOrganization.getCloseMaterialityThreshold())
+                    .append(";");
+        }
+        if (previousMinimumCloseNotesRequired != updatedOrganization.getMinimumCloseNotesRequired()) {
+            description.append(" minimum close notes ")
+                    .append(previousMinimumCloseNotesRequired)
+                    .append(" -> ")
+                    .append(updatedOrganization.getMinimumCloseNotesRequired())
+                    .append(";");
+        }
+        if (previousRequireSignoffBeforeClose != updatedOrganization.isRequireSignoffBeforeClose()) {
+            description.append(" require signoff before close ")
+                    .append(previousRequireSignoffBeforeClose)
+                    .append(" -> ")
+                    .append(updatedOrganization.isRequireSignoffBeforeClose())
+                    .append(";");
         }
         return description.toString();
     }

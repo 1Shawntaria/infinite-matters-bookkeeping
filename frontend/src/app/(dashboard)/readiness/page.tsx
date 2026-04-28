@@ -27,6 +27,7 @@ import { listAttentionNotifications, listDeadLetterNotifications } from "@/lib/a
 import { useOrganizationSession } from "@/lib/auth/session";
 import { AuditEventSummary } from "@/lib/api/audit";
 import { NotificationSummaryItem } from "@/lib/api/auth";
+import { getWorkspaceSettings } from "@/lib/api/settings";
 
 type DecisionState =
     | "READY_TO_CLOSE"
@@ -115,6 +116,11 @@ export default function CloseReadinessPage() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listDeadLetterNotifications(organizationId),
     });
+    const settingsQuery = useQuery({
+        queryKey: ["workspaceSettings", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => getWorkspaceSettings(organizationId),
+    });
 
     const loading =
         hydrated && organizationId
@@ -124,6 +130,7 @@ export default function CloseReadinessPage() {
               periodsQuery.isLoading ||
               attentionNotificationsQuery.isLoading ||
               deadLetterNotificationsQuery.isLoading ||
+              settingsQuery.isLoading ||
               (Boolean(focusMonth) &&
                   (closeChecklistQuery.isLoading ||
                       closeNotesQuery.isLoading ||
@@ -137,6 +144,7 @@ export default function CloseReadinessPage() {
         periodsQuery.error?.message ??
         attentionNotificationsQuery.error?.message ??
         deadLetterNotificationsQuery.error?.message ??
+        settingsQuery.error?.message ??
         closeChecklistQuery.error?.message ??
         closeNotesQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
@@ -149,6 +157,7 @@ export default function CloseReadinessPage() {
     const closeSignoffs = closeSignoffsQuery.data ?? [];
     const attentionNotifications = attentionNotificationsQuery.data ?? [];
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
+    const workspaceSettings = settingsQuery.data ?? null;
     const currentPeriod =
         periodsQuery.data?.find((period) => period.periodStart.slice(0, 7) === focusMonth) ?? null;
 
@@ -161,6 +170,12 @@ export default function CloseReadinessPage() {
         deadLetters.length;
     const documentationCoverage = closeNotes.length + closeSignoffs.length;
     const overrideRisk = currentPeriod?.overrideReason ? 1 : 0;
+    const reviewExposureAmount = reviewTasks.reduce((sum, task) => sum + Math.abs(task.amount ?? 0), 0);
+    const materialityThreshold = workspaceSettings?.closeMaterialityThreshold ?? 500;
+    const minimumCloseNotesRequired = workspaceSettings?.minimumCloseNotesRequired ?? 1;
+    const requireSignoffBeforeClose = workspaceSettings?.requireSignoffBeforeClose ?? true;
+    const noteGap = Math.max(0, minimumCloseNotesRequired - closeNotes.length);
+    const signoffGap = requireSignoffBeforeClose && closeSignoffs.length === 0 ? 1 : 0;
 
     const readinessScore = useMemo(() => {
         const rawScore =
@@ -168,17 +183,20 @@ export default function CloseReadinessPage() {
             blockerCount * 12 -
             agingRiskCount * 7 -
             overrideRisk * 10 -
-            (closeNotes.length === 0 ? 8 : 0) -
-            (closeSignoffs.length === 0 ? 10 : 0) +
+            noteGap * 6 -
+            signoffGap * 10 -
+            (reviewExposureAmount >= materialityThreshold ? 8 : 0) +
             (checklist?.closeReady ? 8 : 0);
         return clamp(rawScore, 12, 100);
     }, [
         agingRiskCount,
         blockerCount,
         checklist?.closeReady,
-        closeNotes.length,
-        closeSignoffs.length,
+        materialityThreshold,
+        noteGap,
         overrideRisk,
+        reviewExposureAmount,
+        signoffGap,
     ]);
 
     const decision: ReadinessDecision = useMemo(() => {
@@ -208,7 +226,7 @@ export default function CloseReadinessPage() {
             };
         }
 
-        if (checklist?.closeReady && closeSignoffs.length === 0) {
+        if (checklist?.closeReady && signoffGap > 0) {
             return {
                 state: "NEEDS_SIGNOFF",
                 title: "Ready in practice, waiting on sign-off",
@@ -221,11 +239,11 @@ export default function CloseReadinessPage() {
             };
         }
 
-        if (overrideRisk > 0 || agingRiskCount > 2) {
+        if (overrideRisk > 0 || agingRiskCount > 2 || reviewExposureAmount >= materialityThreshold) {
             return {
                 state: "FORCE_CLOSE_WITH_CAUTION",
                 title: "Only force-close with documented context",
-                message: "Most of the month is contained, but the remaining operational signals still deserve explicit owner awareness before any override path is used.",
+                message: "Most of the month is contained, but the remaining operational signals or dollar exposure still deserve explicit owner awareness before any override path is used.",
                 tone: "muted",
                 primaryHref: "/close",
                 primaryLabel: "Review close controls",
@@ -248,9 +266,11 @@ export default function CloseReadinessPage() {
         agingRiskCount,
         blockerCount,
         checklist?.closeReady,
-        closeSignoffs.length,
         currentPeriod?.status,
         overrideRisk,
+        reviewExposureAmount,
+        materialityThreshold,
+        signoffGap,
     ]);
 
     const riskSignals = [
@@ -328,6 +348,11 @@ export default function CloseReadinessPage() {
                             detail="A blended signal from close blockers, aging risk, documentation, and sign-off posture."
                             tone={scoreTone(readinessScore)}
                         />
+                        <SummaryMetric
+                            label="Policy threshold"
+                            value={`$${materialityThreshold}`}
+                            detail={`Requires ${minimumCloseNotesRequired} close note(s)${requireSignoffBeforeClose ? " and sign-off" : ""} before the month feels complete.`}
+                        />
                     </div>
                 }
             >
@@ -369,22 +394,28 @@ export default function CloseReadinessPage() {
                     tone={riskTone(blockerCount)}
                 />
                 <SummaryMetric
-                    label="Aging risk"
-                    value={`${agingRiskCount}`}
-                    detail="Overdue workflow pressure plus notification and delivery issues."
-                    tone={riskTone(agingRiskCount)}
+                        label="Aging risk"
+                        value={`${agingRiskCount}`}
+                        detail="Overdue workflow pressure plus notification and delivery issues."
+                        tone={riskTone(agingRiskCount)}
+                    />
+                <SummaryMetric
+                    label="Review exposure"
+                    value={`$${reviewExposureAmount.toFixed(2)}`}
+                    detail="Open review task dollars compared with the workspace materiality threshold."
+                    tone={riskTone(reviewExposureAmount >= materialityThreshold ? 1 : 0)}
                 />
                 <SummaryMetric
                     label="Close notes"
                     value={`${closeNotes.length}`}
-                    detail="Month-specific context already captured for the handoff."
-                    tone={riskTone(closeNotes.length === 0 ? 1 : 0)}
+                    detail={`Month-specific context already captured for the handoff. Target: ${minimumCloseNotesRequired}.`}
+                    tone={riskTone(noteGap)}
                 />
                 <SummaryMetric
                     label="Recorded sign-offs"
                     value={`${closeSignoffs.length}`}
-                    detail="Formal approvals currently attached to the focus month."
-                    tone={riskTone(closeSignoffs.length === 0 ? 1 : 0)}
+                    detail={requireSignoffBeforeClose ? "Formal approval is part of this workspace's close standard." : "Formal approval is optional in this workspace."}
+                    tone={riskTone(signoffGap)}
                 />
                 <SummaryMetric
                     label="Period posture"
@@ -426,10 +457,10 @@ export default function CloseReadinessPage() {
                         blockerCount > 0
                             ? "Keep the month open until review tasks, reconciliations, and checklist blockers are finished."
                             : "The hard bookkeeping work is mostly complete, so the conversation can shift to documentation and accountability.",
-                        closeNotes.length === 0
-                            ? "Add at least one close note so the handoff explains what changed and what still deserves watchfulness."
+                        noteGap > 0
+                            ? `Add ${noteGap} more close note(s) so the handoff meets the workspace's documentation standard.`
                             : "Use the note trail to make the month understandable to anyone who did not live inside the work all week.",
-                        closeSignoffs.length === 0
+                        signoffGap > 0
                             ? "Capture owner or admin sign-off before treating the month as fully settled."
                             : "There is already approval history on the month, so the remaining decision is timing, not ownership.",
                         agingRiskCount > 0
@@ -449,14 +480,15 @@ export default function CloseReadinessPage() {
                         <p className="text-sm font-semibold text-white">Helping confidence</p>
                         <ul className="mt-3 space-y-2 text-sm text-zinc-400">
                             <li>{checklist?.closeReady ? "Checklist is currently close-ready." : "Checklist still has open controls."}</li>
-                            <li>{closeNotes.length > 0 ? `${closeNotes.length} close note(s) already captured.` : "No close notes captured yet."}</li>
-                            <li>{closeSignoffs.length > 0 ? `${closeSignoffs.length} sign-off(s) already recorded.` : "No sign-offs recorded yet."}</li>
+                            <li>{closeNotes.length > 0 ? `${closeNotes.length} close note(s) already captured against a target of ${minimumCloseNotesRequired}.` : "No close notes captured yet."}</li>
+                            <li>{closeSignoffs.length > 0 ? `${closeSignoffs.length} sign-off(s) already recorded.` : requireSignoffBeforeClose ? "No sign-offs recorded yet." : "Sign-off is optional for this workspace."}</li>
                         </ul>
                     </div>
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
                         <p className="text-sm font-semibold text-white">Still creating risk</p>
                         <ul className="mt-3 space-y-2 text-sm text-zinc-400">
                             <li>{reviewTasks.length} review task(s) still open.</li>
+                            <li>${reviewExposureAmount.toFixed(2)} of open review exposure against a ${materialityThreshold} threshold.</li>
                             <li>{unreconciledAccounts.length} account(s) still unreconciled.</li>
                             <li>{incompleteChecklistItems.length} checklist item(s) still incomplete.</li>
                         </ul>

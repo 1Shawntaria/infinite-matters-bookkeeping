@@ -1,7 +1,12 @@
 package com.infinitematters.bookkeeping.web.dto;
 
+import java.math.BigDecimal;
+
 public record UpdateWorkspaceSettingsRequest(
         String name,
         String timezone,
-        Integer invitationTtlDays) {
+        Integer invitationTtlDays,
+        BigDecimal closeMaterialityThreshold,
+        Integer minimumCloseNotesRequired,
+        Boolean requireSignoffBeforeClose) {
 }

@@ -19,6 +19,9 @@ export default function SettingsPage() {
     const [workspaceName, setWorkspaceName] = useState("");
     const [workspaceTimezone, setWorkspaceTimezone] = useState("America/Los_Angeles");
     const [invitationTtlDays, setInvitationTtlDays] = useState("7");
+    const [closeMaterialityThreshold, setCloseMaterialityThreshold] = useState("500");
+    const [minimumCloseNotesRequired, setMinimumCloseNotesRequired] = useState("1");
+    const [requireSignoffBeforeClose, setRequireSignoffBeforeClose] = useState(true);
     const [profileMessage, setProfileMessage] = useState("");
     const [policyMessage, setPolicyMessage] = useState("");
     const [profileError, setProfileError] = useState("");
@@ -47,6 +50,9 @@ export default function SettingsPage() {
             setWorkspaceName(settingsQuery.data.name);
             setWorkspaceTimezone(settingsQuery.data.timezone);
             setInvitationTtlDays(String(settingsQuery.data.invitationTtlDays));
+            setCloseMaterialityThreshold(String(settingsQuery.data.closeMaterialityThreshold));
+            setMinimumCloseNotesRequired(String(settingsQuery.data.minimumCloseNotesRequired));
+            setRequireSignoffBeforeClose(settingsQuery.data.requireSignoffBeforeClose);
         }
     }, [settingsQuery.data]);
 
@@ -90,13 +96,19 @@ export default function SettingsPage() {
         try {
             const updated = await updateWorkspaceSettings(organizationId, {
                 invitationTtlDays: Number(invitationTtlDays),
+                closeMaterialityThreshold: Number(closeMaterialityThreshold),
+                minimumCloseNotesRequired: Number(minimumCloseNotesRequired),
+                requireSignoffBeforeClose,
             });
             await Promise.all([
                 queryClient.invalidateQueries({ queryKey: ["workspaceSettings", organizationId] }),
                 queryClient.invalidateQueries({ queryKey: ["organizations"] }),
             ]);
             setInvitationTtlDays(String(updated.invitationTtlDays));
-            setPolicyMessage(`Invitation expiry updated to ${updated.invitationTtlDays} days.`);
+            setCloseMaterialityThreshold(String(updated.closeMaterialityThreshold));
+            setMinimumCloseNotesRequired(String(updated.minimumCloseNotesRequired));
+            setRequireSignoffBeforeClose(updated.requireSignoffBeforeClose);
+            setPolicyMessage(`Close policy updated: ${updated.invitationTtlDays}-day invites, $${updated.closeMaterialityThreshold} materiality, and ${updated.minimumCloseNotesRequired} required close note(s).`);
         } catch (saveError) {
             setPolicyError(saveError instanceof Error ? saveError.message : "Unable to save workspace settings.");
         } finally {
@@ -144,6 +156,12 @@ export default function SettingsPage() {
                             value={`${settingsQuery.data?.invitationTtlDays ?? currentOrganization?.invitationTtlDays ?? 7} days`}
                             detail="This policy is used for new invites and resend recovery."
                         />
+                        <SummaryMetric
+                            label="Close standard"
+                            value={`$${settingsQuery.data?.closeMaterialityThreshold ?? currentOrganization?.closeMaterialityThreshold ?? 500}`}
+                            detail={`Requires ${settingsQuery.data?.minimumCloseNotesRequired ?? currentOrganization?.minimumCloseNotesRequired ?? 1} close note(s)${(settingsQuery.data?.requireSignoffBeforeClose ?? currentOrganization?.requireSignoffBeforeClose ?? true) ? " and sign-off" : ""}.`}
+                            tone="default"
+                        />
                     </div>
                 }
             >
@@ -180,9 +198,14 @@ export default function SettingsPage() {
                     detail="Longer windows help asynchronous onboarding. Shorter windows reduce stale links."
                 />
                 <SummaryMetric
+                    label="Close materiality"
+                    value={`$${settingsQuery.data?.closeMaterialityThreshold ?? 500}`}
+                    detail={`Months should usually carry at least ${settingsQuery.data?.minimumCloseNotesRequired ?? 1} note(s)${(settingsQuery.data?.requireSignoffBeforeClose ?? true) ? " and sign-off" : ""} before close.`}
+                />
+                <SummaryMetric
                     label="Policy owner"
                     value={canManageSettings ? "Operator-managed" : "Read only"}
-                    detail="Members can see workspace profile, but not change invitation policy."
+                    detail="Members can see workspace profile, but not change invitation or close policy."
                 />
             </div>
 
@@ -242,11 +265,11 @@ export default function SettingsPage() {
 
             <SectionBand
                 eyebrow="Invitation policy"
-                title="Control invite lifetime"
-                description="Set how long invitation links remain valid before they must be resent. Resends automatically pick up this policy."
+                title="Control invite lifetime and close standards"
+                description="Set how long invitation links stay valid and what month-end evidence should exist before the team treats a close as truly ready."
             >
                 {canManageSettings ? (
-                    <form className="grid gap-4 lg:grid-cols-[0.7fr_auto]" onSubmit={handlePolicySubmit}>
+                    <form className="grid gap-4 lg:grid-cols-2" onSubmit={handlePolicySubmit}>
                         <label className="space-y-2">
                             <span className="text-sm text-zinc-300">Invitation expiry window (days)</span>
                             <input
@@ -263,7 +286,57 @@ export default function SettingsPage() {
                                 Recommended range is 3 to 14 days for most teams. This workspace currently allows 1 to 30 days.
                             </p>
                         </label>
-                        <div className="flex items-end">
+                        <label className="space-y-2">
+                            <span className="text-sm text-zinc-300">Materiality threshold ($)</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={1000000}
+                                step={0.01}
+                                value={closeMaterialityThreshold}
+                                onChange={(event) => setCloseMaterialityThreshold(event.target.value)}
+                                className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
+                                required
+                            />
+                            <p className="text-xs text-zinc-500">
+                                Use this as the line where unresolved dollar exposure should feel material enough to keep the month visibly cautious.
+                            </p>
+                        </label>
+                        <label className="space-y-2">
+                            <span className="text-sm text-zinc-300">Minimum close notes required</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={10}
+                                step={1}
+                                value={minimumCloseNotesRequired}
+                                onChange={(event) => setMinimumCloseNotesRequired(event.target.value)}
+                                className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
+                                required
+                            />
+                            <p className="text-xs text-zinc-500">
+                                Helpful for making sure each month leaves enough operator context behind for the next reviewer.
+                            </p>
+                        </label>
+                        <label className="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <span className="text-sm font-medium text-zinc-200">Require sign-off before close</span>
+                            <p className="text-xs leading-5 text-zinc-500">
+                                Turn this on when every month should carry explicit owner or admin approval before it is treated as ready to close.
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <input
+                                    id="require-signoff-before-close"
+                                    type="checkbox"
+                                    checked={requireSignoffBeforeClose}
+                                    onChange={(event) => setRequireSignoffBeforeClose(event.target.checked)}
+                                    className="h-4 w-4 rounded border-zinc-700 bg-black text-emerald-300 focus:ring-emerald-300"
+                                />
+                                <label htmlFor="require-signoff-before-close" className="text-sm text-zinc-300">
+                                    Sign-off is part of the close standard
+                                </label>
+                            </div>
+                        </label>
+                        <div className="flex items-end justify-end lg:col-span-2">
                             <button
                                 type="submit"
                                 disabled={isSavingPolicy}
@@ -276,8 +349,8 @@ export default function SettingsPage() {
                 ) : (
                     <StatusBanner
                         tone="muted"
-                        title="Ask an owner or admin to change invite policy"
-                        message="Members can use the workspace normally, but invite expiry settings are restricted to operators."
+                        title="Ask an owner or admin to change close policy"
+                        message="Members can use the workspace normally, but invite and month-end policy settings are restricted to operators."
                     />
                 )}
             </SectionBand>

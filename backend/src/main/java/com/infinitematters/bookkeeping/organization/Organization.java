@@ -31,6 +31,15 @@ public class Organization {
     @Column(name = "invitation_ttl_days", nullable = false)
     private int invitationTtlDays = 7;
 
+    @Column(name = "close_materiality_threshold", nullable = false, precision = 12, scale = 2)
+    private java.math.BigDecimal closeMaterialityThreshold = new java.math.BigDecimal("500.00");
+
+    @Column(name = "minimum_close_notes_required", nullable = false)
+    private int minimumCloseNotesRequired = 1;
+
+    @Column(name = "require_signoff_before_close", nullable = false)
+    private boolean requireSignoffBeforeClose = true;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -78,6 +87,30 @@ public class Organization {
 
     public void setInvitationTtlDays(int invitationTtlDays) {
         this.invitationTtlDays = invitationTtlDays;
+    }
+
+    public java.math.BigDecimal getCloseMaterialityThreshold() {
+        return closeMaterialityThreshold;
+    }
+
+    public void setCloseMaterialityThreshold(java.math.BigDecimal closeMaterialityThreshold) {
+        this.closeMaterialityThreshold = closeMaterialityThreshold;
+    }
+
+    public int getMinimumCloseNotesRequired() {
+        return minimumCloseNotesRequired;
+    }
+
+    public void setMinimumCloseNotesRequired(int minimumCloseNotesRequired) {
+        this.minimumCloseNotesRequired = minimumCloseNotesRequired;
+    }
+
+    public boolean isRequireSignoffBeforeClose() {
+        return requireSignoffBeforeClose;
+    }
+
+    public void setRequireSignoffBeforeClose(boolean requireSignoffBeforeClose) {
+        this.requireSignoffBeforeClose = requireSignoffBeforeClose;
     }
 
     public Instant getCreatedAt() {

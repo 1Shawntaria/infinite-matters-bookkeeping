@@ -5,6 +5,9 @@ export type WorkspaceSettingsUpdate = {
     name?: string;
     timezone?: string;
     invitationTtlDays?: number;
+    closeMaterialityThreshold?: number;
+    minimumCloseNotesRequired?: number;
+    requireSignoffBeforeClose?: boolean;
 };
 
 export async function getWorkspaceSettings(organizationId: string): Promise<OrganizationSummary> {

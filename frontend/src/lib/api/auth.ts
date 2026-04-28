@@ -19,6 +19,9 @@ export type OrganizationSummary = {
     planTier: string;
     timezone: string;
     invitationTtlDays: number;
+    closeMaterialityThreshold: number;
+    minimumCloseNotesRequired: number;
+    requireSignoffBeforeClose: boolean;
     role: string | null;
 };
 

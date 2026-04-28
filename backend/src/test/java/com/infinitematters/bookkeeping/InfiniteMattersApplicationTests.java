@@ -636,7 +636,10 @@ class InfiniteMattersApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Settings Workspace"))
                 .andExpect(jsonPath("$.timezone").value("America/Los_Angeles"))
-                .andExpect(jsonPath("$.invitationTtlDays").value(7));
+                .andExpect(jsonPath("$.invitationTtlDays").value(7))
+                .andExpect(jsonPath("$.closeMaterialityThreshold").value(500))
+                .andExpect(jsonPath("$.minimumCloseNotesRequired").value(1))
+                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(true));
 
         mockMvc.perform(patch("/api/organizations/settings")
                         .header(ORG_HEADER, organizationId)
@@ -647,13 +650,19 @@ class InfiniteMattersApplicationTests {
                                 {
                                   "name": "Settings Workspace East",
                                   "timezone": "America/New_York",
-                                  "invitationTtlDays": 14
+                                  "invitationTtlDays": 14,
+                                  "closeMaterialityThreshold": 750.00,
+                                  "minimumCloseNotesRequired": 2,
+                                  "requireSignoffBeforeClose": false
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Settings Workspace East"))
                 .andExpect(jsonPath("$.timezone").value("America/New_York"))
-                .andExpect(jsonPath("$.invitationTtlDays").value(14));
+                .andExpect(jsonPath("$.invitationTtlDays").value(14))
+                .andExpect(jsonPath("$.closeMaterialityThreshold").value(750))
+                .andExpect(jsonPath("$.minimumCloseNotesRequired").value(2))
+                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false));
 
         mockMvc.perform(get("/api/organizations/settings")
                         .header(ORG_HEADER, organizationId)
@@ -662,7 +671,10 @@ class InfiniteMattersApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Settings Workspace East"))
                 .andExpect(jsonPath("$.timezone").value("America/New_York"))
-                .andExpect(jsonPath("$.invitationTtlDays").value(14));
+                .andExpect(jsonPath("$.invitationTtlDays").value(14))
+                .andExpect(jsonPath("$.closeMaterialityThreshold").value(750))
+                .andExpect(jsonPath("$.minimumCloseNotesRequired").value(2))
+                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false));
     }
 
     @Test
@@ -687,6 +699,43 @@ class InfiniteMattersApplicationTests {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Timezone must be a valid IANA zone ID"));
+    }
+
+    @Test
+    void workspaceSettingsRejectInvalidClosePolicy() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "settings-invalid-policy-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Settings Owner", password);
+        String organizationId = createOrganization("Settings Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(patch("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "closeMaterialityThreshold": -1.00
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Close materiality threshold must be between 0.00 and 1000000.00"));
+
+        mockMvc.perform(patch("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "minimumCloseNotesRequired": 11
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Minimum close notes required must be between 0 and 10"));
     }
 
     @Test

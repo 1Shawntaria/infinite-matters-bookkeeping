@@ -7,6 +7,9 @@ const organizations = [
     planTier: "GROWTH",
     timezone: "America/Los_Angeles",
     invitationTtlDays: 7,
+    closeMaterialityThreshold: 500,
+    minimumCloseNotesRequired: 1,
+    requireSignoffBeforeClose: true,
     role: "OWNER",
   },
   {
@@ -15,6 +18,9 @@ const organizations = [
     planTier: "STARTER",
     timezone: "America/New_York",
     invitationTtlDays: 5,
+    closeMaterialityThreshold: 250,
+    minimumCloseNotesRequired: 1,
+    requireSignoffBeforeClose: false,
     role: "ADMIN",
   },
   {
@@ -23,6 +29,9 @@ const organizations = [
     planTier: "STARTER",
     timezone: "America/Chicago",
     invitationTtlDays: 7,
+    closeMaterialityThreshold: 500,
+    minimumCloseNotesRequired: 1,
+    requireSignoffBeforeClose: true,
     role: "MEMBER",
   },
 ];
@@ -986,6 +995,9 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         name?: string;
         timezone?: string;
         invitationTtlDays?: number;
+        closeMaterialityThreshold?: number;
+        minimumCloseNotesRequired?: number;
+        requireSignoffBeforeClose?: boolean;
       };
       const index = organizations.findIndex((item) => item.id === targetOrganizationId);
       organizations[index] = {
@@ -993,6 +1005,9 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         name: body.name ?? organizations[index].name,
         timezone: body.timezone ?? organizations[index].timezone,
         invitationTtlDays: body.invitationTtlDays ?? organizations[index].invitationTtlDays,
+        closeMaterialityThreshold: body.closeMaterialityThreshold ?? organizations[index].closeMaterialityThreshold,
+        minimumCloseNotesRequired: body.minimumCloseNotesRequired ?? organizations[index].minimumCloseNotesRequired,
+        requireSignoffBeforeClose: body.requireSignoffBeforeClose ?? organizations[index].requireSignoffBeforeClose,
       };
       await fulfillJson(route, organizations[index]);
       return;
@@ -1699,10 +1714,14 @@ test("settings page lets operators update workspace profile and invitation polic
   const ttlInput = page.getByLabel("Invitation expiry window (days)");
   await expect(ttlInput).toHaveValue("7");
   await ttlInput.fill("14");
+  await page.getByLabel("Materiality threshold ($)").fill("750");
+  await page.getByLabel("Minimum close notes required").fill("2");
   await page.getByRole("button", { name: "Save policy" }).click();
 
-  await expect(page.getByText("Invitation expiry updated to 14 days.")).toBeVisible();
+  await expect(page.getByText("Close policy updated: 14-day invites, $750 materiality, and 2 required close note(s).")).toBeVisible();
   await expect(ttlInput).toHaveValue("14");
+  await expect(page.getByLabel("Materiality threshold ($)")).toHaveValue("750");
+  await expect(page.getByLabel("Minimum close notes required")).toHaveValue("2");
 });
 
 test("invite page creates an account and accepts a workspace invitation", async ({ page }) => {
