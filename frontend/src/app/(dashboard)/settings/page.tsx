@@ -6,7 +6,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import { useOrganizationSession } from "@/lib/auth/session";
 import { OrganizationSummary, listOrganizations } from "@/lib/api/auth";
-import { getWorkspaceSettings, updateWorkspaceSettings } from "@/lib/api/settings";
+import {
+    CloseTemplateItem,
+    createCloseTemplateItem,
+    deleteCloseTemplateItem,
+    getWorkspaceSettings,
+    listCloseTemplateItems,
+    updateWorkspaceSettings,
+} from "@/lib/api/settings";
 
 function formatRole(value: string | null | undefined) {
     if (!value) return "Unknown";
@@ -22,12 +29,20 @@ export default function SettingsPage() {
     const [closeMaterialityThreshold, setCloseMaterialityThreshold] = useState("500");
     const [minimumCloseNotesRequired, setMinimumCloseNotesRequired] = useState("1");
     const [requireSignoffBeforeClose, setRequireSignoffBeforeClose] = useState(true);
+    const [minimumSignoffCount, setMinimumSignoffCount] = useState("1");
+    const [requireOwnerSignoffBeforeClose, setRequireOwnerSignoffBeforeClose] = useState(false);
+    const [templateLabel, setTemplateLabel] = useState("");
+    const [templateGuidance, setTemplateGuidance] = useState("");
+    const [templateMessage, setTemplateMessage] = useState("");
+    const [templateError, setTemplateError] = useState("");
     const [profileMessage, setProfileMessage] = useState("");
     const [policyMessage, setPolicyMessage] = useState("");
     const [profileError, setProfileError] = useState("");
     const [policyError, setPolicyError] = useState("");
     const [isSavingProfile, setIsSavingProfile] = useState(false);
     const [isSavingPolicy, setIsSavingPolicy] = useState(false);
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+    const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
 
     const organizationsQuery = useQuery<OrganizationSummary[], Error>({
         queryKey: ["organizations"],
@@ -39,6 +54,11 @@ export default function SettingsPage() {
         queryKey: ["workspaceSettings", organizationId],
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => getWorkspaceSettings(organizationId),
+    });
+    const closeTemplateItemsQuery = useQuery<CloseTemplateItem[], Error>({
+        queryKey: ["closeTemplateItems", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listCloseTemplateItems(organizationId),
     });
 
     const currentOrganization = (organizationsQuery.data ?? []).find((item) => item.id === organizationId) ?? null;
@@ -53,10 +73,16 @@ export default function SettingsPage() {
             setCloseMaterialityThreshold(String(settingsQuery.data.closeMaterialityThreshold));
             setMinimumCloseNotesRequired(String(settingsQuery.data.minimumCloseNotesRequired));
             setRequireSignoffBeforeClose(settingsQuery.data.requireSignoffBeforeClose);
+            setMinimumSignoffCount(String(settingsQuery.data.minimumSignoffCount));
+            setRequireOwnerSignoffBeforeClose(settingsQuery.data.requireOwnerSignoffBeforeClose);
         }
     }, [settingsQuery.data]);
 
-    const queryError = organizationsQuery.error?.message ?? settingsQuery.error?.message ?? "";
+    const queryError =
+        organizationsQuery.error?.message ??
+        settingsQuery.error?.message ??
+        closeTemplateItemsQuery.error?.message ??
+        "";
 
     async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -99,6 +125,8 @@ export default function SettingsPage() {
                 closeMaterialityThreshold: Number(closeMaterialityThreshold),
                 minimumCloseNotesRequired: Number(minimumCloseNotesRequired),
                 requireSignoffBeforeClose,
+                minimumSignoffCount: Number(minimumSignoffCount),
+                requireOwnerSignoffBeforeClose,
             });
             await Promise.all([
                 queryClient.invalidateQueries({ queryKey: ["workspaceSettings", organizationId] }),
@@ -108,7 +136,11 @@ export default function SettingsPage() {
             setCloseMaterialityThreshold(String(updated.closeMaterialityThreshold));
             setMinimumCloseNotesRequired(String(updated.minimumCloseNotesRequired));
             setRequireSignoffBeforeClose(updated.requireSignoffBeforeClose);
-            setPolicyMessage(`Close policy updated: ${updated.invitationTtlDays}-day invites, $${updated.closeMaterialityThreshold} materiality, and ${updated.minimumCloseNotesRequired} required close note(s).`);
+            setMinimumSignoffCount(String(updated.minimumSignoffCount));
+            setRequireOwnerSignoffBeforeClose(updated.requireOwnerSignoffBeforeClose);
+            setPolicyMessage(
+                `Close policy updated: ${updated.invitationTtlDays}-day invites, $${updated.closeMaterialityThreshold} materiality, ${updated.minimumCloseNotesRequired} required close note(s), and ${updated.minimumSignoffCount} required signoff(s).`
+            );
         } catch (saveError) {
             setPolicyError(saveError instanceof Error ? saveError.message : "Unable to save workspace settings.");
         } finally {
@@ -116,7 +148,55 @@ export default function SettingsPage() {
         }
     }
 
-    if (!hydrated || organizationsQuery.isLoading || settingsQuery.isLoading) {
+    async function handleTemplateSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!organizationId) return;
+
+        setTemplateError("");
+        setTemplateMessage("");
+        setIsSavingTemplate(true);
+
+        try {
+            const item = await createCloseTemplateItem(organizationId, {
+                label: templateLabel,
+                guidance: templateGuidance,
+            });
+            queryClient.setQueryData<CloseTemplateItem[]>(
+                ["closeTemplateItems", organizationId],
+                (current) => [...(current ?? []), item]
+            );
+            await queryClient.invalidateQueries({ queryKey: ["closeTemplateItems", organizationId] });
+            setTemplateLabel("");
+            setTemplateGuidance("");
+            setTemplateMessage(`Close playbook item "${item.label}" added.`);
+        } catch (saveError) {
+            setTemplateError(saveError instanceof Error ? saveError.message : "Unable to save close playbook item.");
+        } finally {
+            setIsSavingTemplate(false);
+        }
+    }
+
+    async function handleDeleteTemplate(itemId: string, label: string) {
+        if (!organizationId) return;
+        setTemplateError("");
+        setTemplateMessage("");
+        setDeletingTemplateId(itemId);
+        try {
+            await deleteCloseTemplateItem(organizationId, itemId);
+            queryClient.setQueryData<CloseTemplateItem[]>(
+                ["closeTemplateItems", organizationId],
+                (current) => (current ?? []).filter((item) => item.id !== itemId)
+            );
+            await queryClient.invalidateQueries({ queryKey: ["closeTemplateItems", organizationId] });
+            setTemplateMessage(`Close playbook item "${label}" removed.`);
+        } catch (deleteError) {
+            setTemplateError(deleteError instanceof Error ? deleteError.message : "Unable to delete close playbook item.");
+        } finally {
+            setDeletingTemplateId(null);
+        }
+    }
+
+    if (!hydrated || organizationsQuery.isLoading || settingsQuery.isLoading || closeTemplateItemsQuery.isLoading) {
         return (
             <LoadingPanel
                 title="Loading workspace settings."
@@ -159,7 +239,7 @@ export default function SettingsPage() {
                         <SummaryMetric
                             label="Close standard"
                             value={`$${settingsQuery.data?.closeMaterialityThreshold ?? currentOrganization?.closeMaterialityThreshold ?? 500}`}
-                            detail={`Requires ${settingsQuery.data?.minimumCloseNotesRequired ?? currentOrganization?.minimumCloseNotesRequired ?? 1} close note(s)${(settingsQuery.data?.requireSignoffBeforeClose ?? currentOrganization?.requireSignoffBeforeClose ?? true) ? " and sign-off" : ""}.`}
+                            detail={`Requires ${settingsQuery.data?.minimumCloseNotesRequired ?? currentOrganization?.minimumCloseNotesRequired ?? 1} close note(s), ${settingsQuery.data?.minimumSignoffCount ?? currentOrganization?.minimumSignoffCount ?? 1} signoff(s)${(settingsQuery.data?.requireOwnerSignoffBeforeClose ?? currentOrganization?.requireOwnerSignoffBeforeClose ?? false) ? ", including an owner" : ""}.`}
                             tone="default"
                         />
                     </div>
@@ -200,7 +280,7 @@ export default function SettingsPage() {
                 <SummaryMetric
                     label="Close materiality"
                     value={`$${settingsQuery.data?.closeMaterialityThreshold ?? 500}`}
-                    detail={`Months should usually carry at least ${settingsQuery.data?.minimumCloseNotesRequired ?? 1} note(s)${(settingsQuery.data?.requireSignoffBeforeClose ?? true) ? " and sign-off" : ""} before close.`}
+                    detail={`Months should usually carry at least ${settingsQuery.data?.minimumCloseNotesRequired ?? 1} note(s) and ${settingsQuery.data?.minimumSignoffCount ?? 1} signoff(s)${(settingsQuery.data?.requireOwnerSignoffBeforeClose ?? false) ? ", including an owner," : ""} before close.`}
                 />
                 <SummaryMetric
                     label="Policy owner"
@@ -318,6 +398,22 @@ export default function SettingsPage() {
                                 Helpful for making sure each month leaves enough operator context behind for the next reviewer.
                             </p>
                         </label>
+                        <label className="space-y-2">
+                            <span className="text-sm text-zinc-300">Minimum signoffs required</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={10}
+                                step={1}
+                                value={minimumSignoffCount}
+                                onChange={(event) => setMinimumSignoffCount(event.target.value)}
+                                className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
+                                required
+                            />
+                            <p className="text-xs text-zinc-500">
+                                Use this when close should reflect more than one approving set of eyes before it is treated as complete.
+                            </p>
+                        </label>
                         <label className="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4">
                             <span className="text-sm font-medium text-zinc-200">Require sign-off before close</span>
                             <p className="text-xs leading-5 text-zinc-500">
@@ -336,6 +432,24 @@ export default function SettingsPage() {
                                 </label>
                             </div>
                         </label>
+                        <label className="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <span className="text-sm font-medium text-zinc-200">Require owner sign-off</span>
+                            <p className="text-xs leading-5 text-zinc-500">
+                                Turn this on when at least one owner must explicitly approve the month before a standard close can go through.
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <input
+                                    id="require-owner-signoff-before-close"
+                                    type="checkbox"
+                                    checked={requireOwnerSignoffBeforeClose}
+                                    onChange={(event) => setRequireOwnerSignoffBeforeClose(event.target.checked)}
+                                    className="h-4 w-4 rounded border-zinc-700 bg-black text-emerald-300 focus:ring-emerald-300"
+                                />
+                                <label htmlFor="require-owner-signoff-before-close" className="text-sm text-zinc-300">
+                                    An owner sign-off is required for standard close
+                                </label>
+                            </div>
+                        </label>
                         <div className="flex items-end justify-end lg:col-span-2">
                             <button
                                 type="submit"
@@ -351,6 +465,90 @@ export default function SettingsPage() {
                         tone="muted"
                         title="Ask an owner or admin to change close policy"
                         message="Members can use the workspace normally, but invite and month-end policy settings are restricted to operators."
+                    />
+                )}
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Close playbook"
+                title="Persist recurring month-end checks"
+                description="Capture the standing reminders your team wants to see every month, so the runbook reflects your actual accounting practice instead of memory or side notes."
+            >
+                {templateError ? <StatusBanner tone="error" title="Close playbook update failed" message={templateError} /> : null}
+                {templateMessage ? <StatusBanner tone="success" title="Close playbook updated" message={templateMessage} /> : null}
+
+                {canManageSettings ? (
+                    <div className="space-y-5">
+                        <form className="grid gap-4 lg:grid-cols-2" onSubmit={handleTemplateSubmit}>
+                            <label className="space-y-2">
+                                <span className="text-sm text-zinc-300">Template item label</span>
+                                <input
+                                    type="text"
+                                    maxLength={120}
+                                    value={templateLabel}
+                                    onChange={(event) => setTemplateLabel(event.target.value)}
+                                    placeholder="Confirm payroll liabilities were tied out"
+                                    className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
+                                    required
+                                />
+                            </label>
+                            <label className="space-y-2">
+                                <span className="text-sm text-zinc-300">Operator guidance</span>
+                                <textarea
+                                    value={templateGuidance}
+                                    onChange={(event) => setTemplateGuidance(event.target.value)}
+                                    placeholder="Use payroll provider reports and the liability rollforward before treating this as complete."
+                                    rows={3}
+                                    maxLength={500}
+                                    className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none transition hover:border-zinc-700"
+                                    required
+                                />
+                            </label>
+                            <div className="flex justify-end lg:col-span-2">
+                                <button
+                                    type="submit"
+                                    disabled={isSavingTemplate}
+                                    className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200 disabled:opacity-50"
+                                >
+                                    {isSavingTemplate ? "Saving..." : "Add playbook item"}
+                                </button>
+                            </div>
+                        </form>
+
+                        {(closeTemplateItemsQuery.data ?? []).length === 0 ? (
+                            <StatusBanner
+                                tone="muted"
+                                title="No recurring close playbook items yet"
+                                message="Add the standing checks your team expects every month so the runbook stays grounded in your real close habits."
+                            />
+                        ) : (
+                            <div className="space-y-3">
+                                {(closeTemplateItemsQuery.data ?? []).map((item) => (
+                                    <div key={item.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div>
+                                                <p className="text-sm font-semibold text-white">{item.sortOrder}. {item.label}</p>
+                                                <p className="mt-2 text-sm leading-6 text-zinc-400">{item.guidance}</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleDeleteTemplate(item.id, item.label)}
+                                                disabled={deletingTemplateId === item.id}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/[0.05] disabled:opacity-50"
+                                            >
+                                                {deletingTemplateId === item.id ? "Removing..." : "Remove"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <StatusBanner
+                        tone="muted"
+                        title="Ask an owner or admin to change the close playbook"
+                        message="Members can follow the month-end runbook, but recurring close standards are managed by operators."
                     />
                 )}
             </SectionBand>

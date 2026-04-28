@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
     LoadingPanel,
+    NextStepsList,
     PageHero,
     ProgressMeter,
     SectionBand,
@@ -26,6 +27,7 @@ import { listAttentionNotifications, listDeadLetterNotifications } from "@/lib/a
 import { useOrganizationSession } from "@/lib/auth/session";
 import { AuditEventSummary } from "@/lib/api/audit";
 import { NotificationSummaryItem } from "@/lib/api/auth";
+import { getWorkspaceSettings, listCloseTemplateItems } from "@/lib/api/settings";
 
 type RunbookStep = {
     id: string;
@@ -87,6 +89,16 @@ export default function RunClosePage() {
         enabled: hydrated && Boolean(organizationId) && Boolean(focusMonth),
         queryFn: () => listCloseSignoffs(organizationId, focusMonth),
     });
+    const settingsQuery = useQuery({
+        queryKey: ["workspaceSettings", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => getWorkspaceSettings(organizationId),
+    });
+    const closeTemplateItemsQuery = useQuery({
+        queryKey: ["closeTemplateItems", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listCloseTemplateItems(organizationId),
+    });
 
     const loading =
         hydrated && organizationId
@@ -96,6 +108,8 @@ export default function RunClosePage() {
               periodsQuery.isLoading ||
               attentionNotificationsQuery.isLoading ||
               deadLetterNotificationsQuery.isLoading ||
+              settingsQuery.isLoading ||
+              closeTemplateItemsQuery.isLoading ||
               (Boolean(focusMonth) &&
                   (closeChecklistQuery.isLoading ||
                       closeNotesQuery.isLoading ||
@@ -109,6 +123,8 @@ export default function RunClosePage() {
         periodsQuery.error?.message ??
         attentionNotificationsQuery.error?.message ??
         deadLetterNotificationsQuery.error?.message ??
+        settingsQuery.error?.message ??
+        closeTemplateItemsQuery.error?.message ??
         closeChecklistQuery.error?.message ??
         closeNotesQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
@@ -121,6 +137,8 @@ export default function RunClosePage() {
     const closeSignoffs = closeSignoffsQuery.data ?? [];
     const attentionNotifications = attentionNotificationsQuery.data ?? [];
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
+    const workspaceSettings = settingsQuery.data ?? null;
+    const closeTemplateItems = closeTemplateItemsQuery.data ?? [];
     const currentPeriod =
         periodsQuery.data?.find((period) => period.periodStart.slice(0, 7) === focusMonth) ?? null;
 
@@ -323,6 +341,45 @@ export default function RunClosePage() {
                             </div>
                         </div>
                     ))}
+                </div>
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Workspace standard"
+                title="Standing close playbook"
+                description="These are the recurring checks and approval expectations your team wants visible every month, even when the specific transactions change."
+            >
+                <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                    <div className="space-y-3">
+                        {closeTemplateItems.length === 0 ? (
+                            <StatusBanner
+                                tone="muted"
+                                title="No recurring close playbook items yet"
+                                message="Add them in workspace settings when your team is ready to formalize the month-end standard."
+                            />
+                        ) : (
+                            closeTemplateItems.map((item) => (
+                                <div key={item.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                                    <p className="text-sm font-semibold text-white">{item.sortOrder}. {item.label}</p>
+                                    <p className="mt-2 text-sm leading-6 text-zinc-400">{item.guidance}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    <NextStepsList
+                        title="Approval policy"
+                        items={[
+                            `Document at least ${workspaceSettings?.minimumCloseNotesRequired ?? 1} close note(s) for the month.`,
+                            workspaceSettings?.requireSignoffBeforeClose
+                                ? `Record at least ${workspaceSettings?.minimumSignoffCount ?? 1} signoff(s) before standard close.`
+                                : "Formal signoff is optional before standard close in this workspace.",
+                            workspaceSettings?.requireOwnerSignoffBeforeClose
+                                ? "At least one of those signoffs must come from an owner."
+                                : "Owner-specific signoff is not required by policy.",
+                            `Treat unresolved review exposure above $${workspaceSettings?.closeMaterialityThreshold ?? 500} as materially cautionary.`,
+                        ]}
+                    />
                 </div>
             </SectionBand>
 

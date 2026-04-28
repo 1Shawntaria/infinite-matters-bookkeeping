@@ -10,6 +10,8 @@ const organizations = [
     closeMaterialityThreshold: 500,
     minimumCloseNotesRequired: 1,
     requireSignoffBeforeClose: true,
+    minimumSignoffCount: 1,
+    requireOwnerSignoffBeforeClose: false,
     role: "OWNER",
   },
   {
@@ -21,6 +23,8 @@ const organizations = [
     closeMaterialityThreshold: 250,
     minimumCloseNotesRequired: 1,
     requireSignoffBeforeClose: false,
+    minimumSignoffCount: 0,
+    requireOwnerSignoffBeforeClose: false,
     role: "ADMIN",
   },
   {
@@ -32,6 +36,8 @@ const organizations = [
     closeMaterialityThreshold: 500,
     minimumCloseNotesRequired: 1,
     requireSignoffBeforeClose: true,
+    minimumSignoffCount: 1,
+    requireOwnerSignoffBeforeClose: false,
     role: "MEMBER",
   },
 ];
@@ -497,6 +503,15 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       route: "RULES",
       confidenceScore: 0.92,
       status: "POSTED",
+    },
+  ];
+  let closeTemplateItems = [
+    {
+      id: "close-template-1",
+      label: "Confirm payroll liabilities were tied out",
+      guidance: "Use payroll provider reports and the liability rollforward before treating payroll as complete.",
+      sortOrder: 1,
+      createdAt: "2026-04-24T12:35:00Z",
     },
   ];
   const accountingPeriods = [
@@ -998,6 +1013,8 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         closeMaterialityThreshold?: number;
         minimumCloseNotesRequired?: number;
         requireSignoffBeforeClose?: boolean;
+        minimumSignoffCount?: number;
+        requireOwnerSignoffBeforeClose?: boolean;
       };
       const index = organizations.findIndex((item) => item.id === targetOrganizationId);
       organizations[index] = {
@@ -1008,8 +1025,36 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         closeMaterialityThreshold: body.closeMaterialityThreshold ?? organizations[index].closeMaterialityThreshold,
         minimumCloseNotesRequired: body.minimumCloseNotesRequired ?? organizations[index].minimumCloseNotesRequired,
         requireSignoffBeforeClose: body.requireSignoffBeforeClose ?? organizations[index].requireSignoffBeforeClose,
+        minimumSignoffCount: body.minimumSignoffCount ?? organizations[index].minimumSignoffCount,
+        requireOwnerSignoffBeforeClose: body.requireOwnerSignoffBeforeClose ?? organizations[index].requireOwnerSignoffBeforeClose,
       };
       await fulfillJson(route, organizations[index]);
+      return;
+    }
+
+    if (url.pathname === "/api/organizations/close-template-items" && request.method() === "GET") {
+      await fulfillJson(route, closeTemplateItems);
+      return;
+    }
+
+    if (url.pathname === "/api/organizations/close-template-items" && request.method() === "POST") {
+      const body = request.postDataJSON() as { label: string; guidance: string };
+      const item = {
+        id: `close-template-${closeTemplateItems.length + 1}`,
+        label: body.label,
+        guidance: body.guidance,
+        sortOrder: closeTemplateItems.length + 1,
+        createdAt: "2026-04-24T12:55:00Z",
+      };
+      closeTemplateItems = [...closeTemplateItems, item];
+      await fulfillJson(route, item);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/organizations/close-template-items/") && request.method() === "DELETE") {
+      const itemId = url.pathname.split("/")[4];
+      closeTemplateItems = closeTemplateItems.filter((item) => item.id !== itemId);
+      await fulfillJson(route, {});
       return;
     }
 
@@ -1716,12 +1761,21 @@ test("settings page lets operators update workspace profile and invitation polic
   await ttlInput.fill("14");
   await page.getByLabel("Materiality threshold ($)").fill("750");
   await page.getByLabel("Minimum close notes required").fill("2");
+  await page.getByLabel("Minimum signoffs required").fill("2");
+  await page.getByLabel("An owner sign-off is required for standard close").check();
   await page.getByRole("button", { name: "Save policy" }).click();
 
-  await expect(page.getByText("Close policy updated: 14-day invites, $750 materiality, and 2 required close note(s).")).toBeVisible();
+  await expect(page.getByText("Close policy updated: 14-day invites, $750 materiality, 2 required close note(s), and 2 required signoff(s).")).toBeVisible();
   await expect(ttlInput).toHaveValue("14");
   await expect(page.getByLabel("Materiality threshold ($)")).toHaveValue("750");
   await expect(page.getByLabel("Minimum close notes required")).toHaveValue("2");
+  await expect(page.getByLabel("Minimum signoffs required")).toHaveValue("2");
+
+  await page.getByLabel("Template item label").fill("Tie out deferred revenue schedule");
+  await page.getByLabel("Operator guidance").fill("Use the customer contract summary and rollforward before clearing deferred revenue.");
+  await page.getByRole("button", { name: "Add playbook item" }).click();
+  await expect(page.getByText('Close playbook item "Tie out deferred revenue schedule" added.')).toBeVisible();
+  await expect(page.getByText(/^2\. Tie out deferred revenue schedule$/)).toBeVisible();
 });
 
 test("invite page creates an account and accepts a workspace invitation", async ({ page }) => {

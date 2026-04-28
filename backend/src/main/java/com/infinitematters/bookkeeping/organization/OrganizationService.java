@@ -19,6 +19,9 @@ public class OrganizationService {
     public static final int DEFAULT_MINIMUM_CLOSE_NOTES_REQUIRED = 1;
     public static final int MIN_MINIMUM_CLOSE_NOTES_REQUIRED = 0;
     public static final int MAX_MINIMUM_CLOSE_NOTES_REQUIRED = 10;
+    public static final int DEFAULT_MINIMUM_SIGNOFF_COUNT = 1;
+    public static final int MIN_MINIMUM_SIGNOFF_COUNT = 0;
+    public static final int MAX_MINIMUM_SIGNOFF_COUNT = 10;
 
     private final OrganizationRepository repository;
 
@@ -35,6 +38,8 @@ public class OrganizationService {
         organization.setCloseMaterialityThreshold(DEFAULT_CLOSE_MATERIALITY_THRESHOLD);
         organization.setMinimumCloseNotesRequired(DEFAULT_MINIMUM_CLOSE_NOTES_REQUIRED);
         organization.setRequireSignoffBeforeClose(true);
+        organization.setMinimumSignoffCount(DEFAULT_MINIMUM_SIGNOFF_COUNT);
+        organization.setRequireOwnerSignoffBeforeClose(false);
         return repository.save(organization);
     }
 
@@ -44,7 +49,9 @@ public class OrganizationService {
                                        Integer invitationTtlDays,
                                        BigDecimal closeMaterialityThreshold,
                                        Integer minimumCloseNotesRequired,
-                                       Boolean requireSignoffBeforeClose) {
+                                       Boolean requireSignoffBeforeClose,
+                                       Integer minimumSignoffCount,
+                                       Boolean requireOwnerSignoffBeforeClose) {
         Organization organization = get(organizationId);
 
         if (name != null) {
@@ -64,6 +71,12 @@ public class OrganizationService {
         }
         if (requireSignoffBeforeClose != null) {
             organization.setRequireSignoffBeforeClose(requireSignoffBeforeClose);
+        }
+        if (minimumSignoffCount != null) {
+            organization.setMinimumSignoffCount(validateMinimumSignoffCount(minimumSignoffCount));
+        }
+        if (requireOwnerSignoffBeforeClose != null) {
+            organization.setRequireOwnerSignoffBeforeClose(requireOwnerSignoffBeforeClose);
         }
         return repository.save(organization);
     }
@@ -108,6 +121,14 @@ public class OrganizationService {
             throw new IllegalArgumentException("Minimum close notes required must be between 0 and 10");
         }
         return minimumCloseNotesRequired;
+    }
+
+    private static int validateMinimumSignoffCount(int minimumSignoffCount) {
+        if (minimumSignoffCount < MIN_MINIMUM_SIGNOFF_COUNT ||
+                minimumSignoffCount > MAX_MINIMUM_SIGNOFF_COUNT) {
+            throw new IllegalArgumentException("Minimum signoff count must be between 0 and 10");
+        }
+        return minimumSignoffCount;
     }
 
     private static String normalizeName(String name) {

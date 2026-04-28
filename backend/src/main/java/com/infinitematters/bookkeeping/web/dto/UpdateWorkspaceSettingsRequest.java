@@ -8,5 +8,7 @@ public record UpdateWorkspaceSettingsRequest(
         Integer invitationTtlDays,
         BigDecimal closeMaterialityThreshold,
         Integer minimumCloseNotesRequired,
-        Boolean requireSignoffBeforeClose) {
+        Boolean requireSignoffBeforeClose,
+        Integer minimumSignoffCount,
+        Boolean requireOwnerSignoffBeforeClose) {
 }

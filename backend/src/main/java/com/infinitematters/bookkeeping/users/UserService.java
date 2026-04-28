@@ -106,6 +106,11 @@ public class UserService {
                 .orElseThrow(() -> new IllegalArgumentException("No membership for user " + userId));
     }
 
+    public Optional<UserRole> findRoleForOrganization(UUID organizationId, UUID userId) {
+        return membershipRepository.findByOrganizationIdAndUserId(organizationId, userId)
+                .map(OrganizationMembership::getRole);
+    }
+
     public List<AppUser> membersForOrganizationWithRoles(UUID organizationId, List<UserRole> roles) {
         return membershipRepository.findByOrganizationIdAndRoleIn(organizationId, roles).stream()
                 .map(OrganizationMembership::getUser)

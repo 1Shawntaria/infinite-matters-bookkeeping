@@ -22,6 +22,8 @@ export type OrganizationSummary = {
     closeMaterialityThreshold: number;
     minimumCloseNotesRequired: number;
     requireSignoffBeforeClose: boolean;
+    minimumSignoffCount: number;
+    requireOwnerSignoffBeforeClose: boolean;
     role: string | null;
 };
 

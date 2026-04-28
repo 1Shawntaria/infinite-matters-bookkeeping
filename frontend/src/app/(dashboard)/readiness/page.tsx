@@ -174,8 +174,12 @@ export default function CloseReadinessPage() {
     const materialityThreshold = workspaceSettings?.closeMaterialityThreshold ?? 500;
     const minimumCloseNotesRequired = workspaceSettings?.minimumCloseNotesRequired ?? 1;
     const requireSignoffBeforeClose = workspaceSettings?.requireSignoffBeforeClose ?? true;
+    const minimumSignoffCount = workspaceSettings?.minimumSignoffCount ?? 1;
+    const requireOwnerSignoffBeforeClose = workspaceSettings?.requireOwnerSignoffBeforeClose ?? false;
     const noteGap = Math.max(0, minimumCloseNotesRequired - closeNotes.length);
-    const signoffGap = requireSignoffBeforeClose && closeSignoffs.length === 0 ? 1 : 0;
+    const signoffGap = requireSignoffBeforeClose ? Math.max(0, minimumSignoffCount - closeSignoffs.length) : 0;
+    const ownerSignoffRecorded = closeSignoffs.some((signoff) => signoff.actorUserId != null);
+    const ownerSignoffGap = requireOwnerSignoffBeforeClose && !ownerSignoffRecorded ? 1 : 0;
 
     const readinessScore = useMemo(() => {
         const rawScore =
@@ -185,6 +189,7 @@ export default function CloseReadinessPage() {
             overrideRisk * 10 -
             noteGap * 6 -
             signoffGap * 10 -
+            ownerSignoffGap * 8 -
             (reviewExposureAmount >= materialityThreshold ? 8 : 0) +
             (checklist?.closeReady ? 8 : 0);
         return clamp(rawScore, 12, 100);
@@ -195,6 +200,7 @@ export default function CloseReadinessPage() {
         materialityThreshold,
         noteGap,
         overrideRisk,
+        ownerSignoffGap,
         reviewExposureAmount,
         signoffGap,
     ]);
@@ -226,7 +232,7 @@ export default function CloseReadinessPage() {
             };
         }
 
-        if (checklist?.closeReady && signoffGap > 0) {
+        if (checklist?.closeReady && (signoffGap > 0 || ownerSignoffGap > 0)) {
             return {
                 state: "NEEDS_SIGNOFF",
                 title: "Ready in practice, waiting on sign-off",
@@ -270,6 +276,7 @@ export default function CloseReadinessPage() {
         overrideRisk,
         reviewExposureAmount,
         materialityThreshold,
+        ownerSignoffGap,
         signoffGap,
     ]);
 
@@ -351,7 +358,7 @@ export default function CloseReadinessPage() {
                         <SummaryMetric
                             label="Policy threshold"
                             value={`$${materialityThreshold}`}
-                            detail={`Requires ${minimumCloseNotesRequired} close note(s)${requireSignoffBeforeClose ? " and sign-off" : ""} before the month feels complete.`}
+                            detail={`Requires ${minimumCloseNotesRequired} close note(s), ${minimumSignoffCount} signoff(s)${requireOwnerSignoffBeforeClose ? ", including an owner," : ""} before the month feels complete.`}
                         />
                     </div>
                 }
@@ -414,8 +421,8 @@ export default function CloseReadinessPage() {
                 <SummaryMetric
                     label="Recorded sign-offs"
                     value={`${closeSignoffs.length}`}
-                    detail={requireSignoffBeforeClose ? "Formal approval is part of this workspace's close standard." : "Formal approval is optional in this workspace."}
-                    tone={riskTone(signoffGap)}
+                    detail={requireSignoffBeforeClose ? `Formal approval is part of this workspace's close standard. Target: ${minimumSignoffCount}.` : "Formal approval is optional in this workspace."}
+                    tone={riskTone(signoffGap + ownerSignoffGap)}
                 />
                 <SummaryMetric
                     label="Period posture"
@@ -460,8 +467,10 @@ export default function CloseReadinessPage() {
                         noteGap > 0
                             ? `Add ${noteGap} more close note(s) so the handoff meets the workspace's documentation standard.`
                             : "Use the note trail to make the month understandable to anyone who did not live inside the work all week.",
-                        signoffGap > 0
-                            ? "Capture owner or admin sign-off before treating the month as fully settled."
+                        signoffGap > 0 || ownerSignoffGap > 0
+                            ? requireOwnerSignoffBeforeClose
+                                ? "Capture the required signoffs, including at least one owner approval, before treating the month as fully settled."
+                                : "Capture the required signoffs before treating the month as fully settled."
                             : "There is already approval history on the month, so the remaining decision is timing, not ownership.",
                         agingRiskCount > 0
                             ? "Clear the remaining delivery or overdue risk before the close becomes someone else’s surprise."
@@ -481,7 +490,7 @@ export default function CloseReadinessPage() {
                         <ul className="mt-3 space-y-2 text-sm text-zinc-400">
                             <li>{checklist?.closeReady ? "Checklist is currently close-ready." : "Checklist still has open controls."}</li>
                             <li>{closeNotes.length > 0 ? `${closeNotes.length} close note(s) already captured against a target of ${minimumCloseNotesRequired}.` : "No close notes captured yet."}</li>
-                            <li>{closeSignoffs.length > 0 ? `${closeSignoffs.length} sign-off(s) already recorded.` : requireSignoffBeforeClose ? "No sign-offs recorded yet." : "Sign-off is optional for this workspace."}</li>
+                            <li>{closeSignoffs.length > 0 ? `${closeSignoffs.length} sign-off(s) already recorded against a target of ${minimumSignoffCount}.` : requireSignoffBeforeClose ? "No sign-offs recorded yet." : "Sign-off is optional for this workspace."}</li>
                         </ul>
                     </div>
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
@@ -491,6 +500,7 @@ export default function CloseReadinessPage() {
                             <li>${reviewExposureAmount.toFixed(2)} of open review exposure against a ${materialityThreshold} threshold.</li>
                             <li>{unreconciledAccounts.length} account(s) still unreconciled.</li>
                             <li>{incompleteChecklistItems.length} checklist item(s) still incomplete.</li>
+                            {requireOwnerSignoffBeforeClose ? <li>Owner sign-off is required before standard close.</li> : null}
                         </ul>
                     </div>
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">

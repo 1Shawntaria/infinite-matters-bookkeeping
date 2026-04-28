@@ -47,6 +47,7 @@ public class PeriodCloseService {
     @Transactional
     public AccountingPeriodSummary closeMonth(UUID organizationId, YearMonth month) {
         closeChecklistService.assertCloseReady(organizationId, month);
+        assertApprovalPolicySatisfied(organizationId, month);
         return persistClosedPeriod(organizationId, month, PeriodCloseMethod.CHECKLIST, null);
     }
 
@@ -88,6 +89,38 @@ public class PeriodCloseService {
                     "Closed period " + start + " through " + end);
         }
         return toSummary(period);
+    }
+
+    private void assertApprovalPolicySatisfied(UUID organizationId, YearMonth month) {
+        Organization organization = organizationService.get(organizationId);
+        if (!organization.isRequireSignoffBeforeClose()) {
+            return;
+        }
+
+        List<UUID> signoffActorIds = auditService.listForOrganizationByEventTypeAndEntity(
+                        organizationId,
+                        "PERIOD_CLOSE_SIGNED_OFF",
+                        month.toString())
+                .stream()
+                .map(summary -> summary.actorUserId())
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        if (signoffActorIds.size() < organization.getMinimumSignoffCount()) {
+            throw new IllegalArgumentException(
+                    "Cannot close period until the required number of sign-offs has been recorded");
+        }
+
+        if (organization.isRequireOwnerSignoffBeforeClose()) {
+            boolean hasOwnerSignoff = signoffActorIds.stream()
+                    .anyMatch(actorUserId -> userService.findRoleForOrganization(organizationId, actorUserId)
+                            .filter(role -> role.name().equals("OWNER"))
+                            .isPresent());
+            if (!hasOwnerSignoff) {
+                throw new IllegalArgumentException(
+                        "Cannot close period until an owner sign-off has been recorded");
+            }
+        }
     }
 
     @Transactional(readOnly = true)

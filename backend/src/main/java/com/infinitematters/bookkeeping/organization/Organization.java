@@ -40,6 +40,12 @@ public class Organization {
     @Column(name = "require_signoff_before_close", nullable = false)
     private boolean requireSignoffBeforeClose = true;
 
+    @Column(name = "minimum_signoff_count", nullable = false)
+    private int minimumSignoffCount = 1;
+
+    @Column(name = "require_owner_signoff_before_close", nullable = false)
+    private boolean requireOwnerSignoffBeforeClose = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -111,6 +117,22 @@ public class Organization {
 
     public void setRequireSignoffBeforeClose(boolean requireSignoffBeforeClose) {
         this.requireSignoffBeforeClose = requireSignoffBeforeClose;
+    }
+
+    public int getMinimumSignoffCount() {
+        return minimumSignoffCount;
+    }
+
+    public void setMinimumSignoffCount(int minimumSignoffCount) {
+        this.minimumSignoffCount = minimumSignoffCount;
+    }
+
+    public boolean isRequireOwnerSignoffBeforeClose() {
+        return requireOwnerSignoffBeforeClose;
+    }
+
+    public void setRequireOwnerSignoffBeforeClose(boolean requireOwnerSignoffBeforeClose) {
+        this.requireOwnerSignoffBeforeClose = requireOwnerSignoffBeforeClose;
     }
 
     public Instant getCreatedAt() {

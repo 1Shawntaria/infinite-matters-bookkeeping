@@ -639,7 +639,9 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.invitationTtlDays").value(7))
                 .andExpect(jsonPath("$.closeMaterialityThreshold").value(500))
                 .andExpect(jsonPath("$.minimumCloseNotesRequired").value(1))
-                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(true));
+                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(true))
+                .andExpect(jsonPath("$.minimumSignoffCount").value(1))
+                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(false));
 
         mockMvc.perform(patch("/api/organizations/settings")
                         .header(ORG_HEADER, organizationId)
@@ -653,7 +655,9 @@ class InfiniteMattersApplicationTests {
                                   "invitationTtlDays": 14,
                                   "closeMaterialityThreshold": 750.00,
                                   "minimumCloseNotesRequired": 2,
-                                  "requireSignoffBeforeClose": false
+                                  "requireSignoffBeforeClose": false,
+                                  "minimumSignoffCount": 2,
+                                  "requireOwnerSignoffBeforeClose": true
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -662,7 +666,9 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.invitationTtlDays").value(14))
                 .andExpect(jsonPath("$.closeMaterialityThreshold").value(750))
                 .andExpect(jsonPath("$.minimumCloseNotesRequired").value(2))
-                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false));
+                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false))
+                .andExpect(jsonPath("$.minimumSignoffCount").value(2))
+                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(true));
 
         mockMvc.perform(get("/api/organizations/settings")
                         .header(ORG_HEADER, organizationId)
@@ -674,7 +680,9 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.invitationTtlDays").value(14))
                 .andExpect(jsonPath("$.closeMaterialityThreshold").value(750))
                 .andExpect(jsonPath("$.minimumCloseNotesRequired").value(2))
-                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false));
+                .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false))
+                .andExpect(jsonPath("$.minimumSignoffCount").value(2))
+                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(true));
     }
 
     @Test
@@ -736,6 +744,164 @@ class InfiniteMattersApplicationTests {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Minimum close notes required must be between 0 and 10"));
+
+        mockMvc.perform(patch("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "minimumSignoffCount": 11
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Minimum signoff count must be between 0 and 10"));
+    }
+
+    @Test
+    void ownerCanManageCloseTemplateItems() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "settings-template-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Settings Owner", password);
+        String organizationId = createOrganization("Settings Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(post("/api/organizations/close-template-items")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "label": "Confirm deferred revenue rollforward",
+                                  "guidance": "Use the contract schedule and rollforward before month-end sign-off."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.label").value("Confirm deferred revenue rollforward"))
+                .andExpect(jsonPath("$.sortOrder").value(1));
+
+        String itemId = mockMvc.perform(get("/api/organizations/close-template-items")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].label").value("Confirm deferred revenue rollforward"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+
+        mockMvc.perform(delete("/api/organizations/close-template-items/{itemId}", itemId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/organizations/close-template-items")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void standardCloseRespectsSignoffPolicy() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "settings-close-owner-" + suffix + "@example.test";
+        String adminEmail = "settings-close-admin-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Settings Owner", password);
+        String adminUserId = createUser(adminEmail, "Settings Admin", password);
+        String organizationId = createOrganization("Settings Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        AuthTokens adminTokens = issueToken(adminEmail, password);
+        addMembership(organizationId, adminUserId, "ADMIN", ownerTokens.accessToken());
+
+        mockMvc.perform(patch("/api/organizations/settings")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "minimumSignoffCount": 2,
+                                  "requireOwnerSignoffBeforeClose": true,
+                                  "requireSignoffBeforeClose": true
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/periods/close")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot close period until the required number of sign-offs has been recorded"));
+
+        mockMvc.perform(post("/api/periods/signoffs")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(adminTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04",
+                                  "note": "Admin review complete"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/periods/close")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot close period until the required number of sign-offs has been recorded"));
+
+        mockMvc.perform(post("/api/periods/signoffs")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04",
+                                  "note": "Owner review complete"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/periods/close")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.closeMethod").value("CHECKLIST"));
     }
 
     @Test
@@ -2334,6 +2500,10 @@ class InfiniteMattersApplicationTests {
     }
 
     private void addMembership(String organizationId, String memberUserId, String ownerToken) throws Exception {
+        addMembership(organizationId, memberUserId, "MEMBER", ownerToken);
+    }
+
+    private void addMembership(String organizationId, String memberUserId, String role, String ownerToken) throws Exception {
         mockMvc.perform(post("/api/users/memberships")
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerToken))
@@ -2342,9 +2512,9 @@ class InfiniteMattersApplicationTests {
                                 {
                                   "organizationId": "%s",
                                   "userId": "%s",
-                                  "role": "MEMBER"
+                                  "role": "%s"
                                 }
-                                """.formatted(organizationId, memberUserId)))
+                                """.formatted(organizationId, memberUserId, role)))
                 .andExpect(status().isOk());
     }
 

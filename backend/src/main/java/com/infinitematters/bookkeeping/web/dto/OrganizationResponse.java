@@ -18,6 +18,8 @@ public record OrganizationResponse(
         BigDecimal closeMaterialityThreshold,
         int minimumCloseNotesRequired,
         boolean requireSignoffBeforeClose,
+        int minimumSignoffCount,
+        boolean requireOwnerSignoffBeforeClose,
         Instant createdAt,
         UserRole role) {
     public static OrganizationResponse from(Organization organization) {
@@ -30,6 +32,8 @@ public record OrganizationResponse(
                 organization.getCloseMaterialityThreshold(),
                 organization.getMinimumCloseNotesRequired(),
                 organization.isRequireSignoffBeforeClose(),
+                organization.getMinimumSignoffCount(),
+                organization.isRequireOwnerSignoffBeforeClose(),
                 organization.getCreatedAt(),
                 null);
     }
@@ -45,6 +49,8 @@ public record OrganizationResponse(
                 organization.getCloseMaterialityThreshold(),
                 organization.getMinimumCloseNotesRequired(),
                 organization.isRequireSignoffBeforeClose(),
+                organization.getMinimumSignoffCount(),
+                organization.isRequireOwnerSignoffBeforeClose(),
                 organization.getCreatedAt(),
                 membership.getRole());
     }
