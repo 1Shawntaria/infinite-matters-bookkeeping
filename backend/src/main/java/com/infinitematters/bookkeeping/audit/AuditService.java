@@ -99,6 +99,20 @@ public class AuditService {
     }
 
     @Transactional(readOnly = true)
+    public List<AuditEventSummary> listForOrganizationByEventTypeAndEntity(UUID organizationId,
+                                                                            String eventType,
+                                                                            String entityId) {
+        organizationService.get(organizationId);
+        return repository.findByOrganizationIdAndEventTypeAndEntityIdOrderByCreatedAtDesc(
+                        organizationId,
+                        eventType,
+                        entityId)
+                .stream()
+                .map(this::toSummary)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public long countRecentForOrganizationByEventType(UUID organizationId, String eventType, Instant createdAtAfter) {
         organizationService.get(organizationId);
         return repository.countByOrganizationIdAndEventTypeAndCreatedAtAfter(organizationId, eventType, createdAtAfter);

@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import {
+    addCloseNote,
     closePeriod,
     CloseChecklistSummary,
     createAdjustmentEntry,
     forceClosePeriod,
     getCloseChecklist,
     LedgerEntrySummary,
+    listCloseNotes,
     listAccountingPeriods,
     listLedgerEntries,
     AccountingPeriodSummary,
@@ -51,6 +53,16 @@ type AdjustmentTemplate = {
         entrySide: "DEBIT" | "CREDIT";
         amount: string;
     }>;
+};
+
+type SavedAdjustmentDraft = {
+    id: string;
+    name: string;
+    entryDate: string;
+    description: string;
+    adjustmentReason: string;
+    lines: AdjustmentLineDraft[];
+    savedAt: string;
 };
 
 const EMPTY_LINE = (): AdjustmentLineDraft => ({
@@ -96,6 +108,10 @@ const ADJUSTMENT_TEMPLATES: AdjustmentTemplate[] = [
     },
 ];
 
+function closeDraftStorageKey(organizationId: string) {
+    return `im-close-drafts:${organizationId}`;
+}
+
 function ClosePageContent() {
     const searchParams = useSearchParams();
     const accountCodeParam = searchParams.get("accountCode") ?? "";
@@ -113,6 +129,13 @@ function ClosePageContent() {
     const [entryDate, setEntryDate] = useState("");
     const [description, setDescription] = useState("");
     const [adjustmentReason, setAdjustmentReason] = useState("");
+    const [draftName, setDraftName] = useState("");
+    const [draftMessage, setDraftMessage] = useState("");
+    const [savedDrafts, setSavedDrafts] = useState<SavedAdjustmentDraft[]>([]);
+    const [closeNote, setCloseNote] = useState("");
+    const [noteMessage, setNoteMessage] = useState("");
+    const [noteError, setNoteError] = useState("");
+    const [savingNote, setSavingNote] = useState(false);
     const [lines, setLines] = useState<AdjustmentLineDraft[]>([
         accountCodeParam
             ? { ...EMPTY_LINE(), accountCode: accountCodeParam }
@@ -150,6 +173,11 @@ function ClosePageContent() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listOrganizations(),
     });
+    const closeNotesQuery = useQuery({
+        queryKey: ["closeNotes", organizationId, selectedMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(selectedMonth),
+        queryFn: () => listCloseNotes(organizationId, selectedMonth),
+    });
 
     useEffect(() => {
         if (!selectedMonth && dashboardQuery.data?.focusMonth) {
@@ -163,6 +191,26 @@ function ClosePageContent() {
         }
     }, [entryDate, selectedMonth]);
 
+    useEffect(() => {
+        if (!organizationId) {
+            setSavedDrafts([]);
+            return;
+        }
+
+        const saved = window.localStorage.getItem(closeDraftStorageKey(organizationId));
+        if (!saved) {
+            setSavedDrafts([]);
+            return;
+        }
+
+        try {
+            const parsed = JSON.parse(saved) as SavedAdjustmentDraft[];
+            setSavedDrafts(Array.isArray(parsed) ? parsed : []);
+        } catch {
+            setSavedDrafts([]);
+        }
+    }, [organizationId]);
+
     const loading =
         hydrated && organizationId
             ? dashboardQuery.isLoading ||
@@ -170,6 +218,7 @@ function ClosePageContent() {
               ledgerQuery.isLoading ||
               accountsQuery.isLoading ||
               organizationsQuery.isLoading ||
+              closeNotesQuery.isLoading ||
               (Boolean(selectedMonth) && checklistQuery.isLoading)
             : false;
     const queryError =
@@ -179,6 +228,7 @@ function ClosePageContent() {
         ledgerQuery.error?.message ??
         accountsQuery.error?.message ??
         organizationsQuery.error?.message ??
+        closeNotesQuery.error?.message ??
         "";
 
     const periods = periodsQuery.data ?? [];
@@ -262,6 +312,7 @@ function ClosePageContent() {
         0
     );
     const adjustmentsBalanced = totalDebits > 0 && totalDebits === totalCredits;
+    const closeNotes = closeNotesQuery.data ?? [];
 
     useEffect(() => {
         if (!accountCodeParam) {
@@ -364,6 +415,91 @@ function ClosePageContent() {
         });
         await queryClient.invalidateQueries({ queryKey: ["ledgerEntries", activeOrganizationId] });
         await queryClient.invalidateQueries({ queryKey: ["reconciliationDashboard", activeOrganizationId] });
+        await queryClient.invalidateQueries({
+            queryKey: ["closeNotes", activeOrganizationId, selectedMonth],
+        });
+    }
+
+    function persistDrafts(nextDrafts: SavedAdjustmentDraft[]) {
+        if (!organizationId) {
+            return;
+        }
+        setSavedDrafts(nextDrafts);
+        window.localStorage.setItem(
+            closeDraftStorageKey(organizationId),
+            JSON.stringify(nextDrafts)
+        );
+    }
+
+    function saveCurrentDraft() {
+        if (!organizationId) {
+            setDraftMessage("Sign back in before saving a draft.");
+            return;
+        }
+        if (!draftName.trim()) {
+            setDraftMessage("Give this adjustment draft a short name first.");
+            return;
+        }
+
+        const draft: SavedAdjustmentDraft = {
+            id: `${Date.now()}`,
+            name: draftName.trim(),
+            entryDate,
+            description,
+            adjustmentReason,
+            lines,
+            savedAt: new Date().toISOString(),
+        };
+        persistDrafts([draft, ...savedDrafts].slice(0, 12));
+        setDraftName("");
+        setDraftMessage(`Saved draft "${draft.name}".`);
+    }
+
+    function applySavedDraft(draft: SavedAdjustmentDraft) {
+        setEntryDate(draft.entryDate);
+        setDescription(draft.description);
+        setAdjustmentReason(draft.adjustmentReason);
+        setLines(draft.lines.length > 0 ? draft.lines : [EMPTY_LINE(), EMPTY_LINE()]);
+        setDraftMessage(`Loaded draft "${draft.name}".`);
+        setAdjustmentError("");
+        setAdjustmentSuccess("");
+    }
+
+    function deleteSavedDraft(draftId: string) {
+        const draftToDelete = savedDrafts.find((draft) => draft.id === draftId);
+        persistDrafts(savedDrafts.filter((draft) => draft.id !== draftId));
+        setDraftMessage(
+            draftToDelete ? `Removed draft "${draftToDelete.name}".` : "Draft removed."
+        );
+    }
+
+    async function handleAddCloseNote(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!organizationId || !selectedMonth) {
+            setNoteError("Choose a month before adding a close note.");
+            return;
+        }
+        if (!closeNote.trim()) {
+            setNoteError("Add a note before saving.");
+            return;
+        }
+
+        setSavingNote(true);
+        setNoteError("");
+        setNoteMessage("");
+
+        try {
+            await addCloseNote(organizationId, selectedMonth, closeNote.trim());
+            await queryClient.invalidateQueries({
+                queryKey: ["closeNotes", organizationId, selectedMonth],
+            });
+            setCloseNote("");
+            setNoteMessage("Close note saved to the month-end history.");
+        } catch (err) {
+            setNoteError(err instanceof Error ? err.message : "Unable to save close note.");
+        } finally {
+            setSavingNote(false);
+        }
     }
 
     async function handleClosePeriod() {
@@ -773,6 +909,86 @@ function ClosePageContent() {
                         </div>
                     </div>
 
+                    <div className="mb-4 rounded-lg border border-white/10 bg-black/20 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                    Saved adjustment drafts
+                                </p>
+                                <p className="mt-2 text-sm text-zinc-400">
+                                    Keep partial close work around when the month gets interrupted.
+                                </p>
+                            </div>
+                            <div className="flex w-full gap-3 sm:w-auto">
+                                <label className="sr-only" htmlFor="draft-name">
+                                    Draft name
+                                </label>
+                                <input
+                                    id="draft-name"
+                                    value={draftName}
+                                    onChange={(event) => setDraftName(event.target.value)}
+                                    disabled={!canManageClose}
+                                    className="min-w-[14rem] rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
+                                    placeholder="April accrual package"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={saveCurrentDraft}
+                                    disabled={!canManageClose}
+                                    className="rounded-md border border-white/10 px-4 py-2 text-sm text-zinc-200 hover:bg-white/[0.05] disabled:opacity-50"
+                                >
+                                    Save draft
+                                </button>
+                            </div>
+                        </div>
+                        {draftMessage ? (
+                            <p className="mt-3 text-sm text-emerald-200">{draftMessage}</p>
+                        ) : null}
+                        <div className="mt-4 space-y-3">
+                            {savedDrafts.length === 0 ? (
+                                <p className="text-sm text-zinc-500">
+                                    No saved drafts yet for this workspace.
+                                </p>
+                            ) : (
+                                savedDrafts.map((draft) => (
+                                    <div
+                                        key={draft.id}
+                                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3"
+                                    >
+                                        <div>
+                                            <p className="text-sm font-semibold text-white">{draft.name}</p>
+                                            <p className="mt-1 text-xs text-zinc-400">
+                                                Saved{" "}
+                                                {new Date(draft.savedAt).toLocaleString("en-US", {
+                                                    month: "short",
+                                                    day: "numeric",
+                                                    hour: "numeric",
+                                                    minute: "2-digit",
+                                                })}
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => applySavedDraft(draft)}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/[0.05]"
+                                            >
+                                                Load draft
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => deleteSavedDraft(draft.id)}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.05]"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
                     <form className="space-y-4" onSubmit={handlePostAdjustment}>
                         <div className="grid gap-4 md:grid-cols-2">
                             <label className="space-y-2 text-sm text-zinc-300">
@@ -1022,6 +1238,77 @@ function ClosePageContent() {
                     </div>
                 </SectionBand>
             </div>
+
+            <SectionBand
+                eyebrow="Close notes"
+                title="Month-end notes and handoff context"
+                description="Capture what changed, what still needs eyes, and why exceptions were acceptable so nobody has to reconstruct the story later."
+            >
+                <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                    <div>
+                        {noteError ? (
+                            <div className="mb-4">
+                                <StatusBanner tone="error" title="Note not saved" message={noteError} />
+                            </div>
+                        ) : null}
+                        {noteMessage ? (
+                            <div className="mb-4">
+                                <StatusBanner tone="success" title="Note saved" message={noteMessage} />
+                            </div>
+                        ) : null}
+                        <form className="space-y-3" onSubmit={handleAddCloseNote}>
+                            <label className="space-y-2 text-sm text-zinc-300">
+                                <span>Close note for {selectedMonth || "this month"}</span>
+                                <textarea
+                                    value={closeNote}
+                                    onChange={(event) => setCloseNote(event.target.value)}
+                                    rows={5}
+                                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                    placeholder="Document open questions, approvals, adjustments posted, or what the next reviewer should know."
+                                />
+                            </label>
+                            <button
+                                type="submit"
+                                disabled={savingNote}
+                                className="rounded-md border border-white/10 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-white/[0.05] disabled:opacity-50"
+                            >
+                                {savingNote ? "Saving note..." : "Save close note"}
+                            </button>
+                        </form>
+                    </div>
+                    <div className="space-y-3">
+                        {closeNotes.length === 0 ? (
+                            <StatusBanner
+                                tone="muted"
+                                title="No notes for this month yet"
+                                message="Use notes to leave context for reviewers, approvers, and the next person picking up close work."
+                            />
+                        ) : (
+                            closeNotes.map((note) => (
+                                <div
+                                    key={note.id}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] p-4"
+                                >
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
+                                            {note.eventType.replaceAll("_", " ")}
+                                        </p>
+                                        <p className="text-xs text-zinc-500">
+                                            {new Date(note.createdAt).toLocaleString("en-US", {
+                                                month: "short",
+                                                day: "numeric",
+                                                hour: "numeric",
+                                                minute: "2-digit",
+                                            })}
+                                        </p>
+                                    </div>
+                                    <p className="mt-3 text-sm leading-6 text-zinc-200">{note.details}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </SectionBand>
         </main>
     );
 }

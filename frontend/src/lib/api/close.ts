@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { AuditEventSummary } from "./audit";
 
 export type AccountingPeriodSummary = {
     id: string;
@@ -117,6 +118,30 @@ export async function createAdjustmentEntry(
         {
             method: "POST",
             body: JSON.stringify(payload),
+        }
+    );
+}
+
+export async function listCloseNotes(
+    organizationId: string,
+    month: string
+): Promise<AuditEventSummary[]> {
+    const query = new URLSearchParams({ organizationId, month });
+    return apiFetch<AuditEventSummary[]>(`/api/periods/notes?${query.toString()}`, {
+        method: "GET",
+    });
+}
+
+export async function addCloseNote(
+    organizationId: string,
+    month: string,
+    note: string
+): Promise<AuditEventSummary> {
+    return apiFetch<AuditEventSummary>(
+        `/api/periods/notes?organizationId=${encodeURIComponent(organizationId)}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ month, note }),
         }
     );
 }

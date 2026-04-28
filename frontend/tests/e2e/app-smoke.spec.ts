@@ -539,6 +539,18 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       ],
     },
   ];
+  let closeNotes = [
+    {
+      id: "close-note-1",
+      organizationId: "org-primary",
+      actorUserId: "user-1",
+      eventType: "PERIOD_CLOSE_NOTE_ADDED",
+      entityType: "accounting_period",
+      entityId: "2026-04",
+      details: "Waiting on owner sign-off for final accrual review.",
+      createdAt: "2026-04-24T13:05:00Z",
+    },
+  ];
   const authActivity = [
     {
       id: "auth-activity-1",
@@ -1260,6 +1272,32 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/periods/notes" && request.method() === "GET") {
+      const month = url.searchParams.get("month");
+      await fulfillJson(
+        route,
+        month ? closeNotes.filter((note) => note.entityId === month) : closeNotes
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/periods/notes" && request.method() === "POST") {
+      const requestBody = JSON.parse(request.postData() || "{}");
+      const createdNote = {
+        id: `close-note-${closeNotes.length + 1}`,
+        organizationId: organizationHeader,
+        actorUserId: "user-1",
+        eventType: "PERIOD_CLOSE_NOTE_ADDED",
+        entityType: "accounting_period",
+        entityId: requestBody.month,
+        details: requestBody.note,
+        createdAt: "2026-04-24T13:30:00Z",
+      };
+      closeNotes = [createdNote, ...closeNotes];
+      await fulfillJson(route, createdNote);
+      return;
+    }
+
     if (url.pathname === "/api/periods/close" && request.method() === "POST") {
       const requestBody = JSON.parse(request.postData() || "{}");
       const matchingPeriod = accountingPeriods.find(
@@ -1627,6 +1665,19 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(page.getByLabel("Adjustment reason")).toHaveValue(
     "Recognize an unpaid month-end expense in the current period."
   );
+  await page.getByPlaceholder("April accrual package").fill("April accrual pack");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText('Saved draft "April accrual pack".')).toBeVisible();
+  await expect(page.getByText("April accrual pack", { exact: true })).toBeVisible();
+  await expect(page.getByText("Waiting on owner sign-off for final accrual review.")).toBeVisible();
+  await page
+    .getByLabel("Close note for 2026-04")
+    .fill("Controller approved a temporary estimate for the travel accrual.");
+  await page.getByRole("button", { name: "Save close note" }).click();
+  await expect(page.getByText("Close note saved to the month-end history.")).toBeVisible();
+  await expect(
+    page.getByText("Controller approved a temporary estimate for the travel accrual.")
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Post adjustment" })).toBeVisible();
 });
 

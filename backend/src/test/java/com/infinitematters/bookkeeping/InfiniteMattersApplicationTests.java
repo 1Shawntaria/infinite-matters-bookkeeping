@@ -264,6 +264,43 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void closeNotesCanBeAddedAndListedForAMonth() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "close-notes-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Close Notes Owner", password);
+        String organizationId = createOrganization("Close Notes Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(post("/api/periods/notes")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "note":"Controller approved a temporary estimate for the travel accrual."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eventType").value("PERIOD_CLOSE_NOTE_ADDED"))
+                .andExpect(jsonPath("$.entityId").value("2026-04"))
+                .andExpect(jsonPath("$.details").value("Controller approved a temporary estimate for the travel accrual."));
+
+        mockMvc.perform(get("/api/periods/notes")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("month", "2026-04"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].eventType").value("PERIOD_CLOSE_NOTE_ADDED"))
+                .andExpect(jsonPath("$[0].details").value("Controller approved a temporary estimate for the travel accrual."));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";
