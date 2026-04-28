@@ -51,7 +51,8 @@ public class OrganizationService {
                                        Integer minimumCloseNotesRequired,
                                        Boolean requireSignoffBeforeClose,
                                        Integer minimumSignoffCount,
-                                       Boolean requireOwnerSignoffBeforeClose) {
+                                       Boolean requireOwnerSignoffBeforeClose,
+                                       Boolean requireTemplateCompletionBeforeClose) {
         Organization organization = get(organizationId);
 
         if (name != null) {
@@ -77,6 +78,9 @@ public class OrganizationService {
         }
         if (requireOwnerSignoffBeforeClose != null) {
             organization.setRequireOwnerSignoffBeforeClose(requireOwnerSignoffBeforeClose);
+        }
+        if (requireTemplateCompletionBeforeClose != null) {
+            organization.setRequireTemplateCompletionBeforeClose(requireTemplateCompletionBeforeClose);
         }
         return repository.save(organization);
     }

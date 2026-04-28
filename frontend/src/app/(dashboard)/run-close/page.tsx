@@ -17,8 +17,10 @@ import { getReconciliationDashboard, ReconciliationDashboard } from "@/lib/api/r
 import { getReviewTasks, ReviewTask } from "@/lib/api/reviews";
 import {
     AccountingPeriodSummary,
+    ClosePlaybookItem,
     CloseChecklistSummary,
     getCloseChecklist,
+    listClosePlaybookItems,
     listAccountingPeriods,
     listCloseNotes,
     listCloseSignoffs,
@@ -99,6 +101,11 @@ export default function RunClosePage() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listCloseTemplateItems(organizationId),
     });
+    const closePlaybookQuery = useQuery<ClosePlaybookItem[], Error>({
+        queryKey: ["closePlaybookItems", organizationId, focusMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(focusMonth),
+        queryFn: () => listClosePlaybookItems(organizationId, focusMonth),
+    });
 
     const loading =
         hydrated && organizationId
@@ -110,6 +117,7 @@ export default function RunClosePage() {
               deadLetterNotificationsQuery.isLoading ||
               settingsQuery.isLoading ||
               closeTemplateItemsQuery.isLoading ||
+              closePlaybookQuery.isLoading ||
               (Boolean(focusMonth) &&
                   (closeChecklistQuery.isLoading ||
                       closeNotesQuery.isLoading ||
@@ -125,6 +133,7 @@ export default function RunClosePage() {
         deadLetterNotificationsQuery.error?.message ??
         settingsQuery.error?.message ??
         closeTemplateItemsQuery.error?.message ??
+        closePlaybookQuery.error?.message ??
         closeChecklistQuery.error?.message ??
         closeNotesQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
@@ -139,12 +148,17 @@ export default function RunClosePage() {
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
     const workspaceSettings = settingsQuery.data ?? null;
     const closeTemplateItems = closeTemplateItemsQuery.data ?? [];
+    const closePlaybookItems = useMemo(
+        () => closePlaybookQuery.data ?? [],
+        [closePlaybookQuery.data]
+    );
     const currentPeriod =
         periodsQuery.data?.find((period) => period.periodStart.slice(0, 7) === focusMonth) ?? null;
 
     const steps: RunbookStep[] = useMemo(() => {
         const exceptionCount = attentionNotifications.length + deadLetters.length;
-        const notesAndAdjustmentsComplete = closeNotes.length > 0;
+        const pendingPlaybookItems = closePlaybookItems.filter((item) => !item.satisfied).length;
+        const notesAndAdjustmentsComplete = closeNotes.length > 0 && pendingPlaybookItems === 0;
         const closeApproved = closeSignoffs.length > 0;
         const periodClosed = currentPeriod?.status === "CLOSED";
 
@@ -194,8 +208,10 @@ export default function RunClosePage() {
                 complete: notesAndAdjustmentsComplete,
                 detail:
                     notesAndAdjustmentsComplete
-                        ? `${closeNotes.length} close note(s) captured for this month.`
-                        : "No close notes have been recorded yet for the focus month.",
+                        ? `${closeNotes.length} close note(s) captured and recurring checks are satisfied.`
+                        : pendingPlaybookItems > 0
+                          ? `${pendingPlaybookItems} recurring playbook item(s) still need completion or approval.`
+                          : "No close notes have been recorded yet for the focus month.",
             },
             {
                 id: "approve",
@@ -219,6 +235,7 @@ export default function RunClosePage() {
         currentPeriod?.status,
         deadLetters.length,
         reviewTasks.length,
+        closePlaybookItems,
         unreconciledAccounts.length,
     ]);
 
@@ -358,10 +375,26 @@ export default function RunClosePage() {
                                 message="Add them in workspace settings when your team is ready to formalize the month-end standard."
                             />
                         ) : (
-                            closeTemplateItems.map((item) => (
+                            closePlaybookItems.map((item) => (
                                 <div key={item.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
-                                    <p className="text-sm font-semibold text-white">{item.sortOrder}. {item.label}</p>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <p className="text-sm font-semibold text-white">{item.sortOrder}. {item.label}</p>
+                                        <span className={[
+                                            "rounded-full px-2.5 py-1 text-[11px] font-medium",
+                                            item.satisfied
+                                                ? "border border-emerald-400/30 bg-emerald-300/10 text-emerald-100"
+                                                : "border border-amber-400/30 bg-amber-300/10 text-amber-100",
+                                        ].join(" ")}>
+                                            {item.satisfied ? "Satisfied" : item.completed ? "Awaiting approval" : "Open"}
+                                        </span>
+                                    </div>
                                     <p className="mt-2 text-sm leading-6 text-zinc-400">{item.guidance}</p>
+                                    <p className="mt-3 text-xs text-zinc-500">
+                                        {item.assignee ? `Assignee: ${item.assignee.fullName}. ` : "No assignee yet. "}
+                                        {item.approver ? `Approver: ${item.approver.fullName}. ` : "No approver assigned. "}
+                                        {item.completed ? `Completed${item.completedBy ? ` by ${item.completedBy.fullName}` : ""}. ` : ""}
+                                        {item.approved ? `Approved${item.approvedBy ? ` by ${item.approvedBy.fullName}` : ""}.` : ""}
+                                    </p>
                                 </div>
                             ))
                         )}
@@ -377,6 +410,9 @@ export default function RunClosePage() {
                             workspaceSettings?.requireOwnerSignoffBeforeClose
                                 ? "At least one of those signoffs must come from an owner."
                                 : "Owner-specific signoff is not required by policy.",
+                            workspaceSettings?.requireTemplateCompletionBeforeClose
+                                ? "Recurring close playbook items must be completed before standard close."
+                                : "Recurring close playbook items inform the runbook, but do not block standard close.",
                             `Treat unresolved review exposure above $${workspaceSettings?.closeMaterialityThreshold ?? 500} as materially cautionary.`,
                         ]}
                     />

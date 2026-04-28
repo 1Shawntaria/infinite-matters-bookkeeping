@@ -88,6 +88,7 @@ public class OrganizationController {
                 organization.isRequireSignoffBeforeClose(),
                 organization.getMinimumSignoffCount(),
                 organization.isRequireOwnerSignoffBeforeClose(),
+                organization.isRequireTemplateCompletionBeforeClose(),
                 organization.getCreatedAt(),
                 role);
     }
@@ -114,7 +115,8 @@ public class OrganizationController {
                 request.minimumCloseNotesRequired(),
                 request.requireSignoffBeforeClose(),
                 request.minimumSignoffCount(),
-                request.requireOwnerSignoffBeforeClose());
+                request.requireOwnerSignoffBeforeClose(),
+                request.requireTemplateCompletionBeforeClose());
         auditService.record(organizationId, "ORGANIZATION_SETTINGS_UPDATED", "organization",
                 organizationId.toString(),
                 buildSettingsAuditDescription(
@@ -126,6 +128,7 @@ public class OrganizationController {
                         previousRequireSignoffBeforeClose,
                         previousMinimumSignoffCount,
                         previousRequireOwnerSignoffBeforeClose,
+                        previousOrganization.isRequireTemplateCompletionBeforeClose(),
                         organization,
                         actorUserId));
         return new OrganizationResponse(
@@ -139,6 +142,7 @@ public class OrganizationController {
                 organization.isRequireSignoffBeforeClose(),
                 organization.getMinimumSignoffCount(),
                 organization.isRequireOwnerSignoffBeforeClose(),
+                organization.isRequireTemplateCompletionBeforeClose(),
                 organization.getCreatedAt(),
                 userService.roleForOrganization(organizationId, actorUserId));
     }
@@ -186,6 +190,7 @@ public class OrganizationController {
                                                         boolean previousRequireSignoffBeforeClose,
                                                         int previousMinimumSignoffCount,
                                                         boolean previousRequireOwnerSignoffBeforeClose,
+                                                        boolean previousRequireTemplateCompletionBeforeClose,
                                                         com.infinitematters.bookkeeping.organization.Organization updatedOrganization,
                                                         UUID actorUserId) {
         StringBuilder description = new StringBuilder("Workspace settings updated by user " + actorUserId + ":");
@@ -243,6 +248,13 @@ public class OrganizationController {
                     .append(previousRequireOwnerSignoffBeforeClose)
                     .append(" -> ")
                     .append(updatedOrganization.isRequireOwnerSignoffBeforeClose())
+                    .append(";");
+        }
+        if (previousRequireTemplateCompletionBeforeClose != updatedOrganization.isRequireTemplateCompletionBeforeClose()) {
+            description.append(" require template completion before close ")
+                    .append(previousRequireTemplateCompletionBeforeClose)
+                    .append(" -> ")
+                    .append(updatedOrganization.isRequireTemplateCompletionBeforeClose())
                     .append(";");
         }
         return description.toString();

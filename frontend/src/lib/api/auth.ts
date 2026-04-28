@@ -24,6 +24,7 @@ export type OrganizationSummary = {
     requireSignoffBeforeClose: boolean;
     minimumSignoffCount: number;
     requireOwnerSignoffBeforeClose: boolean;
+    requireTemplateCompletionBeforeClose: boolean;
     role: string | null;
 };
 

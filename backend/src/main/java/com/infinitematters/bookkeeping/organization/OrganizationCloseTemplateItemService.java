@@ -32,9 +32,13 @@ public class OrganizationCloseTemplateItemService {
         return repository.save(item);
     }
 
-    public void delete(UUID organizationId, UUID itemId) {
-        OrganizationCloseTemplateItem item = repository.findByIdAndOrganizationId(itemId, organizationId)
+    public OrganizationCloseTemplateItem get(UUID organizationId, UUID itemId) {
+        return repository.findByIdAndOrganizationId(itemId, organizationId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown close template item: " + itemId));
+    }
+
+    public void delete(UUID organizationId, UUID itemId) {
+        OrganizationCloseTemplateItem item = get(organizationId, itemId);
         repository.delete(item);
     }
 

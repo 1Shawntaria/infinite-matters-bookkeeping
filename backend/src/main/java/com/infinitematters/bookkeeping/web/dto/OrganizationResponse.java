@@ -20,6 +20,7 @@ public record OrganizationResponse(
         boolean requireSignoffBeforeClose,
         int minimumSignoffCount,
         boolean requireOwnerSignoffBeforeClose,
+        boolean requireTemplateCompletionBeforeClose,
         Instant createdAt,
         UserRole role) {
     public static OrganizationResponse from(Organization organization) {
@@ -34,6 +35,7 @@ public record OrganizationResponse(
                 organization.isRequireSignoffBeforeClose(),
                 organization.getMinimumSignoffCount(),
                 organization.isRequireOwnerSignoffBeforeClose(),
+                organization.isRequireTemplateCompletionBeforeClose(),
                 organization.getCreatedAt(),
                 null);
     }
@@ -51,6 +53,7 @@ public record OrganizationResponse(
                 organization.isRequireSignoffBeforeClose(),
                 organization.getMinimumSignoffCount(),
                 organization.isRequireOwnerSignoffBeforeClose(),
+                organization.isRequireTemplateCompletionBeforeClose(),
                 organization.getCreatedAt(),
                 membership.getRole());
     }

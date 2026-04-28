@@ -18,6 +18,7 @@ export type WorkspaceSettingsUpdate = {
     requireSignoffBeforeClose?: boolean;
     minimumSignoffCount?: number;
     requireOwnerSignoffBeforeClose?: boolean;
+    requireTemplateCompletionBeforeClose?: boolean;
 };
 
 export async function getWorkspaceSettings(organizationId: string): Promise<OrganizationSummary> {

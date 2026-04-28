@@ -10,5 +10,6 @@ public record UpdateWorkspaceSettingsRequest(
         Integer minimumCloseNotesRequired,
         Boolean requireSignoffBeforeClose,
         Integer minimumSignoffCount,
-        Boolean requireOwnerSignoffBeforeClose) {
+        Boolean requireOwnerSignoffBeforeClose,
+        Boolean requireTemplateCompletionBeforeClose) {
 }

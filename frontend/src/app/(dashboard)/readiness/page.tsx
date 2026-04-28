@@ -17,8 +17,10 @@ import { getReconciliationDashboard, ReconciliationDashboard } from "@/lib/api/r
 import { getReviewTasks, ReviewTask } from "@/lib/api/reviews";
 import {
     AccountingPeriodSummary,
+    ClosePlaybookItem,
     CloseChecklistSummary,
     getCloseChecklist,
+    listClosePlaybookItems,
     listAccountingPeriods,
     listCloseNotes,
     listCloseSignoffs,
@@ -121,6 +123,11 @@ export default function CloseReadinessPage() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => getWorkspaceSettings(organizationId),
     });
+    const closePlaybookQuery = useQuery<ClosePlaybookItem[], Error>({
+        queryKey: ["closePlaybookItems", organizationId, focusMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(focusMonth),
+        queryFn: () => listClosePlaybookItems(organizationId, focusMonth),
+    });
 
     const loading =
         hydrated && organizationId
@@ -131,6 +138,7 @@ export default function CloseReadinessPage() {
               attentionNotificationsQuery.isLoading ||
               deadLetterNotificationsQuery.isLoading ||
               settingsQuery.isLoading ||
+              closePlaybookQuery.isLoading ||
               (Boolean(focusMonth) &&
                   (closeChecklistQuery.isLoading ||
                       closeNotesQuery.isLoading ||
@@ -145,6 +153,7 @@ export default function CloseReadinessPage() {
         attentionNotificationsQuery.error?.message ??
         deadLetterNotificationsQuery.error?.message ??
         settingsQuery.error?.message ??
+        closePlaybookQuery.error?.message ??
         closeChecklistQuery.error?.message ??
         closeNotesQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
@@ -158,12 +167,14 @@ export default function CloseReadinessPage() {
     const attentionNotifications = attentionNotificationsQuery.data ?? [];
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
     const workspaceSettings = settingsQuery.data ?? null;
+    const closePlaybookItems = closePlaybookQuery.data ?? [];
     const currentPeriod =
         periodsQuery.data?.find((period) => period.periodStart.slice(0, 7) === focusMonth) ?? null;
 
     const incompleteChecklistItems = checklist?.items.filter((item) => !item.complete) ?? [];
+    const pendingPlaybookCount = closePlaybookItems.filter((item) => !item.satisfied).length;
     const blockerCount =
-        reviewTasks.length + unreconciledAccounts.length + incompleteChecklistItems.length;
+        reviewTasks.length + unreconciledAccounts.length + incompleteChecklistItems.length + pendingPlaybookCount;
     const agingRiskCount =
         (dashboardQuery.data?.workflowInbox.overdueCount ?? 0) +
         attentionNotifications.length +
@@ -358,7 +369,7 @@ export default function CloseReadinessPage() {
                         <SummaryMetric
                             label="Policy threshold"
                             value={`$${materialityThreshold}`}
-                            detail={`Requires ${minimumCloseNotesRequired} close note(s), ${minimumSignoffCount} signoff(s)${requireOwnerSignoffBeforeClose ? ", including an owner," : ""} before the month feels complete.`}
+                            detail={`Requires ${minimumCloseNotesRequired} close note(s), ${minimumSignoffCount} signoff(s)${requireOwnerSignoffBeforeClose ? ", including an owner," : ""}${workspaceSettings?.requireTemplateCompletionBeforeClose ? ", and completed recurring playbook items" : ""} before the month feels complete.`}
                         />
                     </div>
                 }
@@ -397,7 +408,7 @@ export default function CloseReadinessPage() {
                 <SummaryMetric
                     label="Open blockers"
                     value={`${blockerCount}`}
-                    detail="Review tasks, unreconciled accounts, and incomplete close checklist items."
+                    detail="Review tasks, unreconciled accounts, incomplete checklist items, and unfinished recurring playbook work."
                     tone={riskTone(blockerCount)}
                 />
                 <SummaryMetric
@@ -423,6 +434,12 @@ export default function CloseReadinessPage() {
                     value={`${closeSignoffs.length}`}
                     detail={requireSignoffBeforeClose ? `Formal approval is part of this workspace's close standard. Target: ${minimumSignoffCount}.` : "Formal approval is optional in this workspace."}
                     tone={riskTone(signoffGap + ownerSignoffGap)}
+                />
+                <SummaryMetric
+                    label="Recurring checks"
+                    value={`${pendingPlaybookCount}`}
+                    detail="Standing close playbook items that still need completion or approval."
+                    tone={riskTone(pendingPlaybookCount)}
                 />
                 <SummaryMetric
                     label="Period posture"
@@ -472,6 +489,9 @@ export default function CloseReadinessPage() {
                                 ? "Capture the required signoffs, including at least one owner approval, before treating the month as fully settled."
                                 : "Capture the required signoffs before treating the month as fully settled."
                             : "There is already approval history on the month, so the remaining decision is timing, not ownership.",
+                        pendingPlaybookCount > 0
+                            ? `Finish the ${pendingPlaybookCount} recurring playbook item(s) that are still open or waiting on approval.`
+                            : "Recurring close playbook work is already satisfied for the focus month.",
                         agingRiskCount > 0
                             ? "Clear the remaining delivery or overdue risk before the close becomes someone else’s surprise."
                             : "The operational lane is quiet, which is exactly the moment to finish close cleanly instead of waiting for new noise.",
@@ -491,6 +511,7 @@ export default function CloseReadinessPage() {
                             <li>{checklist?.closeReady ? "Checklist is currently close-ready." : "Checklist still has open controls."}</li>
                             <li>{closeNotes.length > 0 ? `${closeNotes.length} close note(s) already captured against a target of ${minimumCloseNotesRequired}.` : "No close notes captured yet."}</li>
                             <li>{closeSignoffs.length > 0 ? `${closeSignoffs.length} sign-off(s) already recorded against a target of ${minimumSignoffCount}.` : requireSignoffBeforeClose ? "No sign-offs recorded yet." : "Sign-off is optional for this workspace."}</li>
+                            <li>{pendingPlaybookCount === 0 ? "Recurring close playbook items are satisfied for this month." : `${pendingPlaybookCount} recurring close playbook item(s) still need completion or approval.`}</li>
                         </ul>
                     </div>
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
@@ -500,6 +521,7 @@ export default function CloseReadinessPage() {
                             <li>${reviewExposureAmount.toFixed(2)} of open review exposure against a ${materialityThreshold} threshold.</li>
                             <li>{unreconciledAccounts.length} account(s) still unreconciled.</li>
                             <li>{incompleteChecklistItems.length} checklist item(s) still incomplete.</li>
+                            <li>{pendingPlaybookCount} recurring playbook item(s) still unfinished.</li>
                             {requireOwnerSignoffBeforeClose ? <li>Owner sign-off is required before standard close.</li> : null}
                         </ul>
                     </div>

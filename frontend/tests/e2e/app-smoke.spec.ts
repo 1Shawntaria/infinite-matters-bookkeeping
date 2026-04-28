@@ -12,6 +12,7 @@ const organizations = [
     requireSignoffBeforeClose: true,
     minimumSignoffCount: 1,
     requireOwnerSignoffBeforeClose: false,
+    requireTemplateCompletionBeforeClose: true,
     role: "OWNER",
   },
   {
@@ -25,6 +26,7 @@ const organizations = [
     requireSignoffBeforeClose: false,
     minimumSignoffCount: 0,
     requireOwnerSignoffBeforeClose: false,
+    requireTemplateCompletionBeforeClose: false,
     role: "ADMIN",
   },
   {
@@ -38,6 +40,7 @@ const organizations = [
     requireSignoffBeforeClose: true,
     minimumSignoffCount: 1,
     requireOwnerSignoffBeforeClose: false,
+    requireTemplateCompletionBeforeClose: true,
     role: "MEMBER",
   },
 ];
@@ -512,6 +515,34 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       guidance: "Use payroll provider reports and the liability rollforward before treating payroll as complete.",
       sortOrder: 1,
       createdAt: "2026-04-24T12:35:00Z",
+    },
+  ];
+  const closePlaybookItems = [
+    {
+      id: "playbook-item-1",
+      templateItemId: "close-template-1",
+      month: "2026-04",
+      label: "Confirm payroll liabilities were tied out",
+      guidance: "Use payroll provider reports and the liability rollforward before treating payroll as complete.",
+      sortOrder: 1,
+      assignee: {
+        id: "user-2",
+        email: "ops@acme.test",
+        fullName: "Ops Admin",
+      },
+      approver: {
+        id: "user-1",
+        email: "owner@acme.test",
+        fullName: "Acme Owner",
+      },
+      completedAt: null,
+      completedBy: null,
+      approvedAt: null,
+      approvedBy: null,
+      createdAt: "2026-04-24T12:35:00Z",
+      completed: false,
+      approved: false,
+      satisfied: false,
     },
   ];
   const accountingPeriods = [
@@ -1015,6 +1046,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         requireSignoffBeforeClose?: boolean;
         minimumSignoffCount?: number;
         requireOwnerSignoffBeforeClose?: boolean;
+        requireTemplateCompletionBeforeClose?: boolean;
       };
       const index = organizations.findIndex((item) => item.id === targetOrganizationId);
       organizations[index] = {
@@ -1027,6 +1059,8 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         requireSignoffBeforeClose: body.requireSignoffBeforeClose ?? organizations[index].requireSignoffBeforeClose,
         minimumSignoffCount: body.minimumSignoffCount ?? organizations[index].minimumSignoffCount,
         requireOwnerSignoffBeforeClose: body.requireOwnerSignoffBeforeClose ?? organizations[index].requireOwnerSignoffBeforeClose,
+        requireTemplateCompletionBeforeClose:
+          body.requireTemplateCompletionBeforeClose ?? organizations[index].requireTemplateCompletionBeforeClose,
       };
       await fulfillJson(route, organizations[index]);
       return;
@@ -1055,6 +1089,84 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       const itemId = url.pathname.split("/")[4];
       closeTemplateItems = closeTemplateItems.filter((item) => item.id !== itemId);
       await fulfillJson(route, {});
+      return;
+    }
+
+    if (url.pathname === "/api/periods/playbook" && request.method() === "GET") {
+      const month = url.searchParams.get("month") ?? "2026-04";
+      await fulfillJson(route, closePlaybookItems.filter((item) => item.month === month));
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/periods/playbook/") && url.pathname.endsWith("/assignment") && request.method() === "POST") {
+      const templateItemId = url.pathname.split("/")[4];
+      const body = request.postDataJSON() as { month: string; assigneeUserId: string | null; approverUserId: string | null };
+      const assigneeMembership = memberships.find((membership) => membership.user.id === body.assigneeUserId) ?? null;
+      const approverMembership = memberships.find((membership) => membership.user.id === body.approverUserId) ?? null;
+      const index = closePlaybookItems.findIndex((item) => item.templateItemId === templateItemId && item.month === body.month);
+      closePlaybookItems[index] = {
+        ...closePlaybookItems[index],
+        assignee: assigneeMembership
+          ? {
+              id: assigneeMembership.user.id,
+              email: assigneeMembership.user.email,
+              fullName: assigneeMembership.user.fullName,
+            }
+          : null,
+        approver: approverMembership
+          ? {
+              id: approverMembership.user.id,
+              email: approverMembership.user.email,
+              fullName: approverMembership.user.fullName,
+            }
+          : null,
+      };
+      await fulfillJson(route, closePlaybookItems[index]);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/periods/playbook/") && url.pathname.endsWith("/complete") && request.method() === "POST") {
+      const templateItemId = url.pathname.split("/")[4];
+      const body = request.postDataJSON() as { month: string; marked: boolean };
+      const index = closePlaybookItems.findIndex((item) => item.templateItemId === templateItemId && item.month === body.month);
+      closePlaybookItems[index] = {
+        ...closePlaybookItems[index],
+        completedAt: body.marked ? "2026-04-28T07:00:00Z" : null,
+        completedBy: body.marked
+          ? {
+              id: "user-1",
+              email: "owner@acme.test",
+              fullName: "Acme Owner",
+            }
+          : null,
+        approvedAt: body.marked ? closePlaybookItems[index].approvedAt : null,
+        approvedBy: body.marked ? closePlaybookItems[index].approvedBy : null,
+        completed: body.marked,
+        approved: body.marked ? closePlaybookItems[index].approved : false,
+        satisfied: body.marked ? closePlaybookItems[index].approved || closePlaybookItems[index].approver == null : false,
+      };
+      await fulfillJson(route, closePlaybookItems[index]);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/periods/playbook/") && url.pathname.endsWith("/approve") && request.method() === "POST") {
+      const templateItemId = url.pathname.split("/")[4];
+      const body = request.postDataJSON() as { month: string; marked: boolean };
+      const index = closePlaybookItems.findIndex((item) => item.templateItemId === templateItemId && item.month === body.month);
+      closePlaybookItems[index] = {
+        ...closePlaybookItems[index],
+        approvedAt: body.marked ? "2026-04-28T07:05:00Z" : null,
+        approvedBy: body.marked
+          ? {
+              id: "user-1",
+              email: "owner@acme.test",
+              fullName: "Acme Owner",
+            }
+          : null,
+        approved: body.marked,
+        satisfied: body.marked && closePlaybookItems[index].completed,
+      };
+      await fulfillJson(route, closePlaybookItems[index]);
       return;
     }
 
@@ -1810,10 +1922,15 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await page.goto("/close");
 
   await expect(page.getByRole("heading", { name: "Close Management" })).toBeVisible();
+  await expect(page.getByText("Confirm payroll liabilities were tied out")).toBeVisible();
   await expect(page.getByRole("heading", { name: "What the next reviewer needs to know" })).toBeVisible();
   await expect(page.getByText("Review queue cleared", { exact: true })).toBeVisible();
   await expect(page.getByText("Account reconciliations complete", { exact: true })).toBeVisible();
   await expect(page.getByText("Imported CLOUDCO transaction")).toBeVisible();
+  await page.getByRole("button", { name: "Mark complete" }).click();
+  await expect(page.getByText("Recurring close playbook item completed.")).toBeVisible();
+  await page.getByRole("button", { name: "Approve item" }).click();
+  await expect(page.getByText("Recurring close playbook item approved.")).toBeVisible();
   await page.getByRole("button", { name: "Accrued expense" }).click();
   await expect(page.getByLabel("Description")).toHaveValue("Accrue month-end expense");
   await expect(page.getByLabel("Adjustment reason")).toHaveValue(

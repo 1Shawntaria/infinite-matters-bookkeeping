@@ -31,6 +31,7 @@ export default function SettingsPage() {
     const [requireSignoffBeforeClose, setRequireSignoffBeforeClose] = useState(true);
     const [minimumSignoffCount, setMinimumSignoffCount] = useState("1");
     const [requireOwnerSignoffBeforeClose, setRequireOwnerSignoffBeforeClose] = useState(false);
+    const [requireTemplateCompletionBeforeClose, setRequireTemplateCompletionBeforeClose] = useState(true);
     const [templateLabel, setTemplateLabel] = useState("");
     const [templateGuidance, setTemplateGuidance] = useState("");
     const [templateMessage, setTemplateMessage] = useState("");
@@ -75,6 +76,7 @@ export default function SettingsPage() {
             setRequireSignoffBeforeClose(settingsQuery.data.requireSignoffBeforeClose);
             setMinimumSignoffCount(String(settingsQuery.data.minimumSignoffCount));
             setRequireOwnerSignoffBeforeClose(settingsQuery.data.requireOwnerSignoffBeforeClose);
+            setRequireTemplateCompletionBeforeClose(settingsQuery.data.requireTemplateCompletionBeforeClose);
         }
     }, [settingsQuery.data]);
 
@@ -127,6 +129,7 @@ export default function SettingsPage() {
                 requireSignoffBeforeClose,
                 minimumSignoffCount: Number(minimumSignoffCount),
                 requireOwnerSignoffBeforeClose,
+                requireTemplateCompletionBeforeClose,
             });
             await Promise.all([
                 queryClient.invalidateQueries({ queryKey: ["workspaceSettings", organizationId] }),
@@ -138,6 +141,7 @@ export default function SettingsPage() {
             setRequireSignoffBeforeClose(updated.requireSignoffBeforeClose);
             setMinimumSignoffCount(String(updated.minimumSignoffCount));
             setRequireOwnerSignoffBeforeClose(updated.requireOwnerSignoffBeforeClose);
+            setRequireTemplateCompletionBeforeClose(updated.requireTemplateCompletionBeforeClose);
             setPolicyMessage(
                 `Close policy updated: ${updated.invitationTtlDays}-day invites, $${updated.closeMaterialityThreshold} materiality, ${updated.minimumCloseNotesRequired} required close note(s), and ${updated.minimumSignoffCount} required signoff(s).`
             );
@@ -239,7 +243,7 @@ export default function SettingsPage() {
                         <SummaryMetric
                             label="Close standard"
                             value={`$${settingsQuery.data?.closeMaterialityThreshold ?? currentOrganization?.closeMaterialityThreshold ?? 500}`}
-                            detail={`Requires ${settingsQuery.data?.minimumCloseNotesRequired ?? currentOrganization?.minimumCloseNotesRequired ?? 1} close note(s), ${settingsQuery.data?.minimumSignoffCount ?? currentOrganization?.minimumSignoffCount ?? 1} signoff(s)${(settingsQuery.data?.requireOwnerSignoffBeforeClose ?? currentOrganization?.requireOwnerSignoffBeforeClose ?? false) ? ", including an owner" : ""}.`}
+                            detail={`Requires ${settingsQuery.data?.minimumCloseNotesRequired ?? currentOrganization?.minimumCloseNotesRequired ?? 1} close note(s), ${settingsQuery.data?.minimumSignoffCount ?? currentOrganization?.minimumSignoffCount ?? 1} signoff(s)${(settingsQuery.data?.requireOwnerSignoffBeforeClose ?? currentOrganization?.requireOwnerSignoffBeforeClose ?? false) ? ", including an owner" : ""}${(settingsQuery.data?.requireTemplateCompletionBeforeClose ?? currentOrganization?.requireTemplateCompletionBeforeClose ?? true) ? ", and completed recurring playbook items" : ""}.`}
                             tone="default"
                         />
                     </div>
@@ -447,6 +451,24 @@ export default function SettingsPage() {
                                 />
                                 <label htmlFor="require-owner-signoff-before-close" className="text-sm text-zinc-300">
                                     An owner sign-off is required for standard close
+                                </label>
+                            </div>
+                        </label>
+                        <label className="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <span className="text-sm font-medium text-zinc-200">Require recurring playbook completion</span>
+                            <p className="text-xs leading-5 text-zinc-500">
+                                Turn this on when month-end should stay open until the recurring close playbook items for that month are actually completed.
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <input
+                                    id="require-template-completion-before-close"
+                                    type="checkbox"
+                                    checked={requireTemplateCompletionBeforeClose}
+                                    onChange={(event) => setRequireTemplateCompletionBeforeClose(event.target.checked)}
+                                    className="h-4 w-4 rounded border-zinc-700 bg-black text-emerald-300 focus:ring-emerald-300"
+                                />
+                                <label htmlFor="require-template-completion-before-close" className="text-sm text-zinc-300">
+                                    Recurring close playbook items must be completed before close
                                 </label>
                             </div>
                         </label>

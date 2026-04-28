@@ -641,7 +641,8 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.minimumCloseNotesRequired").value(1))
                 .andExpect(jsonPath("$.requireSignoffBeforeClose").value(true))
                 .andExpect(jsonPath("$.minimumSignoffCount").value(1))
-                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(false));
+                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(false))
+                .andExpect(jsonPath("$.requireTemplateCompletionBeforeClose").value(true));
 
         mockMvc.perform(patch("/api/organizations/settings")
                         .header(ORG_HEADER, organizationId)
@@ -657,7 +658,8 @@ class InfiniteMattersApplicationTests {
                                   "minimumCloseNotesRequired": 2,
                                   "requireSignoffBeforeClose": false,
                                   "minimumSignoffCount": 2,
-                                  "requireOwnerSignoffBeforeClose": true
+                                  "requireOwnerSignoffBeforeClose": true,
+                                  "requireTemplateCompletionBeforeClose": false
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -668,7 +670,8 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.minimumCloseNotesRequired").value(2))
                 .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false))
                 .andExpect(jsonPath("$.minimumSignoffCount").value(2))
-                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(true));
+                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(true))
+                .andExpect(jsonPath("$.requireTemplateCompletionBeforeClose").value(false));
 
         mockMvc.perform(get("/api/organizations/settings")
                         .header(ORG_HEADER, organizationId)
@@ -682,7 +685,8 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.minimumCloseNotesRequired").value(2))
                 .andExpect(jsonPath("$.requireSignoffBeforeClose").value(false))
                 .andExpect(jsonPath("$.minimumSignoffCount").value(2))
-                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(true));
+                .andExpect(jsonPath("$.requireOwnerSignoffBeforeClose").value(true))
+                .andExpect(jsonPath("$.requireTemplateCompletionBeforeClose").value(false));
     }
 
     @Test
@@ -888,6 +892,82 @@ class InfiniteMattersApplicationTests {
                                 }
                                 """))
                 .andExpect(status().isOk());
+
+        String templateItemId = mockMvc.perform(post("/api/organizations/close-template-items")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "label": "Confirm payroll liabilities were tied out",
+                                  "guidance": "Use payroll provider reports before month-end sign-off."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+
+        mockMvc.perform(post("/api/periods/close")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot close period until the recurring close playbook items for this month are completed"));
+
+        mockMvc.perform(post("/api/periods/playbook/{templateItemId}/assignment", templateItemId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04",
+                                  "assigneeUserId": "%s",
+                                  "approverUserId": "%s"
+                                }
+                                """.formatted(adminUserId, ownerUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignee.id").value(adminUserId))
+                .andExpect(jsonPath("$.approver.id").value(ownerUserId));
+
+        mockMvc.perform(post("/api/periods/playbook/{templateItemId}/complete", templateItemId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(adminTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04",
+                                  "marked": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completed").value(true))
+                .andExpect(jsonPath("$.approved").value(false));
+
+        mockMvc.perform(post("/api/periods/playbook/{templateItemId}/approve", templateItemId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04",
+                                  "marked": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.approved").value(true))
+                .andExpect(jsonPath("$.satisfied").value(true));
 
         mockMvc.perform(post("/api/periods/close")
                         .header(ORG_HEADER, organizationId)

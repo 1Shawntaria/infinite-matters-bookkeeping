@@ -6,20 +6,26 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import {
     addCloseNote,
+    approveClosePlaybookItem,
     addCloseSignoff,
+    assignClosePlaybookItem,
     closePeriod,
     CloseChecklistSummary,
+    ClosePlaybookItem,
+    completeClosePlaybookItem,
     createAdjustmentEntry,
     forceClosePeriod,
     getCloseChecklist,
     LedgerEntrySummary,
     listCloseNotes,
+    listClosePlaybookItems,
     listCloseSignoffs,
     listAccountingPeriods,
     listLedgerEntries,
     AccountingPeriodSummary,
 } from "@/lib/api/close";
 import { listFinancialAccounts, FinancialAccount } from "@/lib/api/accounts";
+import { listMemberships, MembershipDetail } from "@/lib/api/access";
 import { getDashboardSnapshot, DashboardSnapshot } from "@/lib/api/dashboard";
 import { useOrganizationSession } from "@/lib/auth/session";
 import { getCurrentUser, listOrganizations, OrganizationSummary } from "@/lib/api/auth";
@@ -210,6 +216,16 @@ function ClosePageContent() {
         enabled: hydrated && Boolean(organizationId) && Boolean(selectedMonth),
         queryFn: () => listCloseSignoffs(organizationId, selectedMonth),
     });
+    const closePlaybookQuery = useQuery<ClosePlaybookItem[], Error>({
+        queryKey: ["closePlaybookItems", organizationId, selectedMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(selectedMonth),
+        queryFn: () => listClosePlaybookItems(organizationId, selectedMonth),
+    });
+    const membershipsQuery = useQuery<MembershipDetail[], Error>({
+        queryKey: ["memberships", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listMemberships(organizationId),
+    });
 
     useEffect(() => {
         if (!selectedMonth && dashboardQuery.data?.focusMonth) {
@@ -271,6 +287,8 @@ function ClosePageContent() {
               accountsQuery.isLoading ||
               organizationsQuery.isLoading ||
               currentUserQuery.isLoading ||
+              closePlaybookQuery.isLoading ||
+              membershipsQuery.isLoading ||
               closeNotesQuery.isLoading ||
               closeSignoffsQuery.isLoading ||
               (Boolean(selectedMonth) && checklistQuery.isLoading)
@@ -283,6 +301,8 @@ function ClosePageContent() {
         accountsQuery.error?.message ??
         organizationsQuery.error?.message ??
         currentUserQuery.error?.message ??
+        closePlaybookQuery.error?.message ??
+        membershipsQuery.error?.message ??
         closeNotesQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
         "";
@@ -370,6 +390,8 @@ function ClosePageContent() {
     const adjustmentsBalanced = totalDebits > 0 && totalDebits === totalCredits;
     const closeNotes = closeNotesQuery.data ?? [];
     const closeSignoffs = closeSignoffsQuery.data ?? [];
+    const closePlaybookItems = closePlaybookQuery.data ?? [];
+    const memberships = membershipsQuery.data ?? [];
     const monthAdjustments = useMemo(
         () =>
             ledgerEntries.filter(
@@ -492,6 +514,9 @@ function ClosePageContent() {
         });
         await queryClient.invalidateQueries({
             queryKey: ["closeSignoffs", activeOrganizationId, selectedMonth],
+        });
+        await queryClient.invalidateQueries({
+            queryKey: ["closePlaybookItems", activeOrganizationId, selectedMonth],
         });
     }
 
@@ -664,6 +689,59 @@ function ClosePageContent() {
             setSignoffError(err instanceof Error ? err.message : "Unable to record close sign-off.");
         } finally {
             setSavingSignoff(false);
+        }
+    }
+
+    async function handleAssignPlaybookItem(
+        templateItemId: string,
+        assigneeUserId: string | null,
+        approverUserId: string | null
+    ) {
+        if (!organizationId || !selectedMonth) {
+            return;
+        }
+        try {
+            await assignClosePlaybookItem(organizationId, templateItemId, {
+                month: selectedMonth,
+                assigneeUserId,
+                approverUserId,
+            });
+            await queryClient.invalidateQueries({
+                queryKey: ["closePlaybookItems", organizationId, selectedMonth],
+            });
+            setCloseSuccess("Recurring close playbook routing updated.");
+        } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "Unable to update recurring close playbook routing.");
+        }
+    }
+
+    async function handleCompletePlaybookItem(templateItemId: string, marked: boolean) {
+        if (!organizationId || !selectedMonth) {
+            return;
+        }
+        try {
+            await completeClosePlaybookItem(organizationId, templateItemId, selectedMonth, marked);
+            await queryClient.invalidateQueries({
+                queryKey: ["closePlaybookItems", organizationId, selectedMonth],
+            });
+            setCloseSuccess(marked ? "Recurring close playbook item completed." : "Recurring close playbook item reopened.");
+        } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "Unable to update recurring close playbook item.");
+        }
+    }
+
+    async function handleApprovePlaybookItem(templateItemId: string, marked: boolean) {
+        if (!organizationId || !selectedMonth) {
+            return;
+        }
+        try {
+            await approveClosePlaybookItem(organizationId, templateItemId, selectedMonth, marked);
+            await queryClient.invalidateQueries({
+                queryKey: ["closePlaybookItems", organizationId, selectedMonth],
+            });
+            setCloseSuccess(marked ? "Recurring close playbook item approved." : "Recurring close playbook approval cleared.");
+        } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "Unable to update recurring close playbook approval.");
         }
     }
 
@@ -1625,6 +1703,134 @@ function ClosePageContent() {
                             ))
                         )}
                     </div>
+                </div>
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Recurring close playbook"
+                title="Monthly ownership for recurring checks"
+                description="Turn the standing close playbook into real month-specific work: route each item, mark it complete, and capture approval when another set of eyes should sign off on it."
+            >
+                <div className="space-y-3">
+                    {closePlaybookItems.length === 0 ? (
+                        <StatusBanner
+                            tone="muted"
+                            title="No recurring close playbook items yet"
+                            message="Add recurring checks in Settings so each month can be routed, completed, and approved inside the close workspace."
+                        />
+                    ) : (
+                        closePlaybookItems.map((item) => {
+                            const currentUserId = currentUser?.id ?? "";
+                            const canCompleteItem =
+                                canManageClose ||
+                                (item.assignee?.id != null && item.assignee.id === currentUserId);
+                            const canApproveItem =
+                                canManageClose ||
+                                (item.approver?.id != null && item.approver.id === currentUserId);
+
+                            return (
+                                <div
+                                    key={item.templateItemId}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] p-4"
+                                >
+                                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <p className="text-sm font-semibold text-white">
+                                                    {item.sortOrder}. {item.label}
+                                                </p>
+                                                <span
+                                                    className={[
+                                                        "rounded-full px-2.5 py-1 text-[11px] font-medium",
+                                                        item.satisfied
+                                                            ? "border border-emerald-400/30 bg-emerald-300/10 text-emerald-100"
+                                                            : item.completed
+                                                              ? "border border-sky-400/30 bg-sky-300/10 text-sky-100"
+                                                              : "border border-amber-400/30 bg-amber-300/10 text-amber-100",
+                                                    ].join(" ")}
+                                                >
+                                                    {item.satisfied ? "Satisfied" : item.completed ? "Awaiting approval" : "Open"}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm leading-6 text-zinc-400">{item.guidance}</p>
+                                            <p className="text-xs text-zinc-500">
+                                                {item.completed
+                                                    ? `Completed${item.completedBy ? ` by ${item.completedBy.fullName}` : ""}.`
+                                                    : "Not completed yet."}{" "}
+                                                {item.approved
+                                                    ? `Approved${item.approvedBy ? ` by ${item.approvedBy.fullName}` : ""}.`
+                                                    : item.approver
+                                                      ? "Approval still pending."
+                                                      : "No approver required yet."}
+                                            </p>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2 xl:w-[28rem]">
+                                            <label className="space-y-2 text-xs text-zinc-400">
+                                                <span>Assignee</span>
+                                                <select
+                                                    value={item.assignee?.id ?? ""}
+                                                    disabled={!canManageClose}
+                                                    onChange={(event) =>
+                                                        void handleAssignPlaybookItem(
+                                                            item.templateItemId,
+                                                            event.target.value || null,
+                                                            item.approver?.id ?? null
+                                                        )
+                                                    }
+                                                    className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white"
+                                                >
+                                                    <option value="">Unassigned</option>
+                                                    {memberships.map((membership) => (
+                                                        <option key={`assignee-${membership.id}`} value={membership.user.id}>
+                                                            {membership.user.fullName}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <label className="space-y-2 text-xs text-zinc-400">
+                                                <span>Approver</span>
+                                                <select
+                                                    value={item.approver?.id ?? ""}
+                                                    disabled={!canManageClose}
+                                                    onChange={(event) =>
+                                                        void handleAssignPlaybookItem(
+                                                            item.templateItemId,
+                                                            item.assignee?.id ?? null,
+                                                            event.target.value || null
+                                                        )
+                                                    }
+                                                    className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white"
+                                                >
+                                                    <option value="">No approver</option>
+                                                    {memberships.map((membership) => (
+                                                        <option key={`approver-${membership.id}`} value={membership.user.id}>
+                                                            {membership.user.fullName}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                disabled={!canCompleteItem}
+                                                onClick={() => void handleCompletePlaybookItem(item.templateItemId, !item.completed)}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-100 hover:bg-white/[0.05] disabled:opacity-50"
+                                            >
+                                                {item.completed ? "Reopen item" : "Mark complete"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={!item.completed || !canApproveItem}
+                                                onClick={() => void handleApprovePlaybookItem(item.templateItemId, !item.approved)}
+                                                className="rounded-md bg-emerald-300 px-3 py-2 text-sm font-medium text-black disabled:opacity-50"
+                                            >
+                                                {item.approved ? "Clear approval" : "Approve item"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             </SectionBand>
 

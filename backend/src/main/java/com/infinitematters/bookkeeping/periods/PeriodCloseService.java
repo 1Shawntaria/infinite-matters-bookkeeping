@@ -4,6 +4,7 @@ import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.close.CloseChecklistService;
 import com.infinitematters.bookkeeping.organization.Organization;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
+import com.infinitematters.bookkeeping.organization.PeriodClosePlaybookItemService;
 import com.infinitematters.bookkeeping.reconciliation.ReconciliationExceptionService;
 import com.infinitematters.bookkeeping.security.AccessDeniedException;
 import com.infinitematters.bookkeeping.security.RequestIdentityService;
@@ -27,6 +28,7 @@ public class PeriodCloseService {
     private final RequestIdentityService requestIdentityService;
     private final UserService userService;
     private final ReconciliationExceptionService reconciliationExceptionService;
+    private final PeriodClosePlaybookItemService periodClosePlaybookItemService;
 
     public PeriodCloseService(AccountingPeriodRepository repository,
                               OrganizationService organizationService,
@@ -34,7 +36,8 @@ public class PeriodCloseService {
                               CloseChecklistService closeChecklistService,
                               RequestIdentityService requestIdentityService,
                               UserService userService,
-                              ReconciliationExceptionService reconciliationExceptionService) {
+                              ReconciliationExceptionService reconciliationExceptionService,
+                              PeriodClosePlaybookItemService periodClosePlaybookItemService) {
         this.repository = repository;
         this.organizationService = organizationService;
         this.auditService = auditService;
@@ -42,6 +45,7 @@ public class PeriodCloseService {
         this.requestIdentityService = requestIdentityService;
         this.userService = userService;
         this.reconciliationExceptionService = reconciliationExceptionService;
+        this.periodClosePlaybookItemService = periodClosePlaybookItemService;
     }
 
     @Transactional
@@ -120,6 +124,11 @@ public class PeriodCloseService {
                 throw new IllegalArgumentException(
                         "Cannot close period until an owner sign-off has been recorded");
             }
+        }
+
+        if (!periodClosePlaybookItemService.allRequiredItemsSatisfied(organizationId, month)) {
+            throw new IllegalArgumentException(
+                    "Cannot close period until the recurring close playbook items for this month are completed");
         }
     }
 

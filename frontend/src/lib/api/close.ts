@@ -57,6 +57,41 @@ export type CreateAdjustmentEntryRequest = {
     }>;
 };
 
+export type ClosePlaybookItem = {
+    id: string | null;
+    templateItemId: string;
+    month: string | null;
+    label: string;
+    guidance: string;
+    sortOrder: number;
+    assignee: {
+        id: string;
+        email: string;
+        fullName: string;
+    } | null;
+    approver: {
+        id: string;
+        email: string;
+        fullName: string;
+    } | null;
+    completedAt: string | null;
+    completedBy: {
+        id: string;
+        email: string;
+        fullName: string;
+    } | null;
+    approvedAt: string | null;
+    approvedBy: {
+        id: string;
+        email: string;
+        fullName: string;
+    } | null;
+    createdAt: string;
+    completed: boolean;
+    approved: boolean;
+    satisfied: boolean;
+};
+
 export async function listAccountingPeriods(
     organizationId: string
 ): Promise<AccountingPeriodSummary[]> {
@@ -166,6 +201,67 @@ export async function addCloseSignoff(
         {
             method: "POST",
             body: JSON.stringify({ month, note: summary }),
+        }
+    );
+}
+
+export async function listClosePlaybookItems(
+    organizationId: string,
+    month: string
+): Promise<ClosePlaybookItem[]> {
+    const query = new URLSearchParams({ organizationId, month });
+    return apiFetch<ClosePlaybookItem[]>(`/api/periods/playbook?${query.toString()}`, {
+        method: "GET",
+    });
+}
+
+export async function assignClosePlaybookItem(
+    organizationId: string,
+    templateItemId: string,
+    payload: {
+        month: string;
+        assigneeUserId: string | null;
+        approverUserId: string | null;
+    }
+): Promise<ClosePlaybookItem> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<ClosePlaybookItem>(
+        `/api/periods/playbook/${templateItemId}/assignment?${query.toString()}`,
+        {
+            method: "POST",
+            body: JSON.stringify(payload),
+        }
+    );
+}
+
+export async function completeClosePlaybookItem(
+    organizationId: string,
+    templateItemId: string,
+    month: string,
+    marked: boolean
+): Promise<ClosePlaybookItem> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<ClosePlaybookItem>(
+        `/api/periods/playbook/${templateItemId}/complete?${query.toString()}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ month, marked }),
+        }
+    );
+}
+
+export async function approveClosePlaybookItem(
+    organizationId: string,
+    templateItemId: string,
+    month: string,
+    marked: boolean
+): Promise<ClosePlaybookItem> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<ClosePlaybookItem>(
+        `/api/periods/playbook/${templateItemId}/approve?${query.toString()}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ month, marked }),
         }
     );
 }

@@ -46,6 +46,9 @@ public class Organization {
     @Column(name = "require_owner_signoff_before_close", nullable = false)
     private boolean requireOwnerSignoffBeforeClose = false;
 
+    @Column(name = "require_template_completion_before_close", nullable = false)
+    private boolean requireTemplateCompletionBeforeClose = true;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -133,6 +136,14 @@ public class Organization {
 
     public void setRequireOwnerSignoffBeforeClose(boolean requireOwnerSignoffBeforeClose) {
         this.requireOwnerSignoffBeforeClose = requireOwnerSignoffBeforeClose;
+    }
+
+    public boolean isRequireTemplateCompletionBeforeClose() {
+        return requireTemplateCompletionBeforeClose;
+    }
+
+    public void setRequireTemplateCompletionBeforeClose(boolean requireTemplateCompletionBeforeClose) {
+        this.requireTemplateCompletionBeforeClose = requireTemplateCompletionBeforeClose;
     }
 
     public Instant getCreatedAt() {
