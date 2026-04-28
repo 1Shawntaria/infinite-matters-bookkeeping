@@ -65,6 +65,15 @@ type SavedAdjustmentDraft = {
     savedAt: string;
 };
 
+type SavedAdjustmentTemplate = {
+    id: string;
+    name: string;
+    description: string;
+    adjustmentReason: string;
+    lines: AdjustmentLineDraft[];
+    savedAt: string;
+};
+
 const EMPTY_LINE = (): AdjustmentLineDraft => ({
     accountCode: "",
     accountName: "",
@@ -112,6 +121,10 @@ function closeDraftStorageKey(organizationId: string) {
     return `im-close-drafts:${organizationId}`;
 }
 
+function closeTemplateStorageKey(organizationId: string) {
+    return `im-close-templates:${organizationId}`;
+}
+
 function ClosePageContent() {
     const searchParams = useSearchParams();
     const accountCodeParam = searchParams.get("accountCode") ?? "";
@@ -132,6 +145,9 @@ function ClosePageContent() {
     const [draftName, setDraftName] = useState("");
     const [draftMessage, setDraftMessage] = useState("");
     const [savedDrafts, setSavedDrafts] = useState<SavedAdjustmentDraft[]>([]);
+    const [templateName, setTemplateName] = useState("");
+    const [templateMessage, setTemplateMessage] = useState("");
+    const [savedTemplates, setSavedTemplates] = useState<SavedAdjustmentTemplate[]>([]);
     const [closeNote, setCloseNote] = useState("");
     const [noteMessage, setNoteMessage] = useState("");
     const [noteError, setNoteError] = useState("");
@@ -208,6 +224,26 @@ function ClosePageContent() {
             setSavedDrafts(Array.isArray(parsed) ? parsed : []);
         } catch {
             setSavedDrafts([]);
+        }
+    }, [organizationId]);
+
+    useEffect(() => {
+        if (!organizationId) {
+            setSavedTemplates([]);
+            return;
+        }
+
+        const saved = window.localStorage.getItem(closeTemplateStorageKey(organizationId));
+        if (!saved) {
+            setSavedTemplates([]);
+            return;
+        }
+
+        try {
+            const parsed = JSON.parse(saved) as SavedAdjustmentTemplate[];
+            setSavedTemplates(Array.isArray(parsed) ? parsed : []);
+        } catch {
+            setSavedTemplates([]);
         }
     }, [organizationId]);
 
@@ -313,6 +349,16 @@ function ClosePageContent() {
     );
     const adjustmentsBalanced = totalDebits > 0 && totalDebits === totalCredits;
     const closeNotes = closeNotesQuery.data ?? [];
+    const monthAdjustments = useMemo(
+        () =>
+            ledgerEntries.filter(
+                (entry) =>
+                    entry.entryType === "ADJUSTMENT" &&
+                    (!selectedMonth || entry.entryDate.startsWith(selectedMonth))
+            ),
+        [ledgerEntries, selectedMonth]
+    );
+    const blockingChecklistItems = (checklist?.items ?? []).filter((item) => !item.complete);
 
     useEffect(() => {
         if (!accountCodeParam) {
@@ -431,6 +477,17 @@ function ClosePageContent() {
         );
     }
 
+    function persistTemplates(nextTemplates: SavedAdjustmentTemplate[]) {
+        if (!organizationId) {
+            return;
+        }
+        setSavedTemplates(nextTemplates);
+        window.localStorage.setItem(
+            closeTemplateStorageKey(organizationId),
+            JSON.stringify(nextTemplates)
+        );
+    }
+
     function saveCurrentDraft() {
         if (!organizationId) {
             setDraftMessage("Sign back in before saving a draft.");
@@ -455,6 +512,29 @@ function ClosePageContent() {
         setDraftMessage(`Saved draft "${draft.name}".`);
     }
 
+    function saveCurrentTemplate() {
+        if (!organizationId) {
+            setTemplateMessage("Sign back in before saving a template.");
+            return;
+        }
+        if (!templateName.trim()) {
+            setTemplateMessage("Give this template a short name first.");
+            return;
+        }
+
+        const template: SavedAdjustmentTemplate = {
+            id: `${Date.now()}`,
+            name: templateName.trim(),
+            description: description.trim() || templateName.trim(),
+            adjustmentReason: adjustmentReason.trim(),
+            lines,
+            savedAt: new Date().toISOString(),
+        };
+        persistTemplates([template, ...savedTemplates].slice(0, 16));
+        setTemplateName("");
+        setTemplateMessage(`Saved template "${template.name}".`);
+    }
+
     function applySavedDraft(draft: SavedAdjustmentDraft) {
         setEntryDate(draft.entryDate);
         setDescription(draft.description);
@@ -465,11 +545,30 @@ function ClosePageContent() {
         setAdjustmentSuccess("");
     }
 
+    function applySavedTemplate(template: SavedAdjustmentTemplate) {
+        setDescription(template.description);
+        setAdjustmentReason(template.adjustmentReason);
+        setLines(template.lines.length > 0 ? template.lines : [EMPTY_LINE(), EMPTY_LINE()]);
+        setTemplateMessage(`Loaded template "${template.name}".`);
+        setAdjustmentError("");
+        setAdjustmentSuccess("");
+    }
+
     function deleteSavedDraft(draftId: string) {
         const draftToDelete = savedDrafts.find((draft) => draft.id === draftId);
         persistDrafts(savedDrafts.filter((draft) => draft.id !== draftId));
         setDraftMessage(
             draftToDelete ? `Removed draft "${draftToDelete.name}".` : "Draft removed."
+        );
+    }
+
+    function deleteSavedTemplate(templateId: string) {
+        const templateToDelete = savedTemplates.find((template) => template.id === templateId);
+        persistTemplates(savedTemplates.filter((template) => template.id !== templateId));
+        setTemplateMessage(
+            templateToDelete
+                ? `Removed template "${templateToDelete.name}".`
+                : "Template removed."
         );
     }
 
@@ -705,6 +804,71 @@ function ClosePageContent() {
                     }
                 />
             </div>
+
+            <SectionBand
+                eyebrow="Handoff summary"
+                title="What the next reviewer needs to know"
+                description="Use this as the fast read before someone picks up the month-end baton."
+            >
+                <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <SummaryMetric
+                            label="Open blockers"
+                            value={`${blockingChecklistItems.length}`}
+                            detail={
+                                blockingChecklistItems.length === 0
+                                    ? "No close blockers are left in the checklist."
+                                    : "Checklist items still blocking a clean close."
+                            }
+                            tone={blockingChecklistItems.length === 0 ? "success" : "warning"}
+                        />
+                        <SummaryMetric
+                            label="Month adjustments"
+                            value={`${monthAdjustments.length}`}
+                            detail="Manual entries posted in the selected close month."
+                        />
+                        <SummaryMetric
+                            label="Close notes"
+                            value={`${closeNotes.length}`}
+                            detail="Context saved for reviewers, approvers, and future you."
+                        />
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                        <p className="text-sm font-semibold text-white">Close posture</p>
+                        <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                            <p>
+                                Period status:{" "}
+                                <span className="font-medium text-white">
+                                    {currentPeriod?.status ?? "OPEN"}
+                                </span>
+                            </p>
+                            <p>
+                                Latest method:{" "}
+                                <span className="font-medium text-white">
+                                    {currentPeriod?.closeMethod ?? "Not closed yet"}
+                                </span>
+                            </p>
+                            {currentPeriod?.overrideReason ? (
+                                <p>
+                                    Override reason:{" "}
+                                    <span className="text-zinc-100">{currentPeriod.overrideReason}</span>
+                                </p>
+                            ) : null}
+                            {blockingChecklistItems.length > 0 ? (
+                                <ul className="mt-3 space-y-2 text-zinc-400">
+                                    {blockingChecklistItems.slice(0, 3).map((item) => (
+                                        <li key={item.label}>• {item.label}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-emerald-200">
+                                    Close blockers are cleared for the selected month.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </SectionBand>
 
             <SectionBand
                 eyebrow="Checklist"
@@ -978,6 +1142,84 @@ function ClosePageContent() {
                                             <button
                                                 type="button"
                                                 onClick={() => deleteSavedDraft(draft.id)}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.05]"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="mb-4 rounded-lg border border-white/10 bg-black/20 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                    Reusable close templates
+                                </p>
+                                <p className="mt-2 text-sm text-zinc-400">
+                                    Save patterns your team posts every month so nobody has to rebuild them from scratch.
+                                </p>
+                            </div>
+                            <div className="flex w-full gap-3 sm:w-auto">
+                                <label className="sr-only" htmlFor="template-name">
+                                    Template name
+                                </label>
+                                <input
+                                    id="template-name"
+                                    value={templateName}
+                                    onChange={(event) => setTemplateName(event.target.value)}
+                                    disabled={!canManageClose}
+                                    className="min-w-[14rem] rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
+                                    placeholder="Monthly travel accrual"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={saveCurrentTemplate}
+                                    disabled={!canManageClose}
+                                    className="rounded-md border border-white/10 px-4 py-2 text-sm text-zinc-200 hover:bg-white/[0.05] disabled:opacity-50"
+                                >
+                                    Save template
+                                </button>
+                            </div>
+                        </div>
+                        {templateMessage ? (
+                            <p className="mt-3 text-sm text-emerald-200">{templateMessage}</p>
+                        ) : null}
+                        <div className="mt-4 space-y-3">
+                            {savedTemplates.length === 0 ? (
+                                <p className="text-sm text-zinc-500">
+                                    No reusable templates saved yet for this workspace.
+                                </p>
+                            ) : (
+                                savedTemplates.map((template) => (
+                                    <div
+                                        key={template.id}
+                                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3"
+                                    >
+                                        <div>
+                                            <p className="text-sm font-semibold text-white">{template.name}</p>
+                                            <p className="mt-1 text-xs text-zinc-400">
+                                                {template.lines.length} line(s) · saved{" "}
+                                                {new Date(template.savedAt).toLocaleDateString("en-US", {
+                                                    month: "short",
+                                                    day: "numeric",
+                                                })}
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => applySavedTemplate(template)}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/[0.05]"
+                                            >
+                                                Load template
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => deleteSavedTemplate(template.id)}
                                                 className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.05]"
                                             >
                                                 Delete
@@ -1307,6 +1549,71 @@ function ClosePageContent() {
                             ))
                         )}
                     </div>
+                </div>
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Adjustment history"
+                title={`Posted adjustments for ${selectedMonth || "the selected month"}`}
+                description="Review what has already been posted before you add more. This keeps duplicate accruals and forgotten reversals from sneaking in."
+            >
+                <div className="space-y-3">
+                    {monthAdjustments.length === 0 ? (
+                        <StatusBanner
+                            tone="muted"
+                            title="No manual adjustments posted yet"
+                            message="Once month-end entries are posted, they will appear here with their reasons and account impact."
+                        />
+                    ) : (
+                        monthAdjustments.map((entry) => (
+                            <div
+                                key={entry.journalEntryId}
+                                className="rounded-lg border border-white/10 bg-white/[0.03] p-4"
+                            >
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-white">{entry.description}</p>
+                                        <p className="mt-1 text-sm text-zinc-400">
+                                            {entry.entryDate}
+                                            {entry.adjustmentReason ? ` · ${entry.adjustmentReason}` : ""}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            applySavedTemplate({
+                                                id: entry.journalEntryId,
+                                                name: entry.description,
+                                                description: entry.description,
+                                                adjustmentReason: entry.adjustmentReason ?? "",
+                                                lines: entry.lines.map((line) => ({
+                                                    accountCode: line.accountCode,
+                                                    accountName: line.accountName,
+                                                    entrySide: line.entrySide,
+                                                    amount: Number(line.amount).toFixed(2),
+                                                })),
+                                                savedAt: entry.createdAt,
+                                            })
+                                        }
+                                        className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/[0.05]"
+                                    >
+                                        Reuse as template
+                                    </button>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {entry.lines.map((line, index) => (
+                                        <span
+                                            key={`${entry.journalEntryId}-${index}`}
+                                            className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-zinc-300"
+                                        >
+                                            {line.accountCode} · {line.entrySide} · $
+                                            {Number(line.amount).toFixed(2)}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </SectionBand>
         </main>

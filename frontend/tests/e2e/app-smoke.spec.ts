@@ -1657,8 +1657,9 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await page.goto("/close");
 
   await expect(page.getByRole("heading", { name: "Close Management" })).toBeVisible();
-  await expect(page.getByText("Review queue cleared")).toBeVisible();
-  await expect(page.getByText("Account reconciliations complete")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What the next reviewer needs to know" })).toBeVisible();
+  await expect(page.getByText("Review queue cleared", { exact: true })).toBeVisible();
+  await expect(page.getByText("Account reconciliations complete", { exact: true })).toBeVisible();
   await expect(page.getByText("Imported CLOUDCO transaction")).toBeVisible();
   await page.getByRole("button", { name: "Accrued expense" }).click();
   await expect(page.getByLabel("Description")).toHaveValue("Accrue month-end expense");
@@ -1669,6 +1670,10 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText('Saved draft "April accrual pack".')).toBeVisible();
   await expect(page.getByText("April accrual pack", { exact: true })).toBeVisible();
+  await page.getByPlaceholder("Monthly travel accrual").fill("Travel accrual template");
+  await page.getByRole("button", { name: "Save template" }).click();
+  await expect(page.getByText('Saved template "Travel accrual template".')).toBeVisible();
+  await expect(page.getByText("Travel accrual template", { exact: true })).toBeVisible();
   await expect(page.getByText("Waiting on owner sign-off for final accrual review.")).toBeVisible();
   await page
     .getByLabel("Close note for 2026-04")
@@ -1678,6 +1683,13 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(
     page.getByText("Controller approved a temporary estimate for the travel accrual.")
   ).toBeVisible();
+  await page.locator('input[placeholder="Amount"]').nth(0).fill("250.00");
+  await page.locator('input[placeholder="Amount"]').nth(1).fill("250.00");
+  await page.getByRole("button", { name: "Post adjustment" }).click();
+  await expect(page.getByText("Adjustment posted successfully and reflected in the ledger.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Posted adjustments for 2026-04" })).toBeVisible();
+  await expect(page.getByText("Accrue month-end expense").last()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reuse as template" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Post adjustment" })).toBeVisible();
 });
 
