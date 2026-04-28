@@ -235,7 +235,9 @@ export default function RunClosePage() {
                     : closeApproved
                       ? `${closeSignoffs.length} sign-off(s) recorded and the month-level attestation is confirmed.`
                       : closeSignoffs.length > 0
-                        ? "Formal sign-off exists, but the month-level attestation still needs confirmation."
+                        ? closeAttestation?.closeApprover
+                            ? `Formal sign-off exists, but ${closeAttestation.closeApprover.fullName} still needs to confirm the month-level attestation.`
+                            : "Formal sign-off exists, but the month-level attestation still needs confirmation."
                         : "No formal close approval has been recorded yet.",
             },
         ];

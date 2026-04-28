@@ -53,6 +53,7 @@ public class PeriodCloseService {
     public AccountingPeriodSummary closeMonth(UUID organizationId, YearMonth month) {
         closeChecklistService.assertCloseReady(organizationId, month);
         assertApprovalPolicySatisfied(organizationId, month);
+        assertAttestationSatisfied(organizationId, month);
         return persistClosedPeriod(organizationId, month, PeriodCloseMethod.CHECKLIST, null);
     }
 
@@ -105,10 +106,17 @@ public class PeriodCloseService {
     public CloseAttestationResponse confirmCloseAttestation(UUID organizationId,
                                                             YearMonth month) {
         AccountingPeriod period = loadOrCreatePeriod(organizationId, month);
+        if (period.getCloseOwnerUser() == null) {
+            throw new IllegalArgumentException("Assign a close owner before confirming the month-end record");
+        }
         if (period.getCloseAttestationSummary() == null || period.getCloseAttestationSummary().isBlank()) {
             throw new IllegalArgumentException("Add an attestation summary before confirming the month-end record");
         }
         UUID actorUserId = requestIdentityService.requireUserId();
+        if (period.getCloseApproverUser() != null
+                && !period.getCloseApproverUser().getId().equals(actorUserId)) {
+            throw new AccessDeniedException("Only the assigned close approver can confirm the month-end attestation");
+        }
         period.setCloseAttestedAt(Instant.now());
         period.setCloseAttestedByUser(userService.get(actorUserId));
         return CloseAttestationResponse.from(repository.save(period), month);
@@ -167,6 +175,16 @@ public class PeriodCloseService {
         if (!periodClosePlaybookItemService.allRequiredItemsSatisfied(organizationId, month)) {
             throw new IllegalArgumentException(
                     "Cannot close period until the recurring close playbook items for this month are completed");
+        }
+    }
+
+    private void assertAttestationSatisfied(UUID organizationId, YearMonth month) {
+        AccountingPeriod period = repository.findPeriodContaining(organizationId, month.atDay(1))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Cannot close period until the month-end attestation has been confirmed"));
+        if (period.getCloseOwnerUser() == null || period.getCloseAttestedAt() == null) {
+            throw new IllegalArgumentException(
+                    "Cannot close period until the month-end attestation has been confirmed");
         }
     }
 

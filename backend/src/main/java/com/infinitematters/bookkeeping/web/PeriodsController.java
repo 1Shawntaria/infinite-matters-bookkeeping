@@ -194,7 +194,7 @@ public class PeriodsController {
     @PostMapping("/attestation/confirm")
     public CloseAttestationResponse confirmAttestation(@RequestParam UUID organizationId,
                                                        @Valid @RequestBody ConfirmCloseAttestationRequest request) {
-        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        UUID actorUserId = tenantAccessService.requireAccess(organizationId);
         CloseAttestationResponse response = periodCloseService.confirmCloseAttestation(
                 organizationId,
                 YearMonth.parse(request.month()));

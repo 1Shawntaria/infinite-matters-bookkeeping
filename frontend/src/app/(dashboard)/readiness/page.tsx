@@ -356,7 +356,9 @@ export default function CloseReadinessPage() {
             value: closeAttestation?.attested ? "Confirmed" : "Pending",
             helper: closeAttestation?.attested
                 ? "Named ownership and the final month-end certification are already on record."
-                : "The month still needs a named owner, approver, and confirmed attestation summary.",
+                : closeAttestation?.closeApprover
+                  ? `${closeAttestation.closeApprover.fullName} is assigned to certify the month before standard close can proceed.`
+                  : "The month still needs a named owner, approver, and confirmed attestation summary.",
         },
     ];
 

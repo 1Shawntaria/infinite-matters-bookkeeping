@@ -348,6 +348,7 @@ class InfiniteMattersApplicationTests {
         String approverUserId = createUser(approverEmail, "Close Attestation Approver", password);
         String organizationId = createOrganization("Close Attestation Workspace", ownerUserId);
         AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        AuthTokens approverTokens = issueToken(approverEmail, password);
         addMembership(organizationId, approverUserId, ownerTokens.accessToken());
 
         mockMvc.perform(post("/api/periods/attestation")
@@ -380,9 +381,22 @@ class InfiniteMattersApplicationTests {
                                   "month":"2026-04"
                                 }
                                 """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Only the assigned close approver can confirm the month-end attestation"));
+
+        mockMvc.perform(post("/api/periods/attestation/confirm")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04"
+                                }
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.attested").value(true))
-                .andExpect(jsonPath("$.attestedBy.id").value(ownerUserId));
+                .andExpect(jsonPath("$.attestedBy.id").value(approverUserId));
 
         mockMvc.perform(get("/api/periods/attestation")
                         .header(ORG_HEADER, organizationId)
@@ -392,7 +406,7 @@ class InfiniteMattersApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.month").value("2026-04"))
                 .andExpect(jsonPath("$.attested").value(true))
-                .andExpect(jsonPath("$.attestedBy.id").value(ownerUserId));
+                .andExpect(jsonPath("$.attestedBy.id").value(approverUserId));
     }
 
     @Test
@@ -1026,6 +1040,46 @@ class InfiniteMattersApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.approved").value(true))
                 .andExpect(jsonPath("$.satisfied").value(true));
+
+        mockMvc.perform(post("/api/periods/close")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month": "2026-04"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot close period until the month-end attestation has been confirmed"));
+
+        mockMvc.perform(post("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "closeOwnerUserId":"%s",
+                                  "closeApproverUserId":"%s",
+                                  "summary":"April close is materially complete, all recurring checks are routed, and the assigned approver has the final certification handoff."
+                                }
+                                """.formatted(ownerUserId, ownerUserId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/periods/attestation/confirm")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04"
+                                }
+                                """))
+                .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/periods/close")
                         .header(ORG_HEADER, organizationId)

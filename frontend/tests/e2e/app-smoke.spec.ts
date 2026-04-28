@@ -2018,6 +2018,8 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(page.getByText("Travel accrual template", { exact: true })).toBeVisible();
   await expect(page.getByText("Waiting on owner sign-off for final accrual review.")).toBeVisible();
   await expect(page.getByText("Month attestation", { exact: true })).toBeVisible();
+  await expect(page.getByText("Acme Owner still needs to confirm the month-level attestation before standard close can proceed.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close period", exact: true })).toBeDisabled();
   await page
     .getByLabel("Attestation summary for 2026-04")
     .fill("April is materially complete, remaining judgment items are documented, and leadership accepts the final handoff posture.");
@@ -2026,6 +2028,7 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await page.getByRole("button", { name: "Confirm month attestation" }).click();
   await expect(page.getByText("Month-end attestation confirmed.")).toBeVisible();
   await expect(page.getByText("Attestation confirmed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Month-level attestation is confirmed, so standard close can proceed once the rest of the controls are clear.")).toBeVisible();
   await page
     .getByLabel("Close note for 2026-04")
     .fill("Controller approved a temporary estimate for the travel accrual.");

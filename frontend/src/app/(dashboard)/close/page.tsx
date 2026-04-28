@@ -427,6 +427,22 @@ function ClosePageContent() {
     );
     const canSignOffClose = canManageClose && Boolean(selectedMonth);
     const attestationReady = Boolean(closeAttestation?.summary?.trim());
+    const currentUserIsAssignedAttestationApprover =
+        !closeAttestation?.closeApprover?.id ||
+        closeAttestation.closeApprover.id === currentUser?.id;
+    const canConfirmAttestation =
+        Boolean(currentUser?.id) &&
+        Boolean(selectedMonth) &&
+        attestationReady &&
+        (canManageClose || closeAttestation?.closeApprover?.id === currentUser?.id) &&
+        currentUserIsAssignedAttestationApprover;
+    const standardCloseBlockedByAttestation = !closeAttestation?.attested;
+    const certificationExceptionPosture =
+        currentPeriod?.closeMethod === "OVERRIDE"
+            ? "This month was force-closed with an accepted override."
+            : blockingChecklistItems.length === 0
+              ? "No checklist exceptions are open against the final certification."
+              : `${blockingChecklistItems.length} checklist exception(s) still block a clean certification.`;
 
     useEffect(() => {
         setAttestationOwnerUserId(closeAttestation?.closeOwner?.id ?? "");
@@ -763,12 +779,16 @@ function ClosePageContent() {
             setAttestationError("Choose a month before confirming the close attestation.");
             return;
         }
-        if (!canManageClose) {
-            setAttestationError("Only owners and admins can confirm the month-end attestation.");
-            return;
-        }
         if (!attestationReady) {
             setAttestationError("Add an attestation summary before confirming the month-end record.");
+            return;
+        }
+        if (!canConfirmAttestation) {
+            setAttestationError(
+                closeAttestation?.closeApprover
+                    ? `Only ${closeAttestation.closeApprover.fullName} can confirm the month-end attestation.`
+                    : "Only workspace owners and admins can confirm the month-end attestation."
+            );
             return;
         }
 
@@ -1203,12 +1223,20 @@ function ClosePageContent() {
                                     !canManageClose ||
                                     closingPeriod ||
                                     forceClosingPeriod ||
-                                    !selectedMonth
+                                    !selectedMonth ||
+                                    standardCloseBlockedByAttestation
                                 }
                                 className="mt-4 rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
                             >
                                 {closingPeriod ? "Closing period..." : "Close period"}
                             </button>
+                            <p className="mt-3 text-sm text-zinc-400">
+                                {closeAttestation?.attested
+                                    ? "Month-level attestation is confirmed, so standard close can proceed once the rest of the controls are clear."
+                                    : closeAttestation?.closeApprover
+                                      ? `${closeAttestation.closeApprover.fullName} still needs to confirm the month-level attestation before standard close can proceed.`
+                                      : "Confirm the month-level attestation before standard close can proceed."}
+                            </p>
                         </div>
 
                         <div className="rounded-lg border border-white/10 bg-black/20 p-4">
@@ -2023,7 +2051,7 @@ function ClosePageContent() {
                                 </button>
                                 <button
                                     type="button"
-                                    disabled={!canManageClose || !attestationReady || confirmingAttestation}
+                                    disabled={!canConfirmAttestation || confirmingAttestation}
                                     onClick={() => void handleConfirmAttestation()}
                                     className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
                                 >
@@ -2058,12 +2086,32 @@ function ClosePageContent() {
                                         "No month-level attestation summary has been recorded yet."}
                                 </p>
                             </div>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-md border border-white/6 bg-black/20 p-3">
+                                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Confirmed by</p>
+                                    <p className="mt-2 text-sm font-medium text-white">
+                                        {closeAttestation?.attestedBy?.fullName ?? "Not confirmed yet"}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border border-white/6 bg-black/20 p-3">
+                                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Exception posture</p>
+                                    <p className="mt-2 text-sm leading-6 text-zinc-200">
+                                        {certificationExceptionPosture}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                         {closeAttestation?.attested ? (
                             <StatusBanner
                                 tone="success"
                                 title="Attestation confirmed"
                                 message={`Confirmed${closeAttestation.attestedBy ? ` by ${closeAttestation.attestedBy.fullName}` : ""}${closeAttestation.attestedAt ? ` on ${new Date(closeAttestation.attestedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}.`}
+                            />
+                        ) : closeAttestation?.closeApprover && !currentUserIsAssignedAttestationApprover ? (
+                            <StatusBanner
+                                tone="muted"
+                                title="Assigned approver confirmation required"
+                                message={`${closeAttestation.closeApprover.fullName} is assigned to confirm the month-level attestation. Owners and admins can still update the plan, but standard close stays blocked until that approver certifies it.`}
                             />
                         ) : (
                             <StatusBanner
