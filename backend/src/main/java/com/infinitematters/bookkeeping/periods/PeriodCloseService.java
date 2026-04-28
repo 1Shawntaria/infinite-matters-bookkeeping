@@ -85,6 +85,7 @@ public class PeriodCloseService {
         AccountingPeriod period = loadOrCreatePeriod(organizationId, month);
         AppUser nextOwner = resolveWorkspaceUser(organizationId, closeOwnerUserId);
         AppUser nextApprover = resolveWorkspaceUser(organizationId, closeApproverUserId);
+        validateAttestationRouting(nextOwner, nextApprover);
         String normalizedSummary = normalizeAttestationSummary(summary);
         boolean ownerChanged = !sameUser(period.getCloseOwnerUser(), nextOwner);
         boolean approverChanged = !sameUser(period.getCloseApproverUser(), nextApprover);
@@ -109,12 +110,17 @@ public class PeriodCloseService {
         if (period.getCloseOwnerUser() == null) {
             throw new IllegalArgumentException("Assign a close owner before confirming the month-end record");
         }
+        if (period.getCloseApproverUser() == null) {
+            throw new IllegalArgumentException("Assign a close approver before confirming the month-end record");
+        }
+        if (period.getCloseOwnerUser().getId().equals(period.getCloseApproverUser().getId())) {
+            throw new IllegalArgumentException("Close owner and approver must be different people before confirming the month-end record");
+        }
         if (period.getCloseAttestationSummary() == null || period.getCloseAttestationSummary().isBlank()) {
             throw new IllegalArgumentException("Add an attestation summary before confirming the month-end record");
         }
         UUID actorUserId = requestIdentityService.requireUserId();
-        if (period.getCloseApproverUser() != null
-                && !period.getCloseApproverUser().getId().equals(actorUserId)) {
+        if (!period.getCloseApproverUser().getId().equals(actorUserId)) {
             throw new AccessDeniedException("Only the assigned close approver can confirm the month-end attestation");
         }
         period.setCloseAttestedAt(Instant.now());
@@ -182,9 +188,20 @@ public class PeriodCloseService {
         AccountingPeriod period = repository.findPeriodContaining(organizationId, month.atDay(1))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Cannot close period until the month-end attestation has been confirmed"));
-        if (period.getCloseOwnerUser() == null || period.getCloseAttestedAt() == null) {
+        if (period.getCloseOwnerUser() == null
+                || period.getCloseApproverUser() == null
+                || period.getCloseAttestedAt() == null
+                || period.getCloseAttestedByUser() == null) {
             throw new IllegalArgumentException(
                     "Cannot close period until the month-end attestation has been confirmed");
+        }
+        if (period.getCloseOwnerUser().getId().equals(period.getCloseApproverUser().getId())) {
+            throw new IllegalArgumentException(
+                    "Cannot close period until the month-end attestation has a distinct approver");
+        }
+        if (!period.getCloseApproverUser().getId().equals(period.getCloseAttestedByUser().getId())) {
+            throw new IllegalArgumentException(
+                    "Cannot close period until the assigned close approver has confirmed the month-end attestation");
         }
     }
 
@@ -230,6 +247,13 @@ public class PeriodCloseService {
             throw new IllegalArgumentException("Assigned attestation user does not belong to this organization");
         }
         return userService.get(userId);
+    }
+
+    private static void validateAttestationRouting(AppUser owner, AppUser approver) {
+        if (owner != null && approver != null && owner.getId().equals(approver.getId())) {
+            throw new IllegalArgumentException(
+                    "Close owner and approver must be different people for month-end attestation");
+        }
     }
 
     private static String normalizeAttestationSummary(String summary) {

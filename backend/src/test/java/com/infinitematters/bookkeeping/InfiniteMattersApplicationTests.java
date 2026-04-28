@@ -410,6 +410,33 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void closeAttestationRequiresSeparateOwnerAndApprover() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "close-attestation-dual-role-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Close Attestation Dual Role", password);
+        String organizationId = createOrganization("Close Attestation Controls Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(post("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "closeOwnerUserId":"%s",
+                                  "closeApproverUserId":"%s",
+                                  "summary":"April close is materially complete and ready for approval."
+                                }
+                                """.formatted(ownerUserId, ownerUserId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Close owner and approver must be different people for month-end attestation"));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";
@@ -1066,12 +1093,13 @@ class InfiniteMattersApplicationTests {
                                   "closeApproverUserId":"%s",
                                   "summary":"April close is materially complete, all recurring checks are routed, and the assigned approver has the final certification handoff."
                                 }
-                                """.formatted(ownerUserId, ownerUserId)))
-                .andExpect(status().isOk());
+                                """.formatted(ownerUserId, adminUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closeApprover.id").value(adminUserId));
 
         mockMvc.perform(post("/api/periods/attestation/confirm")
                         .header(ORG_HEADER, organizationId)
-                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .header("Authorization", bearerToken(adminTokens.accessToken()))
                         .param("organizationId", organizationId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

@@ -201,6 +201,11 @@ export default function CloseReadinessPage() {
     const signoffGap = requireSignoffBeforeClose ? Math.max(0, minimumSignoffCount - closeSignoffs.length) : 0;
     const ownerSignoffRecorded = closeSignoffs.some((signoff) => signoff.actorUserId != null);
     const ownerSignoffGap = requireOwnerSignoffBeforeClose && !ownerSignoffRecorded ? 1 : 0;
+    const attestationRoutingReady =
+        Boolean(closeAttestation?.closeOwner?.id) &&
+        Boolean(closeAttestation?.closeApprover?.id) &&
+        closeAttestation?.closeOwner?.id !== closeAttestation?.closeApprover?.id;
+    const attestationRoutingGap = attestationRoutingReady ? 0 : 1;
     const attestationGap = closeAttestation?.attested ? 0 : 1;
 
     const readinessScore = useMemo(() => {
@@ -212,6 +217,7 @@ export default function CloseReadinessPage() {
             noteGap * 6 -
             signoffGap * 10 -
             ownerSignoffGap * 8 -
+            attestationRoutingGap * 8 -
             attestationGap * 8 -
             (reviewExposureAmount >= materialityThreshold ? 8 : 0) +
             (checklist?.closeReady ? 8 : 0);
@@ -226,6 +232,7 @@ export default function CloseReadinessPage() {
         ownerSignoffGap,
         reviewExposureAmount,
         signoffGap,
+        attestationRoutingGap,
         attestationGap,
     ]);
 
@@ -272,11 +279,13 @@ export default function CloseReadinessPage() {
         if (checklist?.closeReady && attestationGap > 0) {
             return {
                 state: "NEEDS_SIGNOFF",
-                title: "Ready in practice, waiting on final attestation",
-                message: "The bookkeeping work is in good shape, but the named owner, approver, and month-level certification still need to be confirmed.",
+                title: attestationRoutingGap > 0 ? "Ready in practice, waiting on attestation routing" : "Ready in practice, waiting on final attestation",
+                message: attestationRoutingGap > 0
+                    ? "The bookkeeping work is in good shape, but the month still needs a named owner and a separate approver before final certification can happen."
+                    : "The bookkeeping work is in good shape, but the named owner, approver, and month-level certification still need to be confirmed.",
                 tone: "muted",
                 primaryHref: "/close",
-                primaryLabel: "Capture attestation",
+                primaryLabel: attestationRoutingGap > 0 ? "Assign attestation roles" : "Capture attestation",
                 secondaryHref: "/run-close",
                 secondaryLabel: "Review close runbook",
             };
@@ -315,6 +324,7 @@ export default function CloseReadinessPage() {
         materialityThreshold,
         ownerSignoffGap,
         signoffGap,
+        attestationRoutingGap,
         attestationGap,
     ]);
 
@@ -353,9 +363,13 @@ export default function CloseReadinessPage() {
         },
         {
             label: "Month attestation",
-            value: closeAttestation?.attested ? "Confirmed" : "Pending",
+            value: closeAttestation?.attested ? "Confirmed" : attestationRoutingGap > 0 ? "Routing needed" : "Pending",
             helper: closeAttestation?.attested
                 ? "Named ownership and the final month-end certification are already on record."
+                : attestationRoutingGap > 0
+                  ? closeAttestation?.closeOwner?.id && closeAttestation?.closeApprover?.id
+                        ? "Close owner and approver must be different people before the final month-end certification can proceed."
+                        : "The month still needs a named owner and a separate approver before attestation can move forward."
                 : closeAttestation?.closeApprover
                   ? `${closeAttestation.closeApprover.fullName} is assigned to certify the month before standard close can proceed.`
                   : "The month still needs a named owner, approver, and confirmed attestation summary.",
@@ -525,6 +539,11 @@ export default function CloseReadinessPage() {
                                 ? "Capture the required signoffs, including at least one owner approval, before treating the month as fully settled."
                                 : "Capture the required signoffs before treating the month as fully settled."
                             : "There is already approval history on the month, so the remaining decision is timing, not ownership.",
+                        attestationRoutingGap > 0
+                            ? "Assign a close owner and a different approver before expecting the final month-end attestation to clear."
+                            : closeAttestation?.attested
+                              ? "Month-end attestation routing and certification are already on record."
+                              : "The attestation route is assigned, so the remaining move is to have the approver confirm the month-level certification.",
                         pendingPlaybookCount > 0
                             ? `Finish the ${pendingPlaybookCount} recurring playbook item(s) that are still open or waiting on approval.`
                             : "Recurring close playbook work is already satisfied for the focus month.",
@@ -559,6 +578,7 @@ export default function CloseReadinessPage() {
                             <li>{incompleteChecklistItems.length} checklist item(s) still incomplete.</li>
                             <li>{pendingPlaybookCount} recurring playbook item(s) still unfinished.</li>
                             {requireOwnerSignoffBeforeClose ? <li>Owner sign-off is required before standard close.</li> : null}
+                            <li>{attestationRoutingGap > 0 ? "Month-end attestation still needs a separate approver assignment." : "Month-end attestation routing is assigned to separate people."}</li>
                         </ul>
                     </div>
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">

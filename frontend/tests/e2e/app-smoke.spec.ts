@@ -2056,6 +2056,23 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(page.getByRole("button", { name: "Post adjustment" })).toBeVisible();
 });
 
+test("close workspace rejects the same person as attestation owner and approver", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/close");
+
+  await page.getByLabel("Close owner").selectOption("user-1");
+  await page.getByLabel("Approver").selectOption("user-1");
+  await page
+    .getByLabel("Attestation summary for 2026-04")
+    .fill("April is materially complete and awaiting an independent final certification.");
+  await page.getByRole("button", { name: "Save attestation plan" }).click();
+
+  await expect(
+    page.getByText("Choose a different approver so the month-end attestation keeps a true four-eyes review.")
+  ).toBeVisible();
+  await expect(page.getByText("Attestation not saved")).toBeVisible();
+});
+
 test("transactions workspace helps investigate imported and posted activity", async ({ page }) => {
   await seedOrganization(page);
   await page.goto("/transactions");

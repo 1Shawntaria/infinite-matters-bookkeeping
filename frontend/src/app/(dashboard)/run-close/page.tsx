@@ -164,6 +164,10 @@ export default function RunClosePage() {
     );
     const currentPeriod =
         periodsQuery.data?.find((period) => period.periodStart.slice(0, 7) === focusMonth) ?? null;
+    const attestationRoutingReady =
+        Boolean(closeAttestation?.closeOwner?.id) &&
+        Boolean(closeAttestation?.closeApprover?.id) &&
+        closeAttestation?.closeOwner?.id !== closeAttestation?.closeApprover?.id;
 
     const steps: RunbookStep[] = useMemo(() => {
         const exceptionCount = attentionNotifications.length + deadLetters.length;
@@ -234,6 +238,10 @@ export default function RunClosePage() {
                     ? `The period is already closed via ${currentPeriod?.closeMethod?.toLowerCase() ?? "unknown"} controls.`
                     : closeApproved
                       ? `${closeSignoffs.length} sign-off(s) recorded and the month-level attestation is confirmed.`
+                      : !attestationRoutingReady
+                        ? closeAttestation?.closeOwner?.id && closeAttestation?.closeApprover?.id
+                            ? "Formal sign-off can wait, but the close owner and approver must be different people before month-level attestation can clear."
+                            : "Formal sign-off can wait, but the month still needs a named owner and a separate approver before attestation can clear."
                       : closeSignoffs.length > 0
                         ? closeAttestation?.closeApprover
                             ? `Formal sign-off exists, but ${closeAttestation.closeApprover.fullName} still needs to confirm the month-level attestation.`
@@ -251,6 +259,9 @@ export default function RunClosePage() {
         reviewTasks.length,
         closePlaybookItems,
         closeAttestation?.attested,
+        attestationRoutingReady,
+        closeAttestation?.closeApprover,
+        closeAttestation?.closeOwner,
         unreconciledAccounts.length,
     ]);
 
@@ -337,6 +348,19 @@ export default function RunClosePage() {
                 title="Run the month in order"
                 description="Each step is designed to reduce downstream noise. Finishing them in sequence keeps close work from becoming circular."
             >
+                {!attestationRoutingReady && focusMonth ? (
+                    <div className="mb-4">
+                        <StatusBanner
+                            tone="error"
+                            title="Attestation routing still needs separation of duties"
+                            message={
+                                closeAttestation?.closeOwner?.id && closeAttestation?.closeApprover?.id
+                                    ? "The current close owner and approver are the same person. Assign a different approver in the close workspace before expecting the final attestation step to clear."
+                                    : "Assign a close owner and a separate approver in the close workspace before expecting the final attestation step to clear."
+                            }
+                        />
+                    </div>
+                ) : null}
                 <div className="space-y-4">
                     {steps.map((step, index) => (
                         <div

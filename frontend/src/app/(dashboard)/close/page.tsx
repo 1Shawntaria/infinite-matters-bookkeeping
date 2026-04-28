@@ -427,14 +427,20 @@ function ClosePageContent() {
     );
     const canSignOffClose = canManageClose && Boolean(selectedMonth);
     const attestationReady = Boolean(closeAttestation?.summary?.trim());
+    const attestationHasAssignedApprover = Boolean(closeAttestation?.closeApprover?.id);
+    const attestationHasDistinctRouting =
+        Boolean(closeAttestation?.closeOwner?.id) &&
+        Boolean(closeAttestation?.closeApprover?.id) &&
+        closeAttestation?.closeOwner?.id !== closeAttestation?.closeApprover?.id;
     const currentUserIsAssignedAttestationApprover =
-        !closeAttestation?.closeApprover?.id ||
-        closeAttestation.closeApprover.id === currentUser?.id;
+        closeAttestation?.closeApprover?.id === currentUser?.id;
     const canConfirmAttestation =
         Boolean(currentUser?.id) &&
         Boolean(selectedMonth) &&
         attestationReady &&
-        (canManageClose || closeAttestation?.closeApprover?.id === currentUser?.id) &&
+        attestationHasAssignedApprover &&
+        attestationHasDistinctRouting &&
+        closeAttestation?.closeApprover?.id === currentUser?.id &&
         currentUserIsAssignedAttestationApprover;
     const standardCloseBlockedByAttestation = !closeAttestation?.attested;
     const certificationExceptionPosture =
@@ -751,6 +757,10 @@ function ClosePageContent() {
             setAttestationError("Only owners and admins can update the month-end attestation.");
             return;
         }
+        if (attestationOwnerUserId && attestationOwnerUserId === attestationApproverUserId) {
+            setAttestationError("Choose a different approver so the month-end attestation keeps a true four-eyes review.");
+            return;
+        }
 
         setSavingAttestation(true);
         setAttestationError("");
@@ -783,11 +793,23 @@ function ClosePageContent() {
             setAttestationError("Add an attestation summary before confirming the month-end record.");
             return;
         }
+        if (!closeAttestation?.closeOwner?.id) {
+            setAttestationError("Assign a close owner before confirming the month-end record.");
+            return;
+        }
+        if (!closeAttestation?.closeApprover?.id) {
+            setAttestationError("Assign a close approver before confirming the month-end record.");
+            return;
+        }
+        if (closeAttestation.closeOwner.id === closeAttestation.closeApprover.id) {
+            setAttestationError("Choose a different approver before confirming the month-end record.");
+            return;
+        }
         if (!canConfirmAttestation) {
             setAttestationError(
                 closeAttestation?.closeApprover
                     ? `Only ${closeAttestation.closeApprover.fullName} can confirm the month-end attestation.`
-                    : "Only workspace owners and admins can confirm the month-end attestation."
+                    : "Assign a close approver before confirming the month-end attestation."
             );
             return;
         }
@@ -1233,9 +1255,13 @@ function ClosePageContent() {
                             <p className="mt-3 text-sm text-zinc-400">
                                 {closeAttestation?.attested
                                     ? "Month-level attestation is confirmed, so standard close can proceed once the rest of the controls are clear."
+                                    : closeAttestation?.closeOwner?.id &&
+                                        closeAttestation?.closeApprover?.id &&
+                                        closeAttestation.closeOwner.id === closeAttestation.closeApprover.id
+                                      ? "Assign a separate approver before standard close can proceed."
                                     : closeAttestation?.closeApprover
                                       ? `${closeAttestation.closeApprover.fullName} still needs to confirm the month-level attestation before standard close can proceed.`
-                                      : "Confirm the month-level attestation before standard close can proceed."}
+                                      : "Assign an approver and confirm the month-level attestation before standard close can proceed."}
                             </p>
                         </div>
 
@@ -2107,6 +2133,14 @@ function ClosePageContent() {
                                 title="Attestation confirmed"
                                 message={`Confirmed${closeAttestation.attestedBy ? ` by ${closeAttestation.attestedBy.fullName}` : ""}${closeAttestation.attestedAt ? ` on ${new Date(closeAttestation.attestedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}.`}
                             />
+                        ) : closeAttestation?.closeOwner?.id &&
+                          closeAttestation?.closeApprover?.id &&
+                          closeAttestation.closeOwner.id === closeAttestation.closeApprover.id ? (
+                            <StatusBanner
+                                tone="error"
+                                title="Separate approver required"
+                                message="Month-end attestation needs a different approver than the close owner so the final certification keeps a true four-eyes review."
+                            />
                         ) : closeAttestation?.closeApprover && !currentUserIsAssignedAttestationApprover ? (
                             <StatusBanner
                                 tone="muted"
@@ -2117,7 +2151,7 @@ function ClosePageContent() {
                             <StatusBanner
                                 tone="muted"
                                 title="Attestation still pending"
-                                message="Save the owner, approver, and certification summary first, then confirm the month-level attestation when the team is ready to stand behind the close story."
+                                message="Save the owner, a separate approver, and the certification summary first, then confirm the month-level attestation when the team is ready to stand behind the close story."
                             />
                         )}
                     </div>
