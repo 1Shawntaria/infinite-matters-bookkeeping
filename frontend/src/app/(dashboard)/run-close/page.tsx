@@ -272,6 +272,12 @@ export default function RunClosePage() {
                         >
                             Open exception lane
                         </Link>
+                        <Link
+                            href="/readiness"
+                            className="rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                        >
+                            Review close readiness
+                        </Link>
                     </div>
                 </div>
             </PageHero>

@@ -1618,6 +1618,19 @@ test("run close workspace sequences the month-end workflow", async ({ page }) =>
   await expect(page).toHaveURL(/\/review-queue$/);
 });
 
+test("readiness workspace gives an owner-level pre-close summary", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/readiness");
+
+  await expect(page.getByRole("heading", { name: "Close Readiness" })).toBeVisible();
+  await expect(page.getByText("Wait before closing")).toBeVisible();
+  await expect(page.getByText("Readiness score")).toBeVisible();
+  await expect(page.getByText("Final pre-close review")).toBeVisible();
+  await expect(page.getByText("Outstanding review tasks")).toBeVisible();
+  await page.getByRole("link", { name: "Resume guided close" }).click();
+  await expect(page).toHaveURL(/\/run-close$/);
+});
+
 test("access workspace lets operators review and update memberships", async ({ page }) => {
   await seedOrganization(page);
   await page.goto("/access");

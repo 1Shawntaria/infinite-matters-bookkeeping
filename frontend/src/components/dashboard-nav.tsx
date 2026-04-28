@@ -8,6 +8,7 @@ const NAV_ITEMS = [
     { href: "/activity", label: "Activity" },
     { href: "/notifications", label: "Notifications" },
     { href: "/run-close", label: "Run Close" },
+    { href: "/readiness", label: "Readiness" },
     { href: "/exceptions", label: "Exceptions" },
     { href: "/access", label: "Access" },
     { href: "/settings", label: "Settings" },
