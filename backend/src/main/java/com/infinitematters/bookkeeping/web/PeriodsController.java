@@ -84,6 +84,35 @@ public class PeriodsController {
                 .orElseThrow();
     }
 
+    @GetMapping("/signoffs")
+    public List<AuditEventSummary> signoffs(@RequestParam UUID organizationId,
+                                            @RequestParam String month) {
+        tenantAccessService.requireAccess(organizationId);
+        return auditService.listForOrganizationByEventTypeAndEntity(
+                organizationId,
+                "PERIOD_CLOSE_SIGNED_OFF",
+                month);
+    }
+
+    @PostMapping("/signoffs")
+    public AuditEventSummary addSignoff(@RequestParam UUID organizationId,
+                                        @Valid @RequestBody AddCloseNoteRequest request) {
+        tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        auditService.record(
+                organizationId,
+                "PERIOD_CLOSE_SIGNED_OFF",
+                "accounting_period",
+                request.month(),
+                request.note().trim());
+        return auditService.listForOrganizationByEventTypeAndEntity(
+                        organizationId,
+                        "PERIOD_CLOSE_SIGNED_OFF",
+                        request.month())
+                .stream()
+                .findFirst()
+                .orElseThrow();
+    }
+
     @PostMapping("/close")
     public AccountingPeriodSummary close(@RequestParam UUID organizationId,
                                          @Valid @RequestBody ClosePeriodRequest request) {

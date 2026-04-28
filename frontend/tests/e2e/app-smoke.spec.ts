@@ -551,6 +551,18 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       createdAt: "2026-04-24T13:05:00Z",
     },
   ];
+  let closeSignoffs = [
+    {
+      id: "close-signoff-1",
+      organizationId: "org-primary",
+      actorUserId: "user-2",
+      eventType: "PERIOD_CLOSE_SIGNED_OFF",
+      entityType: "accounting_period",
+      entityId: "2026-03",
+      details: "March close approved after variance review.",
+      createdAt: "2026-04-02T18:30:00Z",
+    },
+  ];
   const authActivity = [
     {
       id: "auth-activity-1",
@@ -1298,6 +1310,32 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/periods/signoffs" && request.method() === "GET") {
+      const month = url.searchParams.get("month");
+      await fulfillJson(
+        route,
+        month ? closeSignoffs.filter((signoff) => signoff.entityId === month) : closeSignoffs
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/periods/signoffs" && request.method() === "POST") {
+      const requestBody = JSON.parse(request.postData() || "{}");
+      const createdSignoff = {
+        id: `close-signoff-${closeSignoffs.length + 1}`,
+        organizationId: organizationHeader,
+        actorUserId: "user-1",
+        eventType: "PERIOD_CLOSE_SIGNED_OFF",
+        entityType: "accounting_period",
+        entityId: requestBody.month,
+        details: requestBody.note,
+        createdAt: "2026-04-24T13:35:00Z",
+      };
+      closeSignoffs = [createdSignoff, ...closeSignoffs];
+      await fulfillJson(route, createdSignoff);
+      return;
+    }
+
     if (url.pathname === "/api/periods/close" && request.method() === "POST") {
       const requestBody = JSON.parse(request.postData() || "{}");
       const matchingPeriod = accountingPeriods.find(
@@ -1690,6 +1728,15 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(page.getByRole("heading", { name: "Posted adjustments for 2026-04" })).toBeVisible();
   await expect(page.getByText("Accrue month-end expense").last()).toBeVisible();
   await expect(page.getByRole("button", { name: "Reuse as template" })).toBeVisible();
+  await page
+    .getByLabel("Approval summary for 2026-04")
+    .fill("April close reviewed, reconciliations cleared, and adjustments approved.");
+  await page.getByRole("button", { name: "Approve close" }).click();
+  await expect(page.getByText("Close sign-off recorded for the selected month.")).toBeVisible();
+  await expect(
+    page.getByText("April close reviewed, reconciliations cleared, and adjustments approved.")
+  ).toBeVisible();
+  await expect(page.getByText("You have already signed off")).toBeVisible();
   await expect(page.getByRole("button", { name: "Post adjustment" })).toBeVisible();
 });
 

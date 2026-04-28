@@ -301,6 +301,43 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void closeSignoffsCanBeAddedAndListedForAMonth() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "close-signoff-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Close Signoff Owner", password);
+        String organizationId = createOrganization("Close Signoff Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+
+        mockMvc.perform(post("/api/periods/signoffs")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "note":"April close reviewed, reconciliations cleared, and adjustments approved."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eventType").value("PERIOD_CLOSE_SIGNED_OFF"))
+                .andExpect(jsonPath("$.entityId").value("2026-04"))
+                .andExpect(jsonPath("$.details").value("April close reviewed, reconciliations cleared, and adjustments approved."));
+
+        mockMvc.perform(get("/api/periods/signoffs")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("month", "2026-04"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].eventType").value("PERIOD_CLOSE_SIGNED_OFF"))
+                .andExpect(jsonPath("$[0].details").value("April close reviewed, reconciliations cleared, and adjustments approved."));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";

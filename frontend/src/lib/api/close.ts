@@ -145,3 +145,27 @@ export async function addCloseNote(
         }
     );
 }
+
+export async function listCloseSignoffs(
+    organizationId: string,
+    month: string
+): Promise<AuditEventSummary[]> {
+    const query = new URLSearchParams({ organizationId, month });
+    return apiFetch<AuditEventSummary[]>(`/api/periods/signoffs?${query.toString()}`, {
+        method: "GET",
+    });
+}
+
+export async function addCloseSignoff(
+    organizationId: string,
+    month: string,
+    summary: string
+): Promise<AuditEventSummary> {
+    return apiFetch<AuditEventSummary>(
+        `/api/periods/signoffs?organizationId=${encodeURIComponent(organizationId)}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ month, note: summary }),
+        }
+    );
+}

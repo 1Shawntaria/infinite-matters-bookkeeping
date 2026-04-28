@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import {
     addCloseNote,
+    addCloseSignoff,
     closePeriod,
     CloseChecklistSummary,
     createAdjustmentEntry,
@@ -13,6 +14,7 @@ import {
     getCloseChecklist,
     LedgerEntrySummary,
     listCloseNotes,
+    listCloseSignoffs,
     listAccountingPeriods,
     listLedgerEntries,
     AccountingPeriodSummary,
@@ -20,7 +22,7 @@ import {
 import { listFinancialAccounts, FinancialAccount } from "@/lib/api/accounts";
 import { getDashboardSnapshot, DashboardSnapshot } from "@/lib/api/dashboard";
 import { useOrganizationSession } from "@/lib/auth/session";
-import { listOrganizations, OrganizationSummary } from "@/lib/api/auth";
+import { getCurrentUser, listOrganizations, OrganizationSummary } from "@/lib/api/auth";
 import {
     LoadingPanel,
     NextStepsList,
@@ -152,6 +154,10 @@ function ClosePageContent() {
     const [noteMessage, setNoteMessage] = useState("");
     const [noteError, setNoteError] = useState("");
     const [savingNote, setSavingNote] = useState(false);
+    const [signoffSummary, setSignoffSummary] = useState("");
+    const [signoffMessage, setSignoffMessage] = useState("");
+    const [signoffError, setSignoffError] = useState("");
+    const [savingSignoff, setSavingSignoff] = useState(false);
     const [lines, setLines] = useState<AdjustmentLineDraft[]>([
         accountCodeParam
             ? { ...EMPTY_LINE(), accountCode: accountCodeParam }
@@ -189,10 +195,20 @@ function ClosePageContent() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listOrganizations(),
     });
+    const currentUserQuery = useQuery({
+        queryKey: ["currentUser"],
+        enabled: hydrated,
+        queryFn: () => getCurrentUser(),
+    });
     const closeNotesQuery = useQuery({
         queryKey: ["closeNotes", organizationId, selectedMonth],
         enabled: hydrated && Boolean(organizationId) && Boolean(selectedMonth),
         queryFn: () => listCloseNotes(organizationId, selectedMonth),
+    });
+    const closeSignoffsQuery = useQuery({
+        queryKey: ["closeSignoffs", organizationId, selectedMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(selectedMonth),
+        queryFn: () => listCloseSignoffs(organizationId, selectedMonth),
     });
 
     useEffect(() => {
@@ -254,7 +270,9 @@ function ClosePageContent() {
               ledgerQuery.isLoading ||
               accountsQuery.isLoading ||
               organizationsQuery.isLoading ||
+              currentUserQuery.isLoading ||
               closeNotesQuery.isLoading ||
+              closeSignoffsQuery.isLoading ||
               (Boolean(selectedMonth) && checklistQuery.isLoading)
             : false;
     const queryError =
@@ -264,7 +282,9 @@ function ClosePageContent() {
         ledgerQuery.error?.message ??
         accountsQuery.error?.message ??
         organizationsQuery.error?.message ??
+        currentUserQuery.error?.message ??
         closeNotesQuery.error?.message ??
+        closeSignoffsQuery.error?.message ??
         "";
 
     const periods = periodsQuery.data ?? [];
@@ -349,6 +369,7 @@ function ClosePageContent() {
     );
     const adjustmentsBalanced = totalDebits > 0 && totalDebits === totalCredits;
     const closeNotes = closeNotesQuery.data ?? [];
+    const closeSignoffs = closeSignoffsQuery.data ?? [];
     const monthAdjustments = useMemo(
         () =>
             ledgerEntries.filter(
@@ -359,6 +380,11 @@ function ClosePageContent() {
         [ledgerEntries, selectedMonth]
     );
     const blockingChecklistItems = (checklist?.items ?? []).filter((item) => !item.complete);
+    const currentUser = currentUserQuery.data ?? null;
+    const currentUserHasSignedOff = closeSignoffs.some(
+        (signoff) => signoff.actorUserId && signoff.actorUserId === currentUser?.id
+    );
+    const canSignOffClose = canManageClose && Boolean(selectedMonth);
 
     useEffect(() => {
         if (!accountCodeParam) {
@@ -463,6 +489,9 @@ function ClosePageContent() {
         await queryClient.invalidateQueries({ queryKey: ["reconciliationDashboard", activeOrganizationId] });
         await queryClient.invalidateQueries({
             queryKey: ["closeNotes", activeOrganizationId, selectedMonth],
+        });
+        await queryClient.invalidateQueries({
+            queryKey: ["closeSignoffs", activeOrganizationId, selectedMonth],
         });
     }
 
@@ -598,6 +627,43 @@ function ClosePageContent() {
             setNoteError(err instanceof Error ? err.message : "Unable to save close note.");
         } finally {
             setSavingNote(false);
+        }
+    }
+
+    async function handleAddCloseSignoff(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!organizationId || !selectedMonth) {
+            setSignoffError("Choose a month before signing off.");
+            return;
+        }
+        if (!canManageClose) {
+            setSignoffError("Only owners and admins can approve a month-end close.");
+            return;
+        }
+        if (!canSignOffClose) {
+            setSignoffError("Choose a month before signing off.");
+            return;
+        }
+        if (!signoffSummary.trim()) {
+            setSignoffError("Add a short approval summary before signing off.");
+            return;
+        }
+
+        setSavingSignoff(true);
+        setSignoffError("");
+        setSignoffMessage("");
+
+        try {
+            await addCloseSignoff(organizationId, selectedMonth, signoffSummary.trim());
+            await queryClient.invalidateQueries({
+                queryKey: ["closeSignoffs", organizationId, selectedMonth],
+            });
+            setSignoffSummary("");
+            setSignoffMessage("Close sign-off recorded for the selected month.");
+        } catch (err) {
+            setSignoffError(err instanceof Error ? err.message : "Unable to record close sign-off.");
+        } finally {
+            setSavingSignoff(false);
         }
     }
 
@@ -811,7 +877,7 @@ function ClosePageContent() {
                 description="Use this as the fast read before someone picks up the month-end baton."
             >
                 <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <SummaryMetric
                             label="Open blockers"
                             value={`${blockingChecklistItems.length}`}
@@ -831,6 +897,16 @@ function ClosePageContent() {
                             label="Close notes"
                             value={`${closeNotes.length}`}
                             detail="Context saved for reviewers, approvers, and future you."
+                        />
+                        <SummaryMetric
+                            label="Sign-offs"
+                            value={`${closeSignoffs.length}`}
+                            detail={
+                                closeSignoffs.length === 0
+                                    ? "No formal approvals recorded yet."
+                                    : "Approval trail captured for this month."
+                            }
+                            tone={closeSignoffs.length > 0 ? "success" : "default"}
                         />
                     </div>
                     <div className="rounded-lg border border-white/10 bg-black/20 p-4">
@@ -1545,6 +1621,96 @@ function ClosePageContent() {
                                         </p>
                                     </div>
                                     <p className="mt-3 text-sm leading-6 text-zinc-200">{note.details}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Approvals"
+                title="Close sign-off"
+                description="Record who approved the month-end story and why it was ready to hand off. This is the difference between finished work and trusted work."
+            >
+                <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                    <div>
+                        {!canManageClose ? (
+                            <div className="mb-4">
+                                <StatusBanner
+                                    tone="muted"
+                                    title="Approval access is limited"
+                                    message="Only workspace owners and admins can record a formal month-end sign-off."
+                                />
+                            </div>
+                        ) : null}
+                        {signoffError ? (
+                            <div className="mb-4">
+                                <StatusBanner tone="error" title="Sign-off not saved" message={signoffError} />
+                            </div>
+                        ) : null}
+                        {signoffMessage ? (
+                            <div className="mb-4">
+                                <StatusBanner tone="success" title="Sign-off recorded" message={signoffMessage} />
+                            </div>
+                        ) : null}
+                        {currentUserHasSignedOff ? (
+                            <div className="mb-4">
+                                <StatusBanner
+                                    tone="success"
+                                    title="You have already signed off"
+                                    message="Your approval is already part of this month's close history."
+                                />
+                            </div>
+                        ) : null}
+                        <form className="space-y-3" onSubmit={handleAddCloseSignoff}>
+                            <label className="space-y-2 text-sm text-zinc-300">
+                                <span>Approval summary for {selectedMonth || "this month"}</span>
+                                <textarea
+                                    value={signoffSummary}
+                                    onChange={(event) => setSignoffSummary(event.target.value)}
+                                    rows={4}
+                                    disabled={!canManageClose || currentUserHasSignedOff}
+                                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                    placeholder="Close reviewed, reconciliations cleared, adjustments approved, and no unresolved material exceptions remain."
+                                />
+                            </label>
+                            <button
+                                type="submit"
+                                disabled={!canManageClose || currentUserHasSignedOff || savingSignoff}
+                                className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
+                            >
+                                {savingSignoff ? "Recording sign-off..." : "Approve close"}
+                            </button>
+                        </form>
+                    </div>
+                    <div className="space-y-3">
+                        {closeSignoffs.length === 0 ? (
+                            <StatusBanner
+                                tone="muted"
+                                title="No sign-offs recorded yet"
+                                message="Once leadership or finance owners approve the close, that approval trail will appear here."
+                            />
+                        ) : (
+                            closeSignoffs.map((signoff) => (
+                                <div
+                                    key={signoff.id}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] p-4"
+                                >
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
+                                            Period close signed off
+                                        </p>
+                                        <p className="text-xs text-zinc-500">
+                                            {new Date(signoff.createdAt).toLocaleString("en-US", {
+                                                month: "short",
+                                                day: "numeric",
+                                                hour: "numeric",
+                                                minute: "2-digit",
+                                            })}
+                                        </p>
+                                    </div>
+                                    <p className="mt-3 text-sm leading-6 text-zinc-200">{signoff.details}</p>
                                 </div>
                             ))
                         )}
