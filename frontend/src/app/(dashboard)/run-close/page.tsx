@@ -17,8 +17,10 @@ import { getReconciliationDashboard, ReconciliationDashboard } from "@/lib/api/r
 import { getReviewTasks, ReviewTask } from "@/lib/api/reviews";
 import {
     AccountingPeriodSummary,
+    CloseAttestation,
     ClosePlaybookItem,
     CloseChecklistSummary,
+    getCloseAttestation,
     getCloseChecklist,
     listClosePlaybookItems,
     listAccountingPeriods,
@@ -91,6 +93,11 @@ export default function RunClosePage() {
         enabled: hydrated && Boolean(organizationId) && Boolean(focusMonth),
         queryFn: () => listCloseSignoffs(organizationId, focusMonth),
     });
+    const closeAttestationQuery = useQuery<CloseAttestation, Error>({
+        queryKey: ["closeAttestation", organizationId, focusMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(focusMonth),
+        queryFn: () => getCloseAttestation(organizationId, focusMonth),
+    });
     const settingsQuery = useQuery({
         queryKey: ["workspaceSettings", organizationId],
         enabled: hydrated && Boolean(organizationId),
@@ -121,7 +128,8 @@ export default function RunClosePage() {
               (Boolean(focusMonth) &&
                   (closeChecklistQuery.isLoading ||
                       closeNotesQuery.isLoading ||
-                      closeSignoffsQuery.isLoading))
+                      closeSignoffsQuery.isLoading ||
+                      closeAttestationQuery.isLoading))
             : false;
 
     const queryError =
@@ -136,6 +144,7 @@ export default function RunClosePage() {
         closePlaybookQuery.error?.message ??
         closeChecklistQuery.error?.message ??
         closeNotesQuery.error?.message ??
+        closeAttestationQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
         "";
 
@@ -144,6 +153,7 @@ export default function RunClosePage() {
     const checklist = closeChecklistQuery.data ?? null;
     const closeNotes = closeNotesQuery.data ?? [];
     const closeSignoffs = closeSignoffsQuery.data ?? [];
+    const closeAttestation = closeAttestationQuery.data ?? null;
     const attentionNotifications = attentionNotificationsQuery.data ?? [];
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
     const workspaceSettings = settingsQuery.data ?? null;
@@ -159,7 +169,7 @@ export default function RunClosePage() {
         const exceptionCount = attentionNotifications.length + deadLetters.length;
         const pendingPlaybookItems = closePlaybookItems.filter((item) => !item.satisfied).length;
         const notesAndAdjustmentsComplete = closeNotes.length > 0 && pendingPlaybookItems === 0;
-        const closeApproved = closeSignoffs.length > 0;
+        const closeApproved = closeSignoffs.length > 0 && Boolean(closeAttestation?.attested);
         const periodClosed = currentPeriod?.status === "CLOSED";
 
         return [
@@ -223,8 +233,10 @@ export default function RunClosePage() {
                 detail: periodClosed
                     ? `The period is already closed via ${currentPeriod?.closeMethod?.toLowerCase() ?? "unknown"} controls.`
                     : closeApproved
-                      ? `${closeSignoffs.length} sign-off(s) recorded for the focus month.`
-                      : "No formal close approval has been recorded yet.",
+                      ? `${closeSignoffs.length} sign-off(s) recorded and the month-level attestation is confirmed.`
+                      : closeSignoffs.length > 0
+                        ? "Formal sign-off exists, but the month-level attestation still needs confirmation."
+                        : "No formal close approval has been recorded yet.",
             },
         ];
     }, [
@@ -236,6 +248,7 @@ export default function RunClosePage() {
         deadLetters.length,
         reviewTasks.length,
         closePlaybookItems,
+        closeAttestation?.attested,
         unreconciledAccounts.length,
     ]);
 

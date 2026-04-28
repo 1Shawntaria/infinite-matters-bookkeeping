@@ -338,6 +338,64 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void closeAttestationCanBeRoutedUpdatedAndConfirmedForAMonth() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "close-attestation-owner-" + suffix + "@example.test";
+        String approverEmail = "close-attestation-approver-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Close Attestation Owner", password);
+        String approverUserId = createUser(approverEmail, "Close Attestation Approver", password);
+        String organizationId = createOrganization("Close Attestation Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        addMembership(organizationId, approverUserId, ownerTokens.accessToken());
+
+        mockMvc.perform(post("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "closeOwnerUserId":"%s",
+                                  "closeApproverUserId":"%s",
+                                  "summary":"April close is materially complete, with documented estimates and leadership review queued for final certification."
+                                }
+                                """.formatted(ownerUserId, approverUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.month").value("2026-04"))
+                .andExpect(jsonPath("$.closeOwner.id").value(ownerUserId))
+                .andExpect(jsonPath("$.closeApprover.id").value(approverUserId))
+                .andExpect(jsonPath("$.summary").value("April close is materially complete, with documented estimates and leadership review queued for final certification."))
+                .andExpect(jsonPath("$.attested").value(false));
+
+        mockMvc.perform(post("/api/periods/attestation/confirm")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attested").value(true))
+                .andExpect(jsonPath("$.attestedBy.id").value(ownerUserId));
+
+        mockMvc.perform(get("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .param("month", "2026-04"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.month").value("2026-04"))
+                .andExpect(jsonPath("$.attested").value(true))
+                .andExpect(jsonPath("$.attestedBy.id").value(ownerUserId));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";

@@ -618,6 +618,25 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       createdAt: "2026-04-02T18:30:00Z",
     },
   ];
+  let closeAttestation = {
+    accountingPeriodId: "period-2026-04",
+    month: "2026-04",
+    closeOwner: {
+      id: "user-2",
+      email: "ops@acme.test",
+      fullName: "Ops Admin",
+    },
+    closeApprover: {
+      id: "user-1",
+      email: "owner@acme.test",
+      fullName: "Acme Owner",
+    },
+    summary:
+      "April is materially complete, recurring close work is routed, and owner approval is the final remaining step.",
+    attestedAt: null,
+    attestedBy: null,
+    attested: false,
+  };
   const authActivity = [
     {
       id: "auth-activity-1",
@@ -1482,6 +1501,58 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/periods/attestation" && request.method() === "GET") {
+      await fulfillJson(route, closeAttestation);
+      return;
+    }
+
+    if (url.pathname === "/api/periods/attestation" && request.method() === "POST") {
+      const requestBody = JSON.parse(request.postData() || "{}");
+      const closeOwner =
+        memberships.find((membership) => membership.user.id === requestBody.closeOwnerUserId)?.user ?? null;
+      const closeApprover =
+        memberships.find((membership) => membership.user.id === requestBody.closeApproverUserId)?.user ?? null;
+
+      closeAttestation = {
+        ...closeAttestation,
+        closeOwner: closeOwner
+          ? {
+              id: closeOwner.id,
+              email: closeOwner.email,
+              fullName: closeOwner.fullName,
+            }
+          : null,
+        closeApprover: closeApprover
+          ? {
+              id: closeApprover.id,
+              email: closeApprover.email,
+              fullName: closeApprover.fullName,
+            }
+          : null,
+        summary: requestBody.summary,
+        attested: false,
+        attestedAt: null,
+        attestedBy: null,
+      };
+      await fulfillJson(route, closeAttestation);
+      return;
+    }
+
+    if (url.pathname === "/api/periods/attestation/confirm" && request.method() === "POST") {
+      closeAttestation = {
+        ...closeAttestation,
+        attested: true,
+        attestedAt: "2026-04-24T13:45:00Z",
+        attestedBy: {
+          id: "user-1",
+          email: "owner@acme.test",
+          fullName: "Acme Owner",
+        },
+      };
+      await fulfillJson(route, closeAttestation);
+      return;
+    }
+
     if (url.pathname === "/api/periods/signoffs" && request.method() === "GET") {
       const month = url.searchParams.get("month");
       await fulfillJson(
@@ -1799,6 +1870,7 @@ test("readiness workspace gives an owner-level pre-close summary", async ({ page
   await expect(page.getByText("Readiness score")).toBeVisible();
   await expect(page.getByText("Final pre-close review")).toBeVisible();
   await expect(page.getByText("Outstanding review tasks")).toBeVisible();
+  await expect(page.getByText("Month attestation", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Resume guided close" }).click();
   await expect(page).toHaveURL(/\/run-close$/);
 });
@@ -1945,6 +2017,15 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(page.getByText('Saved template "Travel accrual template".')).toBeVisible();
   await expect(page.getByText("Travel accrual template", { exact: true })).toBeVisible();
   await expect(page.getByText("Waiting on owner sign-off for final accrual review.")).toBeVisible();
+  await expect(page.getByText("Month attestation", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("Attestation summary for 2026-04")
+    .fill("April is materially complete, remaining judgment items are documented, and leadership accepts the final handoff posture.");
+  await page.getByRole("button", { name: "Save attestation plan" }).click();
+  await expect(page.getByText("Month-end attestation plan saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Confirm month attestation" }).click();
+  await expect(page.getByText("Month-end attestation confirmed.")).toBeVisible();
+  await expect(page.getByText("Attestation confirmed", { exact: true })).toBeVisible();
   await page
     .getByLabel("Close note for 2026-04")
     .fill("Controller approved a temporary estimate for the travel accrual.");

@@ -92,6 +92,29 @@ export type ClosePlaybookItem = {
     satisfied: boolean;
 };
 
+export type CloseAttestation = {
+    accountingPeriodId: string | null;
+    month: string;
+    closeOwner: {
+        id: string;
+        email: string;
+        fullName: string;
+    } | null;
+    closeApprover: {
+        id: string;
+        email: string;
+        fullName: string;
+    } | null;
+    summary: string | null;
+    attestedAt: string | null;
+    attestedBy: {
+        id: string;
+        email: string;
+        fullName: string;
+    } | null;
+    attested: boolean;
+};
+
 export async function listAccountingPeriods(
     organizationId: string
 ): Promise<AccountingPeriodSummary[]> {
@@ -264,4 +287,41 @@ export async function approveClosePlaybookItem(
             body: JSON.stringify({ month, marked }),
         }
     );
+}
+
+export async function getCloseAttestation(
+    organizationId: string,
+    month: string
+): Promise<CloseAttestation> {
+    const query = new URLSearchParams({ organizationId, month });
+    return apiFetch<CloseAttestation>(`/api/periods/attestation?${query.toString()}`, {
+        method: "GET",
+    });
+}
+
+export async function updateCloseAttestation(
+    organizationId: string,
+    payload: {
+        month: string;
+        closeOwnerUserId: string | null;
+        closeApproverUserId: string | null;
+        summary: string;
+    }
+): Promise<CloseAttestation> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<CloseAttestation>(`/api/periods/attestation?${query.toString()}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function confirmCloseAttestation(
+    organizationId: string,
+    month: string
+): Promise<CloseAttestation> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<CloseAttestation>(`/api/periods/attestation/confirm?${query.toString()}`, {
+        method: "POST",
+        body: JSON.stringify({ month }),
+    });
 }

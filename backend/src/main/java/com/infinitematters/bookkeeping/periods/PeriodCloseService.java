@@ -10,6 +10,7 @@ import com.infinitematters.bookkeeping.security.AccessDeniedException;
 import com.infinitematters.bookkeeping.security.RequestIdentityService;
 import com.infinitematters.bookkeeping.users.AppUser;
 import com.infinitematters.bookkeeping.users.UserService;
+import com.infinitematters.bookkeeping.web.dto.CloseAttestationResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,21 +68,58 @@ public class PeriodCloseService {
         return summary;
     }
 
+    @Transactional(readOnly = true)
+    public CloseAttestationResponse getCloseAttestation(UUID organizationId, YearMonth month) {
+        organizationService.get(organizationId);
+        AccountingPeriod period = repository.findPeriodContaining(organizationId, month.atDay(1)).orElse(null);
+        return CloseAttestationResponse.from(period, month);
+    }
+
+    @Transactional
+    public CloseAttestationResponse updateCloseAttestation(UUID organizationId,
+                                                           YearMonth month,
+                                                           UUID closeOwnerUserId,
+                                                           UUID closeApproverUserId,
+                                                           String summary) {
+        AccountingPeriod period = loadOrCreatePeriod(organizationId, month);
+        AppUser nextOwner = resolveWorkspaceUser(organizationId, closeOwnerUserId);
+        AppUser nextApprover = resolveWorkspaceUser(organizationId, closeApproverUserId);
+        String normalizedSummary = normalizeAttestationSummary(summary);
+        boolean ownerChanged = !sameUser(period.getCloseOwnerUser(), nextOwner);
+        boolean approverChanged = !sameUser(period.getCloseApproverUser(), nextApprover);
+        boolean summaryChanged = !java.util.Objects.equals(period.getCloseAttestationSummary(), normalizedSummary);
+
+        period.setCloseOwnerUser(nextOwner);
+        period.setCloseApproverUser(nextApprover);
+        period.setCloseAttestationSummary(normalizedSummary);
+
+        if (ownerChanged || approverChanged || summaryChanged) {
+            period.setCloseAttestedAt(null);
+            period.setCloseAttestedByUser(null);
+        }
+
+        return CloseAttestationResponse.from(repository.save(period), month);
+    }
+
+    @Transactional
+    public CloseAttestationResponse confirmCloseAttestation(UUID organizationId,
+                                                            YearMonth month) {
+        AccountingPeriod period = loadOrCreatePeriod(organizationId, month);
+        if (period.getCloseAttestationSummary() == null || period.getCloseAttestationSummary().isBlank()) {
+            throw new IllegalArgumentException("Add an attestation summary before confirming the month-end record");
+        }
+        UUID actorUserId = requestIdentityService.requireUserId();
+        period.setCloseAttestedAt(Instant.now());
+        period.setCloseAttestedByUser(userService.get(actorUserId));
+        return CloseAttestationResponse.from(repository.save(period), month);
+    }
+
     private AccountingPeriodSummary persistClosedPeriod(UUID organizationId, YearMonth month,
                                                         PeriodCloseMethod closeMethod, String overrideReason) {
-        Organization organization = organizationService.get(organizationId);
+        AppUser actor = requestIdentityService.currentUserId().map(userService::get).orElse(null);
+        AccountingPeriod period = loadOrCreatePeriod(organizationId, month);
         LocalDate start = month.atDay(1);
         LocalDate end = month.atEndOfMonth();
-        AppUser actor = requestIdentityService.currentUserId().map(userService::get).orElse(null);
-        AccountingPeriod period = repository.findPeriodContaining(organizationId, start)
-                .orElseGet(() -> {
-                    AccountingPeriod created = new AccountingPeriod();
-                    created.setOrganization(organization);
-                    created.setPeriodStart(start);
-                    created.setPeriodEnd(end);
-                    created.setStatus(AccountingPeriodStatus.OPEN);
-                    return created;
-                });
         period.setStatus(AccountingPeriodStatus.CLOSED);
         period.setClosedAt(Instant.now());
         period.setCloseMethod(closeMethod);
@@ -148,6 +186,56 @@ public class PeriodCloseService {
                 .ifPresent(period -> {
                     throw new AccessDeniedException("Accounting period is closed for date " + entryDate);
                 });
+    }
+
+    private AccountingPeriod loadOrCreatePeriod(UUID organizationId, YearMonth month) {
+        Organization organization = organizationService.get(organizationId);
+        LocalDate start = month.atDay(1);
+        LocalDate end = month.atEndOfMonth();
+        return repository.findPeriodContaining(organizationId, start)
+                .orElseGet(() -> {
+                    AccountingPeriod created = new AccountingPeriod();
+                    created.setOrganization(organization);
+                    created.setPeriodStart(start);
+                    created.setPeriodEnd(end);
+                    created.setStatus(AccountingPeriodStatus.OPEN);
+                    created.setCloseMethod(PeriodCloseMethod.CHECKLIST);
+                    return created;
+                });
+    }
+
+    private AppUser resolveWorkspaceUser(UUID organizationId, UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        if (!userService.hasAccess(organizationId, userId)) {
+            throw new IllegalArgumentException("Assigned attestation user does not belong to this organization");
+        }
+        return userService.get(userId);
+    }
+
+    private static String normalizeAttestationSummary(String summary) {
+        if (summary == null) {
+            return null;
+        }
+        String normalized = summary.trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        if (normalized.length() > 2000) {
+            throw new IllegalArgumentException("Attestation summary must be 2000 characters or fewer");
+        }
+        return normalized;
+    }
+
+    private static boolean sameUser(AppUser left, AppUser right) {
+        if (left == null && right == null) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.getId().equals(right.getId());
     }
 
     private AccountingPeriodSummary toSummary(AccountingPeriod period) {

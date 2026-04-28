@@ -17,8 +17,10 @@ import { getReconciliationDashboard, ReconciliationDashboard } from "@/lib/api/r
 import { getReviewTasks, ReviewTask } from "@/lib/api/reviews";
 import {
     AccountingPeriodSummary,
+    CloseAttestation,
     ClosePlaybookItem,
     CloseChecklistSummary,
+    getCloseAttestation,
     getCloseChecklist,
     listClosePlaybookItems,
     listAccountingPeriods,
@@ -108,6 +110,11 @@ export default function CloseReadinessPage() {
         enabled: hydrated && Boolean(organizationId) && Boolean(focusMonth),
         queryFn: () => listCloseSignoffs(organizationId, focusMonth),
     });
+    const closeAttestationQuery = useQuery<CloseAttestation, Error>({
+        queryKey: ["closeAttestation", organizationId, focusMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(focusMonth),
+        queryFn: () => getCloseAttestation(organizationId, focusMonth),
+    });
     const attentionNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
         queryKey: ["attentionNotifications", organizationId],
         enabled: hydrated && Boolean(organizationId),
@@ -142,7 +149,8 @@ export default function CloseReadinessPage() {
               (Boolean(focusMonth) &&
                   (closeChecklistQuery.isLoading ||
                       closeNotesQuery.isLoading ||
-                      closeSignoffsQuery.isLoading))
+                      closeSignoffsQuery.isLoading ||
+                      closeAttestationQuery.isLoading))
             : false;
 
     const queryError =
@@ -156,6 +164,7 @@ export default function CloseReadinessPage() {
         closePlaybookQuery.error?.message ??
         closeChecklistQuery.error?.message ??
         closeNotesQuery.error?.message ??
+        closeAttestationQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
         "";
 
@@ -164,6 +173,7 @@ export default function CloseReadinessPage() {
     const checklist = closeChecklistQuery.data ?? null;
     const closeNotes = closeNotesQuery.data ?? [];
     const closeSignoffs = closeSignoffsQuery.data ?? [];
+    const closeAttestation = closeAttestationQuery.data ?? null;
     const attentionNotifications = attentionNotificationsQuery.data ?? [];
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
     const workspaceSettings = settingsQuery.data ?? null;
@@ -191,6 +201,7 @@ export default function CloseReadinessPage() {
     const signoffGap = requireSignoffBeforeClose ? Math.max(0, minimumSignoffCount - closeSignoffs.length) : 0;
     const ownerSignoffRecorded = closeSignoffs.some((signoff) => signoff.actorUserId != null);
     const ownerSignoffGap = requireOwnerSignoffBeforeClose && !ownerSignoffRecorded ? 1 : 0;
+    const attestationGap = closeAttestation?.attested ? 0 : 1;
 
     const readinessScore = useMemo(() => {
         const rawScore =
@@ -201,6 +212,7 @@ export default function CloseReadinessPage() {
             noteGap * 6 -
             signoffGap * 10 -
             ownerSignoffGap * 8 -
+            attestationGap * 8 -
             (reviewExposureAmount >= materialityThreshold ? 8 : 0) +
             (checklist?.closeReady ? 8 : 0);
         return clamp(rawScore, 12, 100);
@@ -214,6 +226,7 @@ export default function CloseReadinessPage() {
         ownerSignoffGap,
         reviewExposureAmount,
         signoffGap,
+        attestationGap,
     ]);
 
     const decision: ReadinessDecision = useMemo(() => {
@@ -256,6 +269,19 @@ export default function CloseReadinessPage() {
             };
         }
 
+        if (checklist?.closeReady && attestationGap > 0) {
+            return {
+                state: "NEEDS_SIGNOFF",
+                title: "Ready in practice, waiting on final attestation",
+                message: "The bookkeeping work is in good shape, but the named owner, approver, and month-level certification still need to be confirmed.",
+                tone: "muted",
+                primaryHref: "/close",
+                primaryLabel: "Capture attestation",
+                secondaryHref: "/run-close",
+                secondaryLabel: "Review close runbook",
+            };
+        }
+
         if (overrideRisk > 0 || agingRiskCount > 2 || reviewExposureAmount >= materialityThreshold) {
             return {
                 state: "FORCE_CLOSE_WITH_CAUTION",
@@ -289,6 +315,7 @@ export default function CloseReadinessPage() {
         materialityThreshold,
         ownerSignoffGap,
         signoffGap,
+        attestationGap,
     ]);
 
     const riskSignals = [
@@ -323,6 +350,13 @@ export default function CloseReadinessPage() {
                 documentationCoverage === 0
                     ? "There is no note or approval trail yet for the focus month."
                     : "Close notes and sign-offs are building an audit-friendly handoff trail.",
+        },
+        {
+            label: "Month attestation",
+            value: closeAttestation?.attested ? "Confirmed" : "Pending",
+            helper: closeAttestation?.attested
+                ? "Named ownership and the final month-end certification are already on record."
+                : "The month still needs a named owner, approver, and confirmed attestation summary.",
         },
     ];
 

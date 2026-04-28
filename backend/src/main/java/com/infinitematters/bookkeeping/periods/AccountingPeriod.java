@@ -52,6 +52,24 @@ public class AccountingPeriod {
     @JoinColumn(name = "override_approved_by_user_id")
     private AppUser overrideApprovedByUser;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "close_owner_user_id")
+    private AppUser closeOwnerUser;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "close_approver_user_id")
+    private AppUser closeApproverUser;
+
+    @Column(name = "close_attestation_summary", length = 2000)
+    private String closeAttestationSummary;
+
+    @Column(name = "close_attested_at")
+    private Instant closeAttestedAt;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "close_attested_by_user_id")
+    private AppUser closeAttestedByUser;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -131,6 +149,46 @@ public class AccountingPeriod {
 
     public void setOverrideApprovedByUser(AppUser overrideApprovedByUser) {
         this.overrideApprovedByUser = overrideApprovedByUser;
+    }
+
+    public AppUser getCloseOwnerUser() {
+        return closeOwnerUser;
+    }
+
+    public void setCloseOwnerUser(AppUser closeOwnerUser) {
+        this.closeOwnerUser = closeOwnerUser;
+    }
+
+    public AppUser getCloseApproverUser() {
+        return closeApproverUser;
+    }
+
+    public void setCloseApproverUser(AppUser closeApproverUser) {
+        this.closeApproverUser = closeApproverUser;
+    }
+
+    public String getCloseAttestationSummary() {
+        return closeAttestationSummary;
+    }
+
+    public void setCloseAttestationSummary(String closeAttestationSummary) {
+        this.closeAttestationSummary = closeAttestationSummary;
+    }
+
+    public Instant getCloseAttestedAt() {
+        return closeAttestedAt;
+    }
+
+    public void setCloseAttestedAt(Instant closeAttestedAt) {
+        this.closeAttestedAt = closeAttestedAt;
+    }
+
+    public AppUser getCloseAttestedByUser() {
+        return closeAttestedByUser;
+    }
+
+    public void setCloseAttestedByUser(AppUser closeAttestedByUser) {
+        this.closeAttestedByUser = closeAttestedByUser;
     }
 
     public Instant getCreatedAt() {

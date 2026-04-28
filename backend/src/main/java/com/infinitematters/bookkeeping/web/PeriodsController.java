@@ -12,9 +12,12 @@ import com.infinitematters.bookkeeping.users.UserRole;
 import com.infinitematters.bookkeeping.web.dto.ClosePeriodRequest;
 import com.infinitematters.bookkeeping.web.dto.ForceClosePeriodRequest;
 import com.infinitematters.bookkeeping.web.dto.AddCloseNoteRequest;
+import com.infinitematters.bookkeeping.web.dto.CloseAttestationResponse;
 import com.infinitematters.bookkeeping.web.dto.ClosePlaybookItemResponse;
+import com.infinitematters.bookkeeping.web.dto.ConfirmCloseAttestationRequest;
 import com.infinitematters.bookkeeping.web.dto.UpdateClosePlaybookAssignmentRequest;
 import com.infinitematters.bookkeeping.web.dto.UpdateClosePlaybookStatusRequest;
+import com.infinitematters.bookkeeping.web.dto.UpdateCloseAttestationRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -160,6 +163,48 @@ public class PeriodsController {
                 .stream()
                 .findFirst()
                 .orElseThrow();
+    }
+
+    @GetMapping("/attestation")
+    public CloseAttestationResponse attestation(@RequestParam UUID organizationId,
+                                                @RequestParam String month) {
+        tenantAccessService.requireAccess(organizationId);
+        return periodCloseService.getCloseAttestation(organizationId, YearMonth.parse(month));
+    }
+
+    @PostMapping("/attestation")
+    public CloseAttestationResponse updateAttestation(@RequestParam UUID organizationId,
+                                                      @Valid @RequestBody UpdateCloseAttestationRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        CloseAttestationResponse response = periodCloseService.updateCloseAttestation(
+                organizationId,
+                YearMonth.parse(request.month()),
+                request.closeOwnerUserId(),
+                request.closeApproverUserId(),
+                request.summary());
+        auditService.record(
+                organizationId,
+                "PERIOD_CLOSE_ATTESTATION_UPDATED",
+                "accounting_period",
+                request.month(),
+                "Close attestation updated by user " + actorUserId + " for month " + request.month());
+        return response;
+    }
+
+    @PostMapping("/attestation/confirm")
+    public CloseAttestationResponse confirmAttestation(@RequestParam UUID organizationId,
+                                                       @Valid @RequestBody ConfirmCloseAttestationRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        CloseAttestationResponse response = periodCloseService.confirmCloseAttestation(
+                organizationId,
+                YearMonth.parse(request.month()));
+        auditService.record(
+                organizationId,
+                "PERIOD_CLOSE_ATTESTED",
+                "accounting_period",
+                request.month(),
+                "Close attestation confirmed by user " + actorUserId + " for month " + request.month());
+        return response;
     }
 
     @GetMapping("/signoffs")

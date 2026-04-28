@@ -10,11 +10,14 @@ import {
     addCloseSignoff,
     assignClosePlaybookItem,
     closePeriod,
+    CloseAttestation,
     CloseChecklistSummary,
     ClosePlaybookItem,
+    confirmCloseAttestation,
     completeClosePlaybookItem,
     createAdjustmentEntry,
     forceClosePeriod,
+    getCloseAttestation,
     getCloseChecklist,
     LedgerEntrySummary,
     listCloseNotes,
@@ -23,6 +26,7 @@ import {
     listAccountingPeriods,
     listLedgerEntries,
     AccountingPeriodSummary,
+    updateCloseAttestation,
 } from "@/lib/api/close";
 import { listFinancialAccounts, FinancialAccount } from "@/lib/api/accounts";
 import { listMemberships, MembershipDetail } from "@/lib/api/access";
@@ -164,6 +168,13 @@ function ClosePageContent() {
     const [signoffMessage, setSignoffMessage] = useState("");
     const [signoffError, setSignoffError] = useState("");
     const [savingSignoff, setSavingSignoff] = useState(false);
+    const [attestationOwnerUserId, setAttestationOwnerUserId] = useState("");
+    const [attestationApproverUserId, setAttestationApproverUserId] = useState("");
+    const [attestationSummary, setAttestationSummary] = useState("");
+    const [attestationMessage, setAttestationMessage] = useState("");
+    const [attestationError, setAttestationError] = useState("");
+    const [savingAttestation, setSavingAttestation] = useState(false);
+    const [confirmingAttestation, setConfirmingAttestation] = useState(false);
     const [lines, setLines] = useState<AdjustmentLineDraft[]>([
         accountCodeParam
             ? { ...EMPTY_LINE(), accountCode: accountCodeParam }
@@ -220,6 +231,11 @@ function ClosePageContent() {
         queryKey: ["closePlaybookItems", organizationId, selectedMonth],
         enabled: hydrated && Boolean(organizationId) && Boolean(selectedMonth),
         queryFn: () => listClosePlaybookItems(organizationId, selectedMonth),
+    });
+    const closeAttestationQuery = useQuery<CloseAttestation, Error>({
+        queryKey: ["closeAttestation", organizationId, selectedMonth],
+        enabled: hydrated && Boolean(organizationId) && Boolean(selectedMonth),
+        queryFn: () => getCloseAttestation(organizationId, selectedMonth),
     });
     const membershipsQuery = useQuery<MembershipDetail[], Error>({
         queryKey: ["memberships", organizationId],
@@ -288,6 +304,7 @@ function ClosePageContent() {
               organizationsQuery.isLoading ||
               currentUserQuery.isLoading ||
               closePlaybookQuery.isLoading ||
+              closeAttestationQuery.isLoading ||
               membershipsQuery.isLoading ||
               closeNotesQuery.isLoading ||
               closeSignoffsQuery.isLoading ||
@@ -302,6 +319,7 @@ function ClosePageContent() {
         organizationsQuery.error?.message ??
         currentUserQuery.error?.message ??
         closePlaybookQuery.error?.message ??
+        closeAttestationQuery.error?.message ??
         membershipsQuery.error?.message ??
         closeNotesQuery.error?.message ??
         closeSignoffsQuery.error?.message ??
@@ -391,6 +409,7 @@ function ClosePageContent() {
     const closeNotes = closeNotesQuery.data ?? [];
     const closeSignoffs = closeSignoffsQuery.data ?? [];
     const closePlaybookItems = closePlaybookQuery.data ?? [];
+    const closeAttestation = closeAttestationQuery.data ?? null;
     const memberships = membershipsQuery.data ?? [];
     const monthAdjustments = useMemo(
         () =>
@@ -407,6 +426,17 @@ function ClosePageContent() {
         (signoff) => signoff.actorUserId && signoff.actorUserId === currentUser?.id
     );
     const canSignOffClose = canManageClose && Boolean(selectedMonth);
+    const attestationReady = Boolean(closeAttestation?.summary?.trim());
+
+    useEffect(() => {
+        setAttestationOwnerUserId(closeAttestation?.closeOwner?.id ?? "");
+        setAttestationApproverUserId(closeAttestation?.closeApprover?.id ?? "");
+        setAttestationSummary(closeAttestation?.summary ?? "");
+    }, [
+        closeAttestation?.closeApprover?.id,
+        closeAttestation?.closeOwner?.id,
+        closeAttestation?.summary,
+    ]);
 
     useEffect(() => {
         if (!accountCodeParam) {
@@ -517,6 +547,9 @@ function ClosePageContent() {
         });
         await queryClient.invalidateQueries({
             queryKey: ["closePlaybookItems", activeOrganizationId, selectedMonth],
+        });
+        await queryClient.invalidateQueries({
+            queryKey: ["closeAttestation", activeOrganizationId, selectedMonth],
         });
     }
 
@@ -689,6 +722,70 @@ function ClosePageContent() {
             setSignoffError(err instanceof Error ? err.message : "Unable to record close sign-off.");
         } finally {
             setSavingSignoff(false);
+        }
+    }
+
+    async function handleSaveAttestation(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!organizationId || !selectedMonth) {
+            setAttestationError("Choose a month before saving the close attestation.");
+            return;
+        }
+        if (!canManageClose) {
+            setAttestationError("Only owners and admins can update the month-end attestation.");
+            return;
+        }
+
+        setSavingAttestation(true);
+        setAttestationError("");
+        setAttestationMessage("");
+
+        try {
+            await updateCloseAttestation(organizationId, {
+                month: selectedMonth,
+                closeOwnerUserId: attestationOwnerUserId || null,
+                closeApproverUserId: attestationApproverUserId || null,
+                summary: attestationSummary,
+            });
+            await queryClient.invalidateQueries({
+                queryKey: ["closeAttestation", organizationId, selectedMonth],
+            });
+            setAttestationMessage("Month-end attestation plan saved.");
+        } catch (err) {
+            setAttestationError(err instanceof Error ? err.message : "Unable to save the close attestation.");
+        } finally {
+            setSavingAttestation(false);
+        }
+    }
+
+    async function handleConfirmAttestation() {
+        if (!organizationId || !selectedMonth) {
+            setAttestationError("Choose a month before confirming the close attestation.");
+            return;
+        }
+        if (!canManageClose) {
+            setAttestationError("Only owners and admins can confirm the month-end attestation.");
+            return;
+        }
+        if (!attestationReady) {
+            setAttestationError("Add an attestation summary before confirming the month-end record.");
+            return;
+        }
+
+        setConfirmingAttestation(true);
+        setAttestationError("");
+        setAttestationMessage("");
+
+        try {
+            await confirmCloseAttestation(organizationId, selectedMonth);
+            await queryClient.invalidateQueries({
+                queryKey: ["closeAttestation", organizationId, selectedMonth],
+            });
+            setAttestationMessage("Month-end attestation confirmed.");
+        } catch (err) {
+            setAttestationError(err instanceof Error ? err.message : "Unable to confirm the close attestation.");
+        } finally {
+            setConfirmingAttestation(false);
         }
     }
 
@@ -898,6 +995,16 @@ function ClosePageContent() {
                                     : "At least one control still needs attention."
                             }
                             tone={checklist?.closeReady ? "success" : "warning"}
+                        />
+                        <SummaryMetric
+                            label="Attestation"
+                            value={closeAttestation?.attested ? "Confirmed" : "Pending"}
+                            detail={
+                                closeAttestation?.attested
+                                    ? "Owner-level month-end accountability has been captured."
+                                    : "Month-level ownership and certification still need to be confirmed."
+                            }
+                            tone={closeAttestation?.attested ? "success" : "default"}
                         />
                     </div>
                 }
@@ -1831,6 +1938,141 @@ function ClosePageContent() {
                             );
                         })
                     )}
+                </div>
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Month attestation"
+                title="Who owns the month and what it means to close it"
+                description="Capture the accountable owner, the reviewing approver, and the short certification summary that says the month is ready to move from active work into formal approval."
+            >
+                <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                    <div>
+                        {!canManageClose ? (
+                            <div className="mb-4">
+                                <StatusBanner
+                                    tone="muted"
+                                    title="Attestation access is limited"
+                                    message="Only workspace owners and admins can update the month-end owner, approver, and certification summary."
+                                />
+                            </div>
+                        ) : null}
+                        {attestationError ? (
+                            <div className="mb-4">
+                                <StatusBanner tone="error" title="Attestation not saved" message={attestationError} />
+                            </div>
+                        ) : null}
+                        {attestationMessage ? (
+                            <div className="mb-4">
+                                <StatusBanner tone="success" title="Attestation updated" message={attestationMessage} />
+                            </div>
+                        ) : null}
+                        <form className="space-y-3" onSubmit={handleSaveAttestation}>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="space-y-2 text-sm text-zinc-300">
+                                    <span>Close owner</span>
+                                    <select
+                                        value={attestationOwnerUserId}
+                                        disabled={!canManageClose}
+                                        onChange={(event) => setAttestationOwnerUserId(event.target.value)}
+                                        className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                    >
+                                        <option value="">Select owner</option>
+                                        {memberships.map((membership) => (
+                                            <option key={`attestation-owner-${membership.id}`} value={membership.user.id}>
+                                                {membership.user.fullName}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="space-y-2 text-sm text-zinc-300">
+                                    <span>Approver</span>
+                                    <select
+                                        value={attestationApproverUserId}
+                                        disabled={!canManageClose}
+                                        onChange={(event) => setAttestationApproverUserId(event.target.value)}
+                                        className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                    >
+                                        <option value="">Select approver</option>
+                                        {memberships.map((membership) => (
+                                            <option key={`attestation-approver-${membership.id}`} value={membership.user.id}>
+                                                {membership.user.fullName}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+                            <label className="space-y-2 text-sm text-zinc-300">
+                                <span>Attestation summary for {selectedMonth || "this month"}</span>
+                                <textarea
+                                    value={attestationSummary}
+                                    onChange={(event) => setAttestationSummary(event.target.value)}
+                                    rows={5}
+                                    disabled={!canManageClose}
+                                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                    placeholder="This month is materially complete, unresolved items are documented, and leadership understands the remaining judgment calls."
+                                />
+                            </label>
+                            <div className="flex flex-wrap gap-3">
+                                <button
+                                    type="submit"
+                                    disabled={!canManageClose || savingAttestation}
+                                    className="rounded-md border border-white/10 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-white/[0.05] disabled:opacity-50"
+                                >
+                                    {savingAttestation ? "Saving attestation..." : "Save attestation plan"}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!canManageClose || !attestationReady || confirmingAttestation}
+                                    onClick={() => void handleConfirmAttestation()}
+                                    className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
+                                >
+                                    {confirmingAttestation ? "Confirming..." : "Confirm month attestation"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    <div className="space-y-3">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
+                                Current accountability
+                            </p>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-md border border-white/6 bg-black/20 p-3">
+                                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Close owner</p>
+                                    <p className="mt-2 text-sm font-medium text-white">
+                                        {closeAttestation?.closeOwner?.fullName ?? "Not assigned yet"}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border border-white/6 bg-black/20 p-3">
+                                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Approver</p>
+                                    <p className="mt-2 text-sm font-medium text-white">
+                                        {closeAttestation?.closeApprover?.fullName ?? "Not assigned yet"}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="mt-4 rounded-md border border-white/6 bg-black/20 p-3">
+                                <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Certification summary</p>
+                                <p className="mt-2 text-sm leading-6 text-zinc-200">
+                                    {closeAttestation?.summary?.trim() ||
+                                        "No month-level attestation summary has been recorded yet."}
+                                </p>
+                            </div>
+                        </div>
+                        {closeAttestation?.attested ? (
+                            <StatusBanner
+                                tone="success"
+                                title="Attestation confirmed"
+                                message={`Confirmed${closeAttestation.attestedBy ? ` by ${closeAttestation.attestedBy.fullName}` : ""}${closeAttestation.attestedAt ? ` on ${new Date(closeAttestation.attestedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}.`}
+                            />
+                        ) : (
+                            <StatusBanner
+                                tone="muted"
+                                title="Attestation still pending"
+                                message="Save the owner, approver, and certification summary first, then confirm the month-level attestation when the team is ready to stand behind the close story."
+                            />
+                        )}
+                    </div>
                 </div>
             </SectionBand>
 
