@@ -337,6 +337,12 @@ function TransactionsPageContent() {
                                                     Open close workspace
                                                 </Link>
                                             ) : null}
+                                            <Link
+                                                href="/activity"
+                                                className="rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-200 hover:bg-white/[0.05]"
+                                            >
+                                                Open activity trail
+                                            </Link>
                                         </div>
                                     </div>
                                 </div>

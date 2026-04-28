@@ -38,4 +38,21 @@ public class FinancialAccountService {
         return repository.findById(accountId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown financial account: " + accountId));
     }
+
+    public FinancialAccount update(UUID accountId,
+                                   UUID organizationId,
+                                   String name,
+                                   String institutionName,
+                                   boolean active) {
+        FinancialAccount account = get(accountId);
+        if (!account.getOrganization().getId().equals(organizationId)) {
+            throw new IllegalArgumentException(
+                    "Financial account does not belong to organization " + organizationId);
+        }
+
+        account.setName(name);
+        account.setInstitutionName(institutionName);
+        account.setActive(active);
+        return repository.save(account);
+    }
 }

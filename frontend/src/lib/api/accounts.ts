@@ -19,6 +19,13 @@ export type CreateFinancialAccountRequest = {
     currency: string;
 };
 
+export type UpdateFinancialAccountRequest = {
+    organizationId: string;
+    name: string;
+    institutionName: string;
+    active: boolean;
+};
+
 export async function listFinancialAccounts(
     organizationId: string
 ): Promise<FinancialAccount[]> {
@@ -37,4 +44,21 @@ export async function createFinancialAccount(
         method: "POST",
         body: JSON.stringify(payload),
     });
+}
+
+export async function updateFinancialAccount(
+    accountId: string,
+    payload: UpdateFinancialAccountRequest
+): Promise<FinancialAccount> {
+    return apiFetch<FinancialAccount>(
+        `/api/accounts/${encodeURIComponent(accountId)}?organizationId=${encodeURIComponent(payload.organizationId)}`,
+        {
+            method: "PATCH",
+            body: JSON.stringify({
+                name: payload.name,
+                institutionName: payload.institutionName,
+                active: payload.active,
+            }),
+        }
+    );
 }

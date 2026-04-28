@@ -39,12 +39,61 @@ type AccountSuggestion = {
     accountName: string;
 };
 
+type AdjustmentTemplate = {
+    id: string;
+    label: string;
+    description: string;
+    entryTitle: string;
+    adjustmentReason: string;
+    lines: Array<{
+        accountCode: string;
+        entrySide: "DEBIT" | "CREDIT";
+        amount: string;
+    }>;
+};
+
 const EMPTY_LINE = (): AdjustmentLineDraft => ({
     accountCode: "",
     accountName: "",
     entrySide: "DEBIT",
     amount: "",
 });
+
+const ADJUSTMENT_TEMPLATES: AdjustmentTemplate[] = [
+    {
+        id: "accrued-expense",
+        label: "Accrued expense",
+        description: "Book an end-of-month expense that was incurred but not yet paid.",
+        entryTitle: "Accrue month-end expense",
+        adjustmentReason: "Recognize an unpaid month-end expense in the current period.",
+        lines: [
+            { accountCode: "6200", entrySide: "DEBIT", amount: "" },
+            { accountCode: "2200", entrySide: "CREDIT", amount: "" },
+        ],
+    },
+    {
+        id: "prepaid-amortization",
+        label: "Prepaid amortization",
+        description: "Move a portion of a prepaid balance into the current month's expense.",
+        entryTitle: "Amortize prepaid expense",
+        adjustmentReason: "Release prepaid balance into the current reporting period.",
+        lines: [
+            { accountCode: "6100", entrySide: "DEBIT", amount: "" },
+            { accountCode: "1200", entrySide: "CREDIT", amount: "" },
+        ],
+    },
+    {
+        id: "owner-reimbursement",
+        label: "Owner reimbursement accrual",
+        description: "Record an owner-paid business expense that still needs reimbursement.",
+        entryTitle: "Accrue owner reimbursement",
+        adjustmentReason: "Capture a business expense paid personally and owed back to the owner.",
+        lines: [
+            { accountCode: "6900", entrySide: "DEBIT", amount: "" },
+            { accountCode: "2100", entrySide: "CREDIT", amount: "" },
+        ],
+    },
+];
 
 function ClosePageContent() {
     const searchParams = useSearchParams();
@@ -272,6 +321,26 @@ function ClosePageContent() {
         setLines((current) =>
             current.length <= 2 ? current : current.filter((_, lineIndex) => lineIndex !== index)
         );
+    }
+
+    function applyTemplate(template: AdjustmentTemplate) {
+        const templateLines = template.lines.map((line) => {
+            const matchedSuggestion = accountSuggestions.find(
+                (suggestion) => suggestion.accountCode === line.accountCode
+            );
+            return {
+                accountCode: line.accountCode,
+                accountName: matchedSuggestion?.accountName ?? "",
+                entrySide: line.entrySide,
+                amount: line.amount,
+            };
+        });
+
+        setDescription(template.entryTitle);
+        setAdjustmentReason(template.adjustmentReason);
+        setLines(templateLines);
+        setAdjustmentError("");
+        setAdjustmentSuccess("");
     }
 
     async function refreshCloseQueries(activeOrganizationId: string) {
@@ -634,6 +703,29 @@ function ClosePageContent() {
                             <StatusBanner tone="success" title="Adjustment posted" message={adjustmentSuccess} />
                         </div>
                     ) : null}
+
+                    <div className="mb-4 rounded-lg border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                            Adjustment templates
+                        </p>
+                        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                            {ADJUSTMENT_TEMPLATES.map((template) => (
+                                <button
+                                    key={template.id}
+                                    type="button"
+                                    onClick={() => applyTemplate(template)}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-left hover:border-white/20"
+                                >
+                                    <p className="text-sm font-semibold text-white">
+                                        {template.label}
+                                    </p>
+                                    <p className="mt-2 text-sm text-zinc-400">
+                                        {template.description}
+                                    </p>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
                     <form className="space-y-4" onSubmit={handlePostAdjustment}>
                         <div className="grid gap-4 md:grid-cols-2">

@@ -264,6 +264,43 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void ownersCanUpdateFinancialAccounts() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "account-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Account Owner", password);
+        String organizationId = createOrganization("Account Ops Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        String accountId = createAccount(organizationId, ownerTokens.accessToken());
+
+        mockMvc.perform(patch("/api/accounts/" + accountId)
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Reserve Checking",
+                                  "institutionName": "Updated Bank",
+                                  "active": false
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Reserve Checking"))
+                .andExpect(jsonPath("$.institutionName").value("Updated Bank"))
+                .andExpect(jsonPath("$.active").value(false));
+
+        mockMvc.perform(get("/api/accounts")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Reserve Checking"))
+                .andExpect(jsonPath("$[0].active").value(false));
+    }
+
+    @Test
     void ownerCanListAndUpdateOrganizationMemberships() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "membership-owner-" + suffix + "@example.test";

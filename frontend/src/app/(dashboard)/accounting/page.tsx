@@ -1,10 +1,15 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { listLedgerAccounts, LedgerAccountReference } from "@/lib/api/accounting";
+import {
+    FinancialAccount,
+    listFinancialAccounts,
+    updateFinancialAccount,
+} from "@/lib/api/accounts";
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     LoadingPanel,
@@ -16,21 +21,43 @@ import {
 } from "@/components/app-surfaces";
 
 function AccountingPageContent() {
+    const queryClient = useQueryClient();
     const searchParams = useSearchParams();
     const initialCodeFilter = searchParams.get("accountCode") ?? "";
     const { organizationId, hydrated } = useOrganizationSession();
     const [search, setSearch] = useState(initialCodeFilter);
     const [classificationFilter, setClassificationFilter] = useState("ALL");
+    const [accountMessage, setAccountMessage] = useState("");
+    const [accountError, setAccountError] = useState("");
+    const [savingAccountId, setSavingAccountId] = useState("");
+    const [accountDrafts, setAccountDrafts] = useState<
+        Record<string, { name: string; institutionName: string; active: boolean }>
+    >({});
 
     const accountsQuery = useQuery<LedgerAccountReference[], Error>({
         queryKey: ["ledgerAccounts", organizationId],
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listLedgerAccounts(organizationId),
     });
+    const financialAccountsQuery = useQuery<FinancialAccount[], Error>({
+        queryKey: ["financialAccounts", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => listFinancialAccounts(organizationId),
+    });
 
-    const loading = hydrated && organizationId ? accountsQuery.isLoading : false;
-    const queryError = accountsQuery.error?.message ?? "";
+    const loading =
+        hydrated && organizationId
+            ? accountsQuery.isLoading || financialAccountsQuery.isLoading
+            : false;
+    const queryError =
+        accountsQuery.error?.message ??
+        financialAccountsQuery.error?.message ??
+        "";
     const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
+    const financialAccounts = useMemo(
+        () => financialAccountsQuery.data ?? [],
+        [financialAccountsQuery.data]
+    );
     const classifications = Array.from(
         new Set(accounts.map((account) => account.classification))
     );
@@ -50,6 +77,62 @@ function AccountingPageContent() {
             return matchesClassification && matchesSearch;
         });
     }, [accounts, classificationFilter, search]);
+
+    function accountDraft(account: FinancialAccount) {
+        return (
+            accountDrafts[account.id] ?? {
+                name: account.name,
+                institutionName: account.institutionName ?? "",
+                active: account.active,
+            }
+        );
+    }
+
+    function updateAccountDraft(
+        accountId: string,
+        field: "name" | "institutionName" | "active",
+        value: string | boolean
+    ) {
+        setAccountDrafts((current) => ({
+            ...current,
+            [accountId]: {
+                ...current[accountId],
+                [field]: value,
+            } as { name: string; institutionName: string; active: boolean },
+        }));
+    }
+
+    async function saveAccount(account: FinancialAccount) {
+        if (!organizationId) return;
+        const draft = accountDraft(account);
+        setSavingAccountId(account.id);
+        setAccountError("");
+        setAccountMessage("");
+
+        try {
+            await updateFinancialAccount(account.id, {
+                organizationId,
+                name: draft.name.trim(),
+                institutionName: draft.institutionName.trim(),
+                active: draft.active,
+            });
+            await queryClient.invalidateQueries({
+                queryKey: ["financialAccounts", organizationId],
+            });
+            await queryClient.invalidateQueries({
+                queryKey: ["ledgerAccounts", organizationId],
+            });
+            setAccountMessage(`${draft.name.trim()} updated successfully.`);
+        } catch (error) {
+            setAccountError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to update account."
+            );
+        } finally {
+            setSavingAccountId("");
+        }
+    }
 
     if (!hydrated || loading) {
         return (
@@ -235,6 +318,12 @@ function AccountingPageContent() {
                                             >
                                                 Use in close
                                             </Link>
+                                            <Link
+                                                href="/activity"
+                                                className="rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-200 hover:bg-white/[0.05]"
+                                            >
+                                                Open activity trail
+                                            </Link>
                                         </div>
                                     </div>
                                 </div>
@@ -242,6 +331,119 @@ function AccountingPageContent() {
                         ))}
                     </div>
                 )}
+            </SectionBand>
+
+            <SectionBand
+                eyebrow="Account operations"
+                title="Manage financial accounts"
+                description="Keep account names, institutions, and active status clean so imports, reconciliation, and close all speak the same language."
+            >
+                {accountError ? (
+                    <div className="mb-4">
+                        <StatusBanner
+                            tone="error"
+                            title="Account update failed"
+                            message={accountError}
+                        />
+                    </div>
+                ) : null}
+                {accountMessage ? (
+                    <div className="mb-4">
+                        <StatusBanner
+                            tone="success"
+                            title="Account updated"
+                            message={accountMessage}
+                        />
+                    </div>
+                ) : null}
+                <div className="space-y-3">
+                    {financialAccounts.map((account) => {
+                        const draft = accountDraft(account);
+                        return (
+                            <div
+                                key={account.id}
+                                className="rounded-lg border border-white/10 bg-white/[0.03] p-4"
+                            >
+                                <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                                    <label className="space-y-2 text-sm text-zinc-300">
+                                        <span>Account name</span>
+                                        <input
+                                            value={draft.name}
+                                            onChange={(event) =>
+                                                updateAccountDraft(
+                                                    account.id,
+                                                    "name",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                        />
+                                    </label>
+                                    <label className="space-y-2 text-sm text-zinc-300">
+                                        <span>Institution</span>
+                                        <input
+                                            value={draft.institutionName}
+                                            onChange={(event) =>
+                                                updateAccountDraft(
+                                                    account.id,
+                                                    "institutionName",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-white outline-none"
+                                        />
+                                    </label>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <label className="flex items-center gap-2 text-sm text-zinc-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={draft.active}
+                                                onChange={(event) =>
+                                                    updateAccountDraft(
+                                                        account.id,
+                                                        "active",
+                                                        event.target.checked
+                                                    )
+                                                }
+                                            />
+                                            Active
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => saveAccount(account)}
+                                            disabled={savingAccountId === account.id}
+                                            className="rounded-md bg-emerald-300 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                                        >
+                                            {savingAccountId === account.id
+                                                ? "Saving..."
+                                                : "Save changes"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
+                                    <span>{account.accountType}</span>
+                                    <span>·</span>
+                                    <span>{account.currency}</span>
+                                    <span>·</span>
+                                    <Link
+                                        href={`/transactions?accountCode=${encodeURIComponent(
+                                            account.accountType === "BANK"
+                                                ? "1000"
+                                                : account.accountType === "CREDIT_CARD"
+                                                  ? "2000"
+                                                  : account.accountType === "CASH"
+                                                    ? "1010"
+                                                    : "2300"
+                                        )}`}
+                                        className="text-zinc-300 hover:text-white"
+                                    >
+                                        Follow activity
+                                    </Link>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </SectionBand>
         </main>
     );

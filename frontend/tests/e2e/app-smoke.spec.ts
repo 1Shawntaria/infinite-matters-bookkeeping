@@ -1159,6 +1159,24 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname.startsWith("/api/accounts/") && request.method() === "PATCH") {
+      const accountId = url.pathname.split("/")[3];
+      const body = request.postDataJSON() as {
+        name: string;
+        institutionName: string;
+        active: boolean;
+      };
+      const index = financialAccounts.findIndex((account) => account.id === accountId);
+      financialAccounts[index] = {
+        ...financialAccounts[index],
+        name: body.name,
+        institutionName: body.institutionName,
+        active: body.active,
+      };
+      await fulfillJson(route, financialAccounts[index]);
+      return;
+    }
+
     if (url.pathname === "/api/dashboard/snapshot" && request.method() === "GET") {
       const isReconciliationPage = page.url().includes("/reconciliation");
       await fulfillJson(
@@ -1589,6 +1607,11 @@ test("close workspace exposes checklist, ledger, and adjustment controls", async
   await expect(page.getByText("Review queue cleared")).toBeVisible();
   await expect(page.getByText("Account reconciliations complete")).toBeVisible();
   await expect(page.getByText("Imported CLOUDCO transaction")).toBeVisible();
+  await page.getByRole("button", { name: "Accrued expense" }).click();
+  await expect(page.getByLabel("Description")).toHaveValue("Accrue month-end expense");
+  await expect(page.getByLabel("Adjustment reason")).toHaveValue(
+    "Recognize an unpaid month-end expense in the current period."
+  );
   await expect(page.getByRole("button", { name: "Post adjustment" })).toBeVisible();
 });
 
@@ -1616,6 +1639,12 @@ test("accounting workspace ties account references back to transactions and clos
   await expect(page.getByText("SYSTEM_CATEGORY, LEDGER_ACTIVITY")).toBeVisible();
   await expect(page.getByRole("link", { name: "View related transactions" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Use in close" })).toBeVisible();
+
+  await page.getByLabel("Account name").fill("Reserve Checking");
+  await page.getByLabel("Institution").fill("Treasury Bank");
+  await page.getByRole("checkbox", { name: "Active" }).uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Reserve Checking updated successfully.")).toBeVisible();
 });
 
 test("reconciliation flow starts from the account card and opens real account details", async ({ page }) => {
