@@ -1603,6 +1603,21 @@ test("exceptions workspace groups blockers that still stand in the way of close"
   await expect(page).toHaveURL(/\/close$/);
 });
 
+test("run close workspace sequences the month-end workflow", async ({ page }) => {
+  await seedOrganization(page);
+  await page.goto("/run-close");
+
+  await expect(page.getByRole("heading", { name: "Run Close" })).toBeVisible();
+  await expect(page.getByText("Close runbook progress")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resolve review queue decisions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Finish reconciliations" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Clear delivery and exception risk" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Post adjustments and leave notes" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Approve and close the month" })).toBeVisible();
+  await page.getByRole("link", { name: "Open review queue" }).first().click();
+  await expect(page).toHaveURL(/\/review-queue$/);
+});
+
 test("access workspace lets operators review and update memberships", async ({ page }) => {
   await seedOrganization(page);
   await page.goto("/access");
