@@ -2061,7 +2061,7 @@ test("close workspace rejects the same person as attestation owner and approver"
   await page.goto("/close");
 
   await page.getByLabel("Close owner").selectOption("user-1");
-  await page.getByLabel("Approver").selectOption("user-1");
+  await page.getByLabel("Approver").last().selectOption("user-1");
   await page
     .getByLabel("Attestation summary for 2026-04")
     .fill("April is materially complete and awaiting an independent final certification.");
