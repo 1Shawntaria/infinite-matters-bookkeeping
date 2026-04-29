@@ -23,6 +23,7 @@ import com.infinitematters.bookkeeping.web.dto.DeadLetterResolutionRequest;
 import com.infinitematters.bookkeeping.web.dto.ResolveDeadLetterNoResendRequest;
 import com.infinitematters.bookkeeping.web.dto.RetryDeadLetterRequest;
 import com.infinitematters.bookkeeping.web.dto.SnoozeWorkflowTaskRequest;
+import com.infinitematters.bookkeeping.web.dto.WorkflowTaskActionRequest;
 import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
 import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
 import com.infinitematters.bookkeeping.workflows.WorkflowInboxSummary;
@@ -69,6 +70,30 @@ public class WorkflowInboxController {
     public WorkflowInboxSummary inbox(@RequestParam UUID organizationId) {
         UUID userId = tenantAccessService.requireAccess(organizationId);
         return reviewQueueService.inbox(organizationId, userId);
+    }
+
+    @PostMapping("/inbox/attention-tasks/{taskId}/acknowledge")
+    public ReviewTaskSummary acknowledgeInboxAttentionTask(@RequestParam UUID organizationId,
+                                                           @PathVariable UUID taskId,
+                                                           @RequestBody(required = false) WorkflowTaskActionRequest request) {
+        UUID actorUserId = tenantAccessService.requireAccess(organizationId);
+        return reviewQueueService.acknowledgeCloseControlTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                request != null ? request.note() : null);
+    }
+
+    @PostMapping("/inbox/attention-tasks/{taskId}/resolve")
+    public void resolveInboxAttentionTask(@RequestParam UUID organizationId,
+                                          @PathVariable UUID taskId,
+                                          @RequestBody(required = false) WorkflowTaskActionRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        reviewQueueService.resolveCloseControlTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                request != null ? request.note() : null);
     }
 
     @GetMapping("/notifications")

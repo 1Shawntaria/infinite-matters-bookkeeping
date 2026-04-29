@@ -53,6 +53,36 @@ export async function getWorkflowInbox(
     );
 }
 
+export async function acknowledgeWorkflowAttentionTask(
+    organizationId: string,
+    taskId: string,
+    note: string
+): Promise<WorkflowAttentionTask> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<WorkflowAttentionTask>(
+        `/api/workflows/inbox/attention-tasks/${encodeURIComponent(taskId)}/acknowledge?${query.toString()}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ note }),
+        }
+    );
+}
+
+export async function resolveWorkflowAttentionTask(
+    organizationId: string,
+    taskId: string,
+    note: string
+): Promise<void> {
+    const query = new URLSearchParams({ organizationId });
+    await apiFetch<void>(
+        `/api/workflows/inbox/attention-tasks/${encodeURIComponent(taskId)}/resolve?${query.toString()}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ note }),
+        }
+    );
+}
+
 export async function listWorkflowNotifications(
     organizationId: string
 ): Promise<NotificationSummaryItem[]> {

@@ -485,6 +485,86 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.workflowInbox.highPriorityCount").value(1))
                 .andExpect(jsonPath("$.workflowInbox.attentionTasks[0].taskType").value("CLOSE_ATTESTATION_FOLLOW_UP"))
                 .andExpect(jsonPath("$.workflowInbox.attentionTasks[0].assignedToUserId").value(approverUserId));
+
+        String taskId = objectMapper.readTree(
+                        mockMvc.perform(get("/api/workflows/inbox")
+                                        .header(ORG_HEADER, organizationId)
+                                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                                        .param("organizationId", organizationId))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString())
+                .path("attentionTasks")
+                .path(0)
+                .path("taskId")
+                .asText();
+
+        mockMvc.perform(post("/api/workflows/inbox/attention-tasks/" + taskId + "/acknowledge")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Reviewed from API test"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.acknowledgedByUserId").value(approverUserId))
+                .andExpect(jsonPath("$.acknowledgedAt").isNotEmpty());
+    }
+
+    @Test
+    void forceCloseReviewTaskCanBeResolvedAfterReview() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "force-close-owner-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Force Close Owner", password);
+        String organizationId = createOrganization("Force Close Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        auditService.recordForUser(
+                UUID.fromString(ownerUserId),
+                UUID.fromString(organizationId),
+                "PERIOD_FORCE_CLOSED",
+                "accounting_period",
+                "2026-02",
+                "Force closed period 2026-02-01 through 2026-02-28 with reason: Banking statement arrived late.");
+
+        MvcResult inboxResult = mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attentionTasks[0].taskType").value("FORCE_CLOSE_REVIEW"))
+                .andReturn();
+
+        String taskId = objectMapper.readTree(inboxResult.getResponse().getContentAsString())
+                .path("attentionTasks")
+                .path(0)
+                .path("taskId")
+                .asText();
+
+        mockMvc.perform(post("/api/workflows/inbox/attention-tasks/" + taskId + "/resolve")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Reviewed override support and documented rationale."
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openCount").value(0))
+                .andExpect(jsonPath("$.attentionTasks").isEmpty());
     }
 
     @Test

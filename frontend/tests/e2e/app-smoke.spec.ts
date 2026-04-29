@@ -164,7 +164,12 @@ function dashboardSnapshot(organizationId: string) {
   };
 }
 
-function workflowInboxSummary(organizationId: string) {
+function workflowInboxSummary(
+  organizationId: string,
+  attentionTasksOverride?: Array<{ taskId: string; [key: string]: unknown }>
+) {
+  const attentionTasks = attentionTasksOverride ?? [];
+
   if (organizationId === "org-empty") {
     return {
       cardId: "workflow-inbox",
@@ -178,7 +183,7 @@ function workflowInboxSummary(organizationId: string) {
       recommendedActionKey: null,
       recommendedActionPath: null,
       recommendedActionUrgency: null,
-      attentionTasks: [],
+      attentionTasks,
     };
   }
 
@@ -195,51 +200,23 @@ function workflowInboxSummary(organizationId: string) {
       recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
       recommendedActionPath: "/review-queue",
       recommendedActionUrgency: "NORMAL",
-      attentionTasks: [],
+      attentionTasks,
     };
   }
 
   return {
     cardId: "workflow-inbox",
-    openCount: 5,
+    openCount: 4 + attentionTasks.length,
     overdueCount: 1,
     dueTodayCount: 1,
-    highPriorityCount: 2,
+    highPriorityCount: attentionTasks.length,
     unassignedCount: 1,
     assignedToCurrentUserCount: 1,
     recommendedActionLabel: "Resolve open review tasks",
     recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
     recommendedActionPath: "/review-queue",
     recommendedActionUrgency: "HIGH",
-    attentionTasks: [
-      {
-        taskId: "close-follow-up-1",
-        transactionId: null,
-        notificationId: null,
-        taskType: "CLOSE_ATTESTATION_FOLLOW_UP",
-        priority: "HIGH",
-        overdue: false,
-        title: "Confirm month-end attestation for 2026-04",
-        description:
-          "Attestation routing or summary was updated, but the month still does not show a recorded confirmation from the assigned approver.",
-        dueDate: "2026-04-25",
-        assignedToUserId: "user-1",
-        assignedToUserName: "Taylor Owner",
-        merchant: null,
-        amount: null,
-        transactionDate: null,
-        proposedCategory: null,
-        confidenceScore: null,
-        route: null,
-        actionPath: "/close?month=2026-04",
-        resolutionComment: "Approver updated after checklist completion.",
-        acknowledgedByUserId: null,
-        acknowledgedAt: null,
-        snoozedUntil: null,
-        resolvedByUserId: null,
-        resolvedAt: null,
-      },
-    ],
+    attentionTasks,
   };
 }
 
@@ -936,6 +913,62 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       createdAt: "2026-04-24T12:06:00Z",
     },
   ];
+  let workflowAttentionTasks = [
+    {
+      taskId: "close-follow-up-1",
+      transactionId: null,
+      notificationId: null,
+      taskType: "CLOSE_ATTESTATION_FOLLOW_UP",
+      priority: "HIGH",
+      overdue: false,
+      title: "Confirm month-end attestation for 2026-04",
+      description:
+        "Attestation routing or summary was updated, but the month still does not show a recorded confirmation from the assigned approver.",
+      dueDate: "2026-04-25",
+      assignedToUserId: "user-1",
+      assignedToUserName: "Taylor Owner",
+      merchant: null,
+      amount: null,
+      transactionDate: null,
+      proposedCategory: null,
+      confidenceScore: null,
+      route: null,
+      actionPath: "/close?month=2026-04",
+      resolutionComment: "Approver updated after checklist completion.",
+      acknowledgedByUserId: null,
+      acknowledgedAt: null,
+      snoozedUntil: null,
+      resolvedByUserId: null,
+      resolvedAt: null,
+    },
+    {
+      taskId: "close-follow-up-2",
+      transactionId: null,
+      notificationId: null,
+      taskType: "FORCE_CLOSE_REVIEW",
+      priority: "HIGH",
+      overdue: true,
+      title: "Review force-close controls for 2026-02",
+      description:
+        "A recent month was force-closed. Revisit the close story and verify the override is fully documented and understood.",
+      dueDate: "2026-04-23",
+      assignedToUserId: "user-1",
+      assignedToUserName: "Taylor Owner",
+      merchant: null,
+      amount: null,
+      transactionDate: null,
+      proposedCategory: null,
+      confidenceScore: null,
+      route: null,
+      actionPath: "/close?month=2026-02",
+      resolutionComment: "Late bank statement override requires owner review.",
+      acknowledgedByUserId: null,
+      acknowledgedAt: null,
+      snoozedUntil: null,
+      resolvedByUserId: null,
+      resolvedAt: null,
+    },
+  ];
 
   async function fulfillJson(
     route: Parameters<Parameters<typeof page.route>[1]>[0],
@@ -1537,7 +1570,40 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
     }
 
     if (url.pathname === "/api/workflows/inbox" && request.method() === "GET") {
-      await fulfillJson(route, workflowInboxSummary(organizationHeader));
+      await fulfillJson(
+        route,
+        workflowInboxSummary(
+          organizationHeader,
+          organizationHeader === "org-primary" ? workflowAttentionTasks : []
+        )
+      );
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/workflows/inbox/attention-tasks/") &&
+      url.pathname.endsWith("/acknowledge") &&
+      request.method() === "POST"
+    ) {
+      const taskId = url.pathname.split("/")[5];
+      const index = workflowAttentionTasks.findIndex((task) => task.taskId === taskId);
+      workflowAttentionTasks[index] = {
+        ...workflowAttentionTasks[index],
+        acknowledgedByUserId: "user-1",
+        acknowledgedAt: "2026-04-24T12:26:00Z",
+      };
+      await fulfillJson(route, workflowAttentionTasks[index]);
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/workflows/inbox/attention-tasks/") &&
+      url.pathname.endsWith("/resolve") &&
+      request.method() === "POST"
+    ) {
+      const taskId = url.pathname.split("/")[5];
+      workflowAttentionTasks = workflowAttentionTasks.filter((task) => task.taskId !== taskId);
+      await fulfillJson(route, { ok: true });
       return;
     }
 
@@ -1958,7 +2024,8 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Workflow follow-up" })).toBeVisible();
   await expect(page.getByText("Confirm month-end attestation for 2026-04")).toBeVisible();
-  await expect(page.getByText("Assigned Taylor Owner")).toBeVisible();
+  await expect(page.getByText("Review force-close controls for 2026-02")).toBeVisible();
+  await expect(page.getByText("Assigned Taylor Owner")).toHaveCount(2);
   await expect(page.getByText("Your password was changed successfully.")).toBeVisible();
   await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();
   await expect(page.getByText("Mailbox unavailable").first()).toBeVisible();
@@ -1969,6 +2036,14 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");
+
+  await page.getByRole("button", { name: "Mark reviewed" }).first().click();
+  await expect(page.getByText("Workflow follow-up marked reviewed.")).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "Reviewed" }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear signal" }).click();
+  await expect(page.getByText("Workflow follow-up cleared.")).toBeVisible();
+  await expect(page.getByText("Review force-close controls for 2026-02")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Retry delivery" }).first().click();
   await expect(page.getByText("Delivery retry queued successfully.")).toBeVisible();

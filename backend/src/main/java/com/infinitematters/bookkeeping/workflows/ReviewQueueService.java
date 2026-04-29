@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Optional;
 
 @Service
 public class ReviewQueueService {
@@ -254,6 +256,34 @@ public class ReviewQueueService {
                 attention);
     }
 
+    @Transactional
+    public ReviewTaskSummary acknowledgeCloseControlTask(UUID organizationId, UUID taskId, UUID actorUserId, String note) {
+        ReviewTaskSummary task = requireCurrentCloseControlTask(organizationId, taskId, actorUserId);
+        auditService.recordForUser(
+                actorUserId,
+                organizationId,
+                "CLOSE_CONTROL_TASK_ACKNOWLEDGED",
+                "workflow_task",
+                task.taskId().toString(),
+                note != null && !note.isBlank() ? note.trim() : "Close control task acknowledged");
+        return requireCurrentCloseControlTask(organizationId, taskId, actorUserId);
+    }
+
+    @Transactional
+    public void resolveCloseControlTask(UUID organizationId, UUID taskId, UUID actorUserId, String note) {
+        ReviewTaskSummary task = requireCurrentCloseControlTask(organizationId, taskId, actorUserId);
+        if (!"FORCE_CLOSE_REVIEW".equals(task.taskType())) {
+            throw new IllegalArgumentException("Only force-close review tasks can be resolved manually");
+        }
+        auditService.recordForUser(
+                actorUserId,
+                organizationId,
+                "CLOSE_CONTROL_TASK_RESOLVED",
+                "workflow_task",
+                task.taskId().toString(),
+                note != null && !note.isBlank() ? note.trim() : "Force-close review completed");
+    }
+
     private List<ReviewTaskSummary> closeControlAttentionTasks(UUID organizationId, UUID currentUserId, LocalDate today) {
         List<ReviewTaskSummary> attention = new ArrayList<>();
 
@@ -321,9 +351,17 @@ public class ReviewQueueService {
 
         LocalDate dueDate = event.createdAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate().plusDays(1);
         boolean overdue = dueDate.isBefore(today);
+        UUID taskId = UUID.nameUUIDFromBytes((taskType + ":" + organizationId + ":" + event.entityId()).getBytes(StandardCharsets.UTF_8));
+        Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestAcknowledgement =
+                latestCloseControlAction(organizationId, "CLOSE_CONTROL_TASK_ACKNOWLEDGED", taskId, event.createdAt());
+        Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestResolution =
+                latestCloseControlAction(organizationId, "CLOSE_CONTROL_TASK_RESOLVED", taskId, event.createdAt());
+        if ("FORCE_CLOSE_REVIEW".equals(taskType) && latestResolution.isPresent()) {
+            return java.util.Optional.empty();
+        }
 
         return java.util.Optional.of(new ReviewTaskSummary(
-                UUID.nameUUIDFromBytes((taskType + ":" + organizationId + ":" + event.entityId()).getBytes(StandardCharsets.UTF_8)),
+                taskId,
                 null,
                 null,
                 taskType,
@@ -342,11 +380,28 @@ public class ReviewQueueService {
                 null,
                 "/close?month=" + month,
                 event.details(),
+                latestAcknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
+                latestAcknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
                 null,
-                null,
-                null,
-                null,
-                null));
+                latestResolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
+                latestResolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null)));
+    }
+
+    private Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestCloseControlAction(UUID organizationId,
+                                                                                                         String eventType,
+                                                                                                         UUID taskId,
+                                                                                                         Instant sourceCreatedAt) {
+        return auditService.listForOrganizationByEventTypeAndEntity(organizationId, eventType, taskId.toString())
+                .stream()
+                .filter(event -> !event.createdAt().isBefore(sourceCreatedAt))
+                .max(Comparator.comparing(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt));
+    }
+
+    private ReviewTaskSummary requireCurrentCloseControlTask(UUID organizationId, UUID taskId, UUID currentUserId) {
+        return closeControlAttentionTasks(organizationId, currentUserId, LocalDate.now()).stream()
+                .filter(task -> task.taskId().equals(taskId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Close control task not found: " + taskId));
     }
 
     @Transactional

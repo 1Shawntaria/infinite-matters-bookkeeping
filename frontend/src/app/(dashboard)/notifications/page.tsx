@@ -6,11 +6,13 @@ import Link from "next/link";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import { listOrganizations, NotificationSummaryItem, OrganizationSummary, listAuthNotifications } from "@/lib/api/auth";
 import {
+    acknowledgeWorkflowAttentionTask,
     getWorkflowInbox,
     listAttentionNotifications,
     listDeadLetterNotifications,
     listResolvedDeadLetterNotifications,
     listWorkflowNotifications,
+    resolveWorkflowAttentionTask,
     requeueFailedNotification,
     resolveDeadLetterNotification,
     retryDeadLetterNotification,
@@ -54,6 +56,7 @@ export default function NotificationsPage() {
     const [actionMessage, setActionMessage] = useState("");
     const [actionError, setActionError] = useState("");
     const [actingNotificationId, setActingNotificationId] = useState<string | null>(null);
+    const [actingWorkflowTaskId, setActingWorkflowTaskId] = useState<string | null>(null);
     const queryClient = useQueryClient();
 
     const organizationsQuery = useQuery<OrganizationSummary[], Error>({
@@ -142,11 +145,60 @@ export default function NotificationsPage() {
 
     async function refreshNotificationData() {
         await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["workflowInbox", organizationId] }),
             queryClient.invalidateQueries({ queryKey: ["workflowNotifications", organizationId] }),
             queryClient.invalidateQueries({ queryKey: ["attentionNotifications", organizationId] }),
             queryClient.invalidateQueries({ queryKey: ["deadLetterNotifications", organizationId] }),
             queryClient.invalidateQueries({ queryKey: ["resolvedDeadLetterNotifications", organizationId] }),
         ]);
+    }
+
+    async function handleAcknowledgeWorkflowTask(taskId: string) {
+        if (!organizationId) return;
+
+        setActionMessage("");
+        setActionError("");
+        setActingWorkflowTaskId(taskId);
+
+        try {
+            await acknowledgeWorkflowAttentionTask(
+                organizationId,
+                taskId,
+                "Reviewed from notifications workspace"
+            );
+            await refreshNotificationData();
+            setActionMessage("Workflow follow-up marked reviewed.");
+        } catch (error) {
+            setActionError(
+                error instanceof Error ? error.message : "Unable to mark this workflow follow-up reviewed."
+            );
+        } finally {
+            setActingWorkflowTaskId(null);
+        }
+    }
+
+    async function handleResolveWorkflowTask(taskId: string) {
+        if (!organizationId) return;
+
+        setActionMessage("");
+        setActionError("");
+        setActingWorkflowTaskId(taskId);
+
+        try {
+            await resolveWorkflowAttentionTask(
+                organizationId,
+                taskId,
+                "Reviewed and cleared from notifications workspace"
+            );
+            await refreshNotificationData();
+            setActionMessage("Workflow follow-up cleared.");
+        } catch (error) {
+            setActionError(
+                error instanceof Error ? error.message : "Unable to clear this workflow follow-up."
+            );
+        } finally {
+            setActingWorkflowTaskId(null);
+        }
     }
 
     async function handleRetry(notificationId: string, deadLetter: boolean) {
@@ -306,6 +358,8 @@ export default function NotificationsPage() {
                                     : task.taskType === "FORCE_CLOSE_REVIEW"
                                       ? "Review override month"
                                       : "Open workflow task";
+                            const busy = actingWorkflowTaskId === task.taskId;
+                            const canResolve = isAdminOperator && task.taskType === "FORCE_CLOSE_REVIEW";
 
                             return (
                                 <div
@@ -327,6 +381,11 @@ export default function NotificationsPage() {
                                                         Overdue
                                                     </span>
                                                 ) : null}
+                                                {task.acknowledgedAt ? (
+                                                    <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-amber-100">
+                                                        Reviewed
+                                                    </span>
+                                                ) : null}
                                             </div>
                                             <p className="text-sm text-zinc-300">{task.description}</p>
                                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
@@ -335,6 +394,11 @@ export default function NotificationsPage() {
                                                     Assigned {task.assignedToUserName ?? "Unassigned"}
                                                 </span>
                                             </div>
+                                            {task.acknowledgedAt ? (
+                                                <p className="text-xs text-zinc-500">
+                                                    Reviewed {formatTimestamp(task.acknowledgedAt)}
+                                                </p>
+                                            ) : null}
                                             {task.resolutionComment ? (
                                                 <p className="text-xs text-zinc-500">
                                                     Audit detail: {task.resolutionComment}
@@ -349,6 +413,24 @@ export default function NotificationsPage() {
                                             >
                                                 {actionLabel}
                                             </Link>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAcknowledgeWorkflowTask(task.taskId)}
+                                                disabled={busy || Boolean(task.acknowledgedAt)}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-100 hover:bg-white/[0.05] disabled:opacity-50"
+                                            >
+                                                {task.acknowledgedAt ? "Reviewed" : busy ? "Working..." : "Mark reviewed"}
+                                            </button>
+                                            {canResolve ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleResolveWorkflowTask(task.taskId)}
+                                                    disabled={busy}
+                                                    className="rounded-md border border-emerald-300/40 px-3 py-2 text-sm text-emerald-100 hover:bg-emerald-300/10 disabled:opacity-50"
+                                                >
+                                                    {busy ? "Working..." : "Clear signal"}
+                                                </button>
+                                            ) : null}
                                         </div>
                                     </div>
                                 </div>
