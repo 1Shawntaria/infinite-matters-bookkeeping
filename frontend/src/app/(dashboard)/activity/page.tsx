@@ -80,6 +80,13 @@ function auditEntry(item: AuditEventSummary): TimelineEntry {
     };
 }
 
+const CLOSE_CONTROL_EVENT_TYPES = new Set([
+    "PERIOD_CLOSE_ATTESTATION_UPDATED",
+    "PERIOD_CLOSE_ATTESTED",
+    "PERIOD_CLOSED",
+    "PERIOD_FORCE_CLOSED",
+]);
+
 function ActivityPageContent() {
     const searchParams = useSearchParams();
     const initialLane = searchParams.get("lane");
@@ -148,6 +155,42 @@ function ActivityPageContent() {
             ),
         [auditEventsQuery.data, authActivityQuery.data, importHistoryQuery.data]
     );
+    const closeControlEvents = useMemo(
+        () =>
+            (auditEventsQuery.data ?? []).filter((item) =>
+                CLOSE_CONTROL_EVENT_TYPES.has(item.eventType)
+            ),
+        [auditEventsQuery.data]
+    );
+    const attestationUpdatedCount = closeControlEvents.filter(
+        (item) => item.eventType === "PERIOD_CLOSE_ATTESTATION_UPDATED"
+    ).length;
+    const attestationConfirmedCount = closeControlEvents.filter(
+        (item) => item.eventType === "PERIOD_CLOSE_ATTESTED"
+    ).length;
+    const checklistCloseCount = closeControlEvents.filter(
+        (item) => item.eventType === "PERIOD_CLOSED"
+    ).length;
+    const forceCloseCount = closeControlEvents.filter(
+        (item) => item.eventType === "PERIOD_FORCE_CLOSED"
+    ).length;
+    const recentCloseControlEvent = closeControlEvents[0] ?? null;
+    const closeControlHealthTitle =
+        forceCloseCount > 0
+            ? "Force-close activity needs review"
+            : attestationUpdatedCount > attestationConfirmedCount
+              ? "Attestation follow-through is lagging"
+              : closeControlEvents.length > 0
+                ? "Recent close controls look healthy"
+                : "No close control history yet";
+    const closeControlHealthMessage =
+        forceCloseCount > 0
+            ? `${forceCloseCount} recent force-close event(s) were recorded. Review whether the month-end control path is being bypassed too often.`
+            : attestationUpdatedCount > attestationConfirmedCount
+              ? `${attestationUpdatedCount - attestationConfirmedCount} attestation plan update(s) still do not have a matching confirmation in recent history.`
+              : closeControlEvents.length > 0
+                ? "Recent close history shows attestation and closure events landing without obvious override pressure."
+                : "Once close attestation and close actions happen, this panel will summarize how clean that control sequence has been.";
 
     const visibleEntries = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase();
@@ -307,6 +350,62 @@ function ActivityPageContent() {
                     }
                 />
             ) : null}
+
+            <SectionBand
+                eyebrow="Close controls"
+                title="Attestation control quality"
+                description="Use this to spot whether month-end routing, attestation follow-through, and force-close exceptions are trending in a healthy direction."
+            >
+                <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <SummaryMetric
+                            label="Attestation plans updated"
+                            value={`${attestationUpdatedCount}`}
+                            detail="Recent month-level routing or summary updates captured in audit history."
+                        />
+                        <SummaryMetric
+                            label="Attestations confirmed"
+                            value={`${attestationConfirmedCount}`}
+                            detail="Recent month-level confirmations completed by the assigned approver."
+                            tone={attestationConfirmedCount >= attestationUpdatedCount ? "success" : "warning"}
+                        />
+                        <SummaryMetric
+                            label="Checklist closes"
+                            value={`${checklistCloseCount}`}
+                            detail="Months closed through the standard checklist-driven path."
+                            tone={checklistCloseCount > 0 ? "success" : "default"}
+                        />
+                        <SummaryMetric
+                            label="Force closes"
+                            value={`${forceCloseCount}`}
+                            detail="Months that needed an override rather than the standard close flow."
+                            tone={forceCloseCount === 0 ? "success" : "warning"}
+                        />
+                    </div>
+                    <div className="space-y-4">
+                        <StatusBanner
+                            tone={forceCloseCount > 0 ? "error" : attestationUpdatedCount > attestationConfirmedCount ? "muted" : "success"}
+                            title={closeControlHealthTitle}
+                            message={closeControlHealthMessage}
+                        />
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                            <h3 className="text-sm font-semibold text-white">Recent close control signal</h3>
+                            <div className="mt-3 space-y-3 text-sm text-zinc-400">
+                                <p>
+                                    {recentCloseControlEvent
+                                        ? `${formatEventLabel(recentCloseControlEvent.eventType)} was the latest close-control event at ${formatTimestamp(recentCloseControlEvent.createdAt)}.`
+                                        : "No close-control audit events have been recorded yet for this workspace."}
+                                </p>
+                                <p>
+                                    {forceCloseCount > 0
+                                        ? "Treat overrides as exceptions worth explaining, not just mechanics worth recording."
+                                        : "A healthy trail shows attestation updates turning into confirmations before standard close happens."}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </SectionBand>
 
             <SectionBand
                 eyebrow="Session controls"

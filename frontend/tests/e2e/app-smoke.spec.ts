@@ -675,6 +675,46 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
   ];
   const auditEvents = [
     {
+      id: "audit-close-4",
+      organizationId: "org-primary",
+      actorUserId: "user-1",
+      eventType: "PERIOD_FORCE_CLOSED",
+      entityType: "accounting_period",
+      entityId: "2026-02",
+      details: "Force closed period 2026-02-01 through 2026-02-28 with reason: Banking statement arrived late.",
+      createdAt: "2026-04-24T12:22:00Z",
+    },
+    {
+      id: "audit-close-3",
+      organizationId: "org-primary",
+      actorUserId: "user-1",
+      eventType: "PERIOD_CLOSED",
+      entityType: "accounting_period",
+      entityId: "2026-03",
+      details: "Closed period 2026-03-01 through 2026-03-31.",
+      createdAt: "2026-04-24T12:20:00Z",
+    },
+    {
+      id: "audit-close-2",
+      organizationId: "org-primary",
+      actorUserId: "user-1",
+      eventType: "PERIOD_CLOSE_ATTESTED",
+      entityType: "accounting_period",
+      entityId: "2026-03",
+      details: "Close attestation confirmed by user user-1 for month 2026-03",
+      createdAt: "2026-04-24T12:19:00Z",
+    },
+    {
+      id: "audit-close-1",
+      organizationId: "org-primary",
+      actorUserId: "user-2",
+      eventType: "PERIOD_CLOSE_ATTESTATION_UPDATED",
+      entityType: "accounting_period",
+      entityId: "2026-04",
+      details: "Close attestation updated by user user-2 for month 2026-04",
+      createdAt: "2026-04-24T12:18:00Z",
+    },
+    {
       id: "audit-0",
       organizationId: "org-primary",
       actorUserId: "user-1",
@@ -1790,6 +1830,10 @@ test("activity page shows merged operational timeline and filter views", async (
   await page.goto("/activity");
 
   await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Attestation control quality" })).toBeVisible();
+  await expect(page.getByText("Force-close activity needs review")).toBeVisible();
+  await expect(page.getByText("Attestation plans updated")).toBeVisible();
+  await expect(page.getByText("Attestations confirmed")).toBeVisible();
   await expect(page.getByText("Auth Login Succeeded")).toBeVisible();
   await expect(page.getByText("Organization Member Added").last()).toBeVisible();
   await expect(page.getByText("Operating Checking: CLOUDCO")).toBeVisible();
