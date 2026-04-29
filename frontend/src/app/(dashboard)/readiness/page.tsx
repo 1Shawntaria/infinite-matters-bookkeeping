@@ -32,6 +32,7 @@ import { useOrganizationSession } from "@/lib/auth/session";
 import { AuditEventSummary } from "@/lib/api/audit";
 import { NotificationSummaryItem } from "@/lib/api/auth";
 import { getWorkspaceSettings } from "@/lib/api/settings";
+import { buildFocusMonthFollowUp, FollowUpAction } from "@/lib/close-follow-up";
 
 type DecisionState =
     | "READY_TO_CLOSE"
@@ -45,15 +46,6 @@ type ReadinessDecision = {
     title: string;
     message: string;
     tone: "success" | "muted" | "error";
-    primaryHref: string;
-    primaryLabel: string;
-    secondaryHref: string;
-    secondaryLabel: string;
-};
-
-type ReadinessFollowUp = {
-    title: string;
-    message: string;
     primaryHref: string;
     primaryLabel: string;
     secondaryHref: string;
@@ -384,72 +376,29 @@ export default function CloseReadinessPage() {
                   : "The month still needs a named owner, approver, and confirmed attestation summary.",
         },
     ];
-    const readinessFollowUp: ReadinessFollowUp | null = useMemo(() => {
-        if (!focusMonth) {
-            return null;
-        }
-        if (attestationRoutingGap > 0) {
-            return {
-                title: "Fix attestation routing first",
-                message: "Assign a close owner and a different approver for the focus month before expecting the final month-end certification to clear.",
-                primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
-                primaryLabel: "Open close workspace",
-                secondaryHref: "/run-close",
-                secondaryLabel: "Review close runbook",
-            };
-        }
-        if (attestationGap > 0) {
-            return {
-                title: "Finish month-end attestation",
-                message: closeAttestation?.closeApprover
-                    ? `${closeAttestation.closeApprover.fullName} is assigned to confirm the month-level attestation for ${focusMonth}.`
-                    : `The focus month still needs final month-level attestation confirmation.`,
-                primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
-                primaryLabel: "Open attestation",
-                secondaryHref: "/activity",
-                secondaryLabel: "Review control history",
-            };
-        }
-        if (signoffGap > 0 || ownerSignoffGap > 0) {
-            return {
-                title: "Capture the remaining sign-off",
-                message: requireOwnerSignoffBeforeClose
-                    ? "Record the required approvals, including at least one owner sign-off, before treating the month as ready to close."
-                    : "Record the remaining formal sign-off before treating the month as ready to close.",
-                primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
-                primaryLabel: "Record sign-off",
-                secondaryHref: "/activity",
-                secondaryLabel: "Review prior approvals",
-            };
-        }
-        if (pendingPlaybookCount > 0) {
-            return {
-                title: "Finish the standing close playbook",
-                message: `${pendingPlaybookCount} recurring close playbook item(s) still need completion or approval for ${focusMonth}.`,
-                primaryHref: "/run-close",
-                primaryLabel: "Resume guided close",
-                secondaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
-                secondaryLabel: "Open close workspace",
-            };
-        }
-        return {
-            title: "The month is ready for final close",
-            message: `The focus month is in a good place to close once the owner is comfortable committing ${focusMonth}.`,
-            primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
-            primaryLabel: "Approve and close",
-            secondaryHref: "/activity",
-            secondaryLabel: "Review control history",
-        };
-    }, [
-        attestationGap,
-        attestationRoutingGap,
-        closeAttestation?.closeApprover,
-        focusMonth,
-        ownerSignoffGap,
-        pendingPlaybookCount,
-        requireOwnerSignoffBeforeClose,
-        signoffGap,
-    ]);
+    const readinessFollowUp: FollowUpAction | null = useMemo(
+        () =>
+            buildFocusMonthFollowUp({
+                focusMonth,
+                attestationRoutingGap,
+                attestationGap,
+                signoffGap,
+                ownerSignoffGap,
+                pendingPlaybookCount,
+                requireOwnerSignoffBeforeClose,
+                closeApproverName: closeAttestation?.closeApprover?.fullName ?? null,
+            }),
+        [
+            attestationGap,
+            attestationRoutingGap,
+            closeAttestation?.closeApprover?.fullName,
+            focusMonth,
+            ownerSignoffGap,
+            pendingPlaybookCount,
+            requireOwnerSignoffBeforeClose,
+            signoffGap,
+        ]
+    );
 
     if (!hydrated || loading) {
         return (

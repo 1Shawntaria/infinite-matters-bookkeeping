@@ -18,6 +18,7 @@ import {
 import Link from "next/link";
 import { mapBackendActionPathToFrontend } from "@/lib/navigation";
 import { useOrganizationSession } from "@/lib/auth/session";
+import { buildFocusMonthFollowUp, FollowUpAction } from "@/lib/close-follow-up";
 import {
     LoadingPanel,
     MiniBarChart,
@@ -28,15 +29,6 @@ import {
     StatusBanner,
     SummaryMetric,
 } from "@/components/app-surfaces";
-
-type DashboardFollowUp = {
-    title: string;
-    message: string;
-    primaryHref: string;
-    primaryLabel: string;
-    secondaryHref: string;
-    secondaryLabel: string;
-};
 
 export default function DashboardPage() {
     const { organizationId, hydrated } = useOrganizationSession();
@@ -179,25 +171,18 @@ export default function DashboardPage() {
     ]
         .sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime())
         .slice(0, 6);
-    const closeControlFollowUp: DashboardFollowUp | null = data?.focusMonth
-        ? data?.period?.closeReady
-            ? {
-                  title: "Focus month is ready for final approval",
-                  message: `${data.focusMonth} is operationally clear on reconciliations. Use the close workspace to finish sign-off, attestation, and the final close decision.`,
-                  primaryHref: `/close?month=${encodeURIComponent(data.focusMonth)}`,
-                  primaryLabel: "Open close workspace",
-                  secondaryHref: "/readiness",
-                  secondaryLabel: "Review readiness",
-              }
-            : {
-                  title: "Focus month still needs close follow-through",
-                  message: `${data.focusMonth} still has ${data.period?.unreconciledAccountCount ?? 0} account(s) holding close open. Start with the close workflow for that month so the next blocker is obvious.`,
-                  primaryHref: `/close?month=${encodeURIComponent(data.focusMonth)}`,
-                  primaryLabel: "Open focus month",
-                  secondaryHref: "/run-close",
-                  secondaryLabel: "Resume guided close",
-              }
-        : null;
+    const closeControlFollowUp: FollowUpAction | null = buildFocusMonthFollowUp({
+        focusMonth: data?.focusMonth ?? "",
+        attestationRoutingGap: 0,
+        attestationGap: 0,
+        signoffGap: 0,
+        ownerSignoffGap: 0,
+        pendingPlaybookCount: 0,
+        requireOwnerSignoffBeforeClose: false,
+        context: "dashboard",
+        closeReady: data?.period?.closeReady ?? false,
+        unreconciledAccountCount: data?.period?.unreconciledAccountCount ?? 0,
+    });
 
     if (!hydrated || loading) {
         return (
