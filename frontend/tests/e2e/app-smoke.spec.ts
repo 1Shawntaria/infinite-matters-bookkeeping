@@ -1921,6 +1921,11 @@ test("readiness workspace gives an owner-level pre-close summary", async ({ page
   await expect(page.getByText("Final pre-close review")).toBeVisible();
   await expect(page.getByText("Outstanding review tasks")).toBeVisible();
   await expect(page.getByText("Month attestation", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Finish month-end attestation" })).toBeVisible();
+  await page.getByRole("link", { name: "Open attestation" }).click();
+  await expect(page).toHaveURL(/\/close\?month=2026-04/);
+  await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
+  await page.goto("/readiness");
   await page.getByRole("link", { name: "Resume guided close" }).click();
   await expect(page).toHaveURL(/\/run-close$/);
 });

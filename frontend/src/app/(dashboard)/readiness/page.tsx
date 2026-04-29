@@ -51,6 +51,15 @@ type ReadinessDecision = {
     secondaryLabel: string;
 };
 
+type ReadinessFollowUp = {
+    title: string;
+    message: string;
+    primaryHref: string;
+    primaryLabel: string;
+    secondaryHref: string;
+    secondaryLabel: string;
+};
+
 function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
 }
@@ -375,6 +384,72 @@ export default function CloseReadinessPage() {
                   : "The month still needs a named owner, approver, and confirmed attestation summary.",
         },
     ];
+    const readinessFollowUp: ReadinessFollowUp | null = useMemo(() => {
+        if (!focusMonth) {
+            return null;
+        }
+        if (attestationRoutingGap > 0) {
+            return {
+                title: "Fix attestation routing first",
+                message: "Assign a close owner and a different approver for the focus month before expecting the final month-end certification to clear.",
+                primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
+                primaryLabel: "Open close workspace",
+                secondaryHref: "/run-close",
+                secondaryLabel: "Review close runbook",
+            };
+        }
+        if (attestationGap > 0) {
+            return {
+                title: "Finish month-end attestation",
+                message: closeAttestation?.closeApprover
+                    ? `${closeAttestation.closeApprover.fullName} is assigned to confirm the month-level attestation for ${focusMonth}.`
+                    : `The focus month still needs final month-level attestation confirmation.`,
+                primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
+                primaryLabel: "Open attestation",
+                secondaryHref: "/activity",
+                secondaryLabel: "Review control history",
+            };
+        }
+        if (signoffGap > 0 || ownerSignoffGap > 0) {
+            return {
+                title: "Capture the remaining sign-off",
+                message: requireOwnerSignoffBeforeClose
+                    ? "Record the required approvals, including at least one owner sign-off, before treating the month as ready to close."
+                    : "Record the remaining formal sign-off before treating the month as ready to close.",
+                primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
+                primaryLabel: "Record sign-off",
+                secondaryHref: "/activity",
+                secondaryLabel: "Review prior approvals",
+            };
+        }
+        if (pendingPlaybookCount > 0) {
+            return {
+                title: "Finish the standing close playbook",
+                message: `${pendingPlaybookCount} recurring close playbook item(s) still need completion or approval for ${focusMonth}.`,
+                primaryHref: "/run-close",
+                primaryLabel: "Resume guided close",
+                secondaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
+                secondaryLabel: "Open close workspace",
+            };
+        }
+        return {
+            title: "The month is ready for final close",
+            message: `The focus month is in a good place to close once the owner is comfortable committing ${focusMonth}.`,
+            primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
+            primaryLabel: "Approve and close",
+            secondaryHref: "/activity",
+            secondaryLabel: "Review control history",
+        };
+    }, [
+        attestationGap,
+        attestationRoutingGap,
+        closeAttestation?.closeApprover,
+        focusMonth,
+        ownerSignoffGap,
+        pendingPlaybookCount,
+        requireOwnerSignoffBeforeClose,
+        signoffGap,
+    ]);
 
     if (!hydrated || loading) {
         return (
@@ -453,6 +528,32 @@ export default function CloseReadinessPage() {
                 title={decision.title}
                 message={decision.message}
             />
+
+            {readinessFollowUp ? (
+                <SectionBand
+                    eyebrow="Recommended follow-up"
+                    title={readinessFollowUp.title}
+                    description="Use this shortcut when you already know the focus month is the right place to act."
+                >
+                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-5">
+                        <p className="text-sm leading-6 text-zinc-100">{readinessFollowUp.message}</p>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                            <Link
+                                href={readinessFollowUp.primaryHref}
+                                className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                            >
+                                {readinessFollowUp.primaryLabel}
+                            </Link>
+                            <Link
+                                href={readinessFollowUp.secondaryHref}
+                                className="rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                            >
+                                {readinessFollowUp.secondaryLabel}
+                            </Link>
+                        </div>
+                    </div>
+                </SectionBand>
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <SummaryMetric
