@@ -28,6 +28,8 @@ public class NotificationService {
     private static final String PERFORMANCE_ESCALATION_REFERENCE_TYPE = "dead_letter_support_performance_escalation";
     private static final String CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE = "close_control_follow_up_escalation";
     private static final String CLOSE_CONTROL_REFERENCE_TYPE = "close_control_follow_up";
+    private static final String CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT = "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED";
+    private static final String CLOSE_CONTROL_ESCALATION_RESOLVED_EVENT = "CLOSE_CONTROL_ESCALATION_RESOLVED";
 
     private final NotificationRepository notificationRepository;
     private final WorkflowTaskRepository workflowTaskRepository;
@@ -91,7 +93,7 @@ public class NotificationService {
         return notificationRepository.findByOrganizationIdOrderByCreatedAtDesc(organizationId)
                 .stream()
                 .filter(this::isVisibleWorkflowNotification)
-                .map(NotificationSummary::from)
+                .map(this::toSummary)
                 .toList();
     }
 
@@ -103,7 +105,7 @@ public class NotificationService {
         return notificationRepository
                 .findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
                         organizationId, referenceType, referenceId)
-                .map(NotificationSummary::from);
+                .map(this::toSummary);
     }
 
     @Transactional(readOnly = true)
@@ -168,6 +170,7 @@ public class NotificationService {
                 .findByOrganizationIdAndReferenceTypeOrderByCreatedAtDesc(organizationId, CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE)
                 .stream()
                 .filter(notification -> activeCloseControlTaskIds.contains(notification.getReferenceId()))
+                .filter(this::isActiveCloseControlEscalation)
                 .collect(java.util.stream.Collectors.toMap(
                         Notification::getReferenceId,
                         Function.identity(),
@@ -175,7 +178,7 @@ public class NotificationService {
                 .values()
                 .stream()
                 .sorted(Comparator.comparing(Notification::getCreatedAt).reversed())
-                .map(NotificationSummary::from)
+                .map(this::toSummary)
                 .toList();
         List<NotificationSummary> attentionNotifications = Stream.concat(
                         Stream.concat(
@@ -407,8 +410,42 @@ public class NotificationService {
         return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId)
                 .stream()
                 .filter(this::isVisibleWorkflowNotification)
-                .map(NotificationSummary::from)
+                .map(this::toSummary)
                 .toList();
+    }
+
+    @Transactional
+    public NotificationSummary acknowledgeCloseControlEscalation(UUID organizationId,
+                                                                 UUID notificationId,
+                                                                 UUID actorUserId,
+                                                                 String note) {
+        Notification notification = requireCloseControlEscalation(organizationId, notificationId);
+        String trimmedNote = trimNote(note);
+        auditService.recordForUser(
+                actorUserId,
+                organizationId,
+                CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT,
+                "workflow_task",
+                notification.getReferenceId(),
+                trimmedNote != null ? trimmedNote : "Escalated close-control review acknowledged");
+        return toSummary(notification);
+    }
+
+    @Transactional
+    public NotificationSummary resolveCloseControlEscalation(UUID organizationId,
+                                                             UUID notificationId,
+                                                             UUID actorUserId,
+                                                             String note) {
+        Notification notification = requireCloseControlEscalation(organizationId, notificationId);
+        String trimmedNote = trimNote(note);
+        auditService.recordForUser(
+                actorUserId,
+                organizationId,
+                CLOSE_CONTROL_ESCALATION_RESOLVED_EVENT,
+                "workflow_task",
+                notification.getReferenceId(),
+                trimmedNote != null ? trimmedNote : "Escalated close-control review resolved");
+        return toSummary(notification);
     }
 
     @Transactional
@@ -579,6 +616,59 @@ public class NotificationService {
         return task.title();
     }
 
+    private boolean isActiveCloseControlEscalation(Notification notification) {
+        if (!CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE.equals(notification.getReferenceType())
+                || notification.getReferenceId() == null
+                || notification.getOrganization() == null) {
+            return false;
+        }
+        return latestCloseControlEscalationAction(
+                notification.getOrganization().getId(),
+                CLOSE_CONTROL_ESCALATION_RESOLVED_EVENT,
+                notification.getReferenceId(),
+                notification.getCreatedAt()).isEmpty();
+    }
+
+    private NotificationSummary toSummary(Notification notification) {
+        if (!CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE.equals(notification.getReferenceType())
+                || notification.getReferenceId() == null
+                || notification.getOrganization() == null) {
+            return NotificationSummary.from(notification);
+        }
+        UUID organizationId = notification.getOrganization().getId();
+        java.util.Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> acknowledgement =
+                latestCloseControlEscalationAction(
+                        organizationId,
+                        CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT,
+                        notification.getReferenceId(),
+                        notification.getCreatedAt());
+        java.util.Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> resolution =
+                latestCloseControlEscalationAction(
+                        organizationId,
+                        CLOSE_CONTROL_ESCALATION_RESOLVED_EVENT,
+                        notification.getReferenceId(),
+                        notification.getCreatedAt());
+        return NotificationSummary.from(
+                notification,
+                acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::details).orElse(null),
+                acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
+                acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
+                resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::details).orElse(null),
+                resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
+                resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null));
+    }
+
+    private java.util.Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestCloseControlEscalationAction(
+            UUID organizationId,
+            String eventType,
+            String referenceId,
+            Instant sourceCreatedAt) {
+        return auditService.listForOrganizationByEventTypeAndEntity(organizationId, eventType, referenceId)
+                .stream()
+                .filter(event -> !event.createdAt().isBefore(sourceCreatedAt))
+                .max(Comparator.comparing(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt));
+    }
+
     private void resetForRequeue(Notification notification) {
         notification.setStatus(NotificationStatus.PENDING);
         notification.setDeliveryState(NotificationDeliveryState.PENDING);
@@ -647,6 +737,16 @@ public class NotificationService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown notification: " + notificationId));
         if (!isUnresolvedDeadLetter(notification)) {
             throw new IllegalArgumentException("Notification is not an open dead letter");
+        }
+        return notification;
+    }
+
+    private Notification requireCloseControlEscalation(UUID organizationId, UUID notificationId) {
+        Notification notification = notificationRepository.findByIdAndOrganizationId(notificationId, organizationId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown notification: " + notificationId));
+        if (!CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE.equals(notification.getReferenceType())
+                || notification.getReferenceId() == null) {
+            throw new IllegalArgumentException("Notification is not a close-control escalation");
         }
         return notification;
     }

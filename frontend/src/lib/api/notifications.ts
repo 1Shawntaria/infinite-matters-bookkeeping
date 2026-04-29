@@ -165,3 +165,33 @@ export async function requeueFailedNotification(
         }
     );
 }
+
+export async function acknowledgeCloseControlEscalation(
+    organizationId: string,
+    notificationId: string,
+    note: string
+): Promise<NotificationSummaryItem> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<NotificationSummaryItem>(
+        `/api/workflows/notifications/${notificationId}/close-control-escalation/acknowledge?${query.toString()}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ note }),
+        }
+    );
+}
+
+export async function resolveCloseControlEscalation(
+    organizationId: string,
+    notificationId: string,
+    note: string
+): Promise<NotificationSummaryItem> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<NotificationSummaryItem>(
+        `/api/workflows/notifications/${notificationId}/close-control-escalation/resolve?${query.toString()}`,
+        {
+            method: "POST",
+            body: JSON.stringify({ note }),
+        }
+    );
+}

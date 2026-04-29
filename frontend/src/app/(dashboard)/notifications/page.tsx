@@ -6,6 +6,7 @@ import Link from "next/link";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import { listOrganizations, NotificationSummaryItem, OrganizationSummary, listAuthNotifications } from "@/lib/api/auth";
 import {
+    acknowledgeCloseControlEscalation,
     acknowledgeWorkflowAttentionTask,
     getWorkflowInbox,
     listAttentionNotifications,
@@ -13,6 +14,7 @@ import {
     listResolvedDeadLetterNotifications,
     listWorkflowNotifications,
     resolveWorkflowAttentionTask,
+    resolveCloseControlEscalation,
     requeueFailedNotification,
     resolveDeadLetterNotification,
     retryDeadLetterNotification,
@@ -61,6 +63,7 @@ export default function NotificationsPage() {
     const [actionError, setActionError] = useState("");
     const [actingNotificationId, setActingNotificationId] = useState<string | null>(null);
     const [actingWorkflowTaskId, setActingWorkflowTaskId] = useState<string | null>(null);
+    const [escalationNotes, setEscalationNotes] = useState<Record<string, string>>({});
     const queryClient = useQueryClient();
 
     const organizationsQuery = useQuery<OrganizationSummary[], Error>({
@@ -181,6 +184,54 @@ export default function NotificationsPage() {
             );
         } finally {
             setActingWorkflowTaskId(null);
+        }
+    }
+
+    async function handleAcknowledgeEscalation(notificationId: string) {
+        if (!organizationId) return;
+
+        setActionMessage("");
+        setActionError("");
+        setActingNotificationId(notificationId);
+
+        try {
+            await acknowledgeCloseControlEscalation(
+                organizationId,
+                notificationId,
+                escalationNotes[notificationId] ?? ""
+            );
+            await refreshNotificationData();
+            setActionMessage("Escalated close-control review acknowledged.");
+        } catch (error) {
+            setActionError(
+                error instanceof Error ? error.message : "Unable to acknowledge this escalation."
+            );
+        } finally {
+            setActingNotificationId(null);
+        }
+    }
+
+    async function handleResolveEscalation(notificationId: string) {
+        if (!organizationId) return;
+
+        setActionMessage("");
+        setActionError("");
+        setActingNotificationId(notificationId);
+
+        try {
+            await resolveCloseControlEscalation(
+                organizationId,
+                notificationId,
+                escalationNotes[notificationId] ?? ""
+            );
+            await refreshNotificationData();
+            setActionMessage("Escalated close-control review resolved.");
+        } catch (error) {
+            setActionError(
+                error instanceof Error ? error.message : "Unable to resolve this escalation."
+            );
+        } finally {
+            setActingNotificationId(null);
         }
     }
 
@@ -367,6 +418,8 @@ export default function NotificationsPage() {
                                 notification,
                                 workflowAttentionTasks
                             );
+                            const busy = actingNotificationId === notification.id;
+                            const reviewed = Boolean(notification.closeControlAcknowledgedAt);
                             return (
                                 <div
                                     key={`escalation-${notification.id}`}
@@ -382,6 +435,11 @@ export default function NotificationsPage() {
                                                 <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-amber-100">
                                                     Owner/Admin
                                                 </span>
+                                                {reviewed ? (
+                                                    <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-amber-50">
+                                                        Reviewed
+                                                    </span>
+                                                ) : null}
                                             </div>
                                             <p className="text-sm text-zinc-200">{action.message}</p>
                                             <p className="text-sm text-zinc-300">{notification.message}</p>
@@ -390,6 +448,31 @@ export default function NotificationsPage() {
                                                 <span>Recipient {notification.recipientEmail ?? "Unknown"}</span>
                                                 <span>Sent {formatTimestamp(notification.sentAt ?? notification.createdAt)}</span>
                                             </div>
+                                            {notification.closeControlAcknowledgedAt ? (
+                                                <p className="text-xs text-zinc-300">
+                                                    Reviewed {formatTimestamp(notification.closeControlAcknowledgedAt)}
+                                                    {notification.closeControlAcknowledgementNote
+                                                        ? ` · ${notification.closeControlAcknowledgementNote}`
+                                                        : ""}
+                                                </p>
+                                            ) : null}
+                                            <label className="block space-y-2 pt-2">
+                                                <span className="text-xs uppercase tracking-[0.14em] text-zinc-300">
+                                                    Review note
+                                                </span>
+                                                <textarea
+                                                    value={escalationNotes[notification.id] ?? ""}
+                                                    onChange={(event) =>
+                                                        setEscalationNotes((current) => ({
+                                                            ...current,
+                                                            [notification.id]: event.target.value,
+                                                        }))
+                                                    }
+                                                    rows={2}
+                                                    placeholder="Document what was reviewed, who owns follow-through, or why the escalation can be cleared."
+                                                    className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-zinc-500"
+                                                />
+                                            </label>
                                         </div>
                                         <div className="flex shrink-0 flex-wrap gap-2">
                                             <Link
@@ -404,6 +487,22 @@ export default function NotificationsPage() {
                                             >
                                                 {action.secondaryLabel}
                                             </Link>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAcknowledgeEscalation(notification.id)}
+                                                disabled={busy || reviewed}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-100 hover:bg-white/[0.05] disabled:opacity-50"
+                                            >
+                                                {reviewed ? "Reviewed" : busy ? "Working..." : "Save review note"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleResolveEscalation(notification.id)}
+                                                disabled={busy}
+                                                className="rounded-md border border-rose-200/50 px-3 py-2 text-sm text-rose-50 hover:bg-rose-200/10 disabled:opacity-50"
+                                            >
+                                                {busy ? "Working..." : "Resolve escalation"}
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

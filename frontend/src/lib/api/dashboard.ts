@@ -82,6 +82,12 @@ export type NotificationSummaryItem = {
     deadLetterResolutionNote: string | null;
     deadLetterResolvedAt: string | null;
     deadLetterResolvedByUserId: string | null;
+    closeControlAcknowledgementNote: string | null;
+    closeControlAcknowledgedAt: string | null;
+    closeControlAcknowledgedByUserId: string | null;
+    closeControlResolutionNote: string | null;
+    closeControlResolvedAt: string | null;
+    closeControlResolvedByUserId: string | null;
     scheduledFor: string | null;
     lastAttemptedAt: string | null;
     sentAt: string | null;

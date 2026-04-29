@@ -1153,7 +1153,15 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
     }
 
     if (url.pathname === "/api/workflows/notifications/attention" && request.method() === "GET") {
-      await fulfillJson(route, [workflowNotifications[3], workflowNotifications[0], workflowNotifications[2]]);
+      await fulfillJson(
+        route,
+        workflowNotifications.filter((item) => {
+          if (item.referenceType === "close_control_follow_up_escalation") {
+            return !item.closeControlResolvedAt;
+          }
+          return item.id === "workflow-notification-1" || item.id === "workflow-notification-3";
+        })
+      );
       return;
     }
 
@@ -1171,6 +1179,42 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
           deadLetterResolutionNote: "Resolved from notifications workspace",
         },
       ]);
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/workflows/notifications/") &&
+      url.pathname.endsWith("/close-control-escalation/acknowledge") &&
+      request.method() === "POST"
+    ) {
+      const notificationId = url.pathname.split("/")[4];
+      const index = workflowNotifications.findIndex((item) => item.id === notificationId);
+      const body = JSON.parse(request.postData() ?? "{}");
+      workflowNotifications[index] = {
+        ...workflowNotifications[index],
+        closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
+        closeControlAcknowledgementNote: body.note || "Escalation reviewed from notifications workspace",
+        closeControlAcknowledgedByUserId: "user-1",
+      };
+      await fulfillJson(route, workflowNotifications[index]);
+      return;
+    }
+
+    if (
+      url.pathname.startsWith("/api/workflows/notifications/") &&
+      url.pathname.endsWith("/close-control-escalation/resolve") &&
+      request.method() === "POST"
+    ) {
+      const notificationId = url.pathname.split("/")[4];
+      const index = workflowNotifications.findIndex((item) => item.id === notificationId);
+      const body = JSON.parse(request.postData() ?? "{}");
+      workflowNotifications[index] = {
+        ...workflowNotifications[index],
+        closeControlResolvedAt: "2026-04-29T15:12:00Z",
+        closeControlResolutionNote: body.note || "Escalation resolved from notifications workspace",
+        closeControlResolvedByUserId: "user-1",
+      };
+      await fulfillJson(route, workflowNotifications[index]);
       return;
     }
 
@@ -2072,6 +2116,15 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");
+
+  await page.getByPlaceholder("Document what was reviewed, who owns follow-through, or why the escalation can be cleared.").fill("Owner reviewed and is pushing approver follow-through today.");
+  await page.getByRole("button", { name: "Save review note" }).click();
+  await expect(page.getByText("Escalated close-control review acknowledged.")).toBeVisible();
+  await expect(page.getByText("Owner reviewed and is pushing approver follow-through today.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Resolve escalation" }).click();
+  await expect(page.getByText("Escalated close-control review resolved.")).toBeVisible();
+  await expect(page.getByText("Escalated attestation follow-up")).toHaveCount(0);
 
   await page.getByRole("link", { name: "Open attestation month" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);

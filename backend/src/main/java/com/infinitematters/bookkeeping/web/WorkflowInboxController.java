@@ -232,6 +232,30 @@ public class WorkflowInboxController {
         return notificationService.resolvedDeadLetters(organizationId);
     }
 
+    @PostMapping("/notifications/{notificationId}/close-control-escalation/acknowledge")
+    public NotificationSummary acknowledgeCloseControlEscalation(@RequestParam UUID organizationId,
+                                                                 @PathVariable UUID notificationId,
+                                                                 @RequestBody(required = false) WorkflowTaskActionRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return notificationService.acknowledgeCloseControlEscalation(
+                organizationId,
+                notificationId,
+                actorUserId,
+                request != null ? request.note() : null);
+    }
+
+    @PostMapping("/notifications/{notificationId}/close-control-escalation/resolve")
+    public NotificationSummary resolveCloseControlEscalation(@RequestParam UUID organizationId,
+                                                             @PathVariable UUID notificationId,
+                                                             @RequestBody(required = false) WorkflowTaskActionRequest request) {
+        UUID actorUserId = tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return notificationService.resolveCloseControlEscalation(
+                organizationId,
+                notificationId,
+                actorUserId,
+                request != null ? request.note() : null);
+    }
+
     @PostMapping("/notifications/{notificationId}/dead-letter/acknowledge")
     public NotificationSummary acknowledgeDeadLetter(@RequestParam UUID organizationId,
                                                      @PathVariable UUID notificationId,

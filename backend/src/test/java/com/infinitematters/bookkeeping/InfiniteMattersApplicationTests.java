@@ -730,7 +730,55 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].referenceType").value("close_control_follow_up_escalation"))
-                .andExpect(jsonPath("$[0].message").value(org.hamcrest.Matchers.containsString("attestation for 2026-04")));
+                .andExpect(jsonPath("$[0].message").value(org.hamcrest.Matchers.containsString("attestation for 2026-04")))
+                .andExpect(jsonPath("$[0].closeControlAcknowledgedAt").doesNotExist())
+                .andExpect(jsonPath("$[0].closeControlResolvedAt").doesNotExist());
+
+        String escalationNotificationId = objectMapper.readTree(mockMvc.perform(get("/api/workflows/notifications/attention")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andReturn()
+                .getResponse()
+                .getContentAsString())
+                .path(0)
+                .path("id")
+                .asText();
+
+        mockMvc.perform(post("/api/workflows/notifications/" + escalationNotificationId + "/close-control-escalation/acknowledge")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Owner reviewed the escalation and is pushing approver follow-through."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closeControlAcknowledgedAt").isNotEmpty())
+                .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and is pushing approver follow-through."));
+
+        mockMvc.perform(post("/api/workflows/notifications/" + escalationNotificationId + "/close-control-escalation/resolve")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Escalation resolved after documenting the owner disposition."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closeControlResolvedAt").isNotEmpty())
+                .andExpect(jsonPath("$.closeControlResolutionNote").value("Escalation resolved after documenting the owner disposition."));
+
+        mockMvc.perform(get("/api/workflows/notifications/attention")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.referenceType=='close_control_follow_up_escalation')]").isEmpty());
     }
 
     @Test
