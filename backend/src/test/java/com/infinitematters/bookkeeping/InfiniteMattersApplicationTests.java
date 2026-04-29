@@ -642,6 +642,98 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void repeatedCloseControlRemindersEscalateToAttentionNotifications() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "close-escalation-owner-" + suffix + "@example.test";
+        String approverEmail = "close-escalation-approver-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Close Escalation Owner", password);
+        String approverUserId = createUser(approverEmail, "Close Escalation Approver", password);
+        String organizationId = createOrganization("Close Escalation Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        AuthTokens approverTokens = issueToken(approverEmail, password);
+        addMembership(organizationId, approverUserId, ownerTokens.accessToken());
+
+        mockMvc.perform(post("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "closeOwnerUserId":"%s",
+                                  "closeApproverUserId":"%s",
+                                  "summary":"April close is materially complete and waiting on final approver confirmation."
+                                }
+                                """.formatted(ownerUserId, approverUserId)))
+                .andExpect(status().isOk());
+
+        MvcResult inboxResult = mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String taskId = objectMapper.readTree(inboxResult.getResponse().getContentAsString())
+                .path("attentionTasks")
+                .path(0)
+                .path("taskId")
+                .asText();
+
+        mockMvc.perform(post("/api/workflows/inbox/attention-tasks/" + taskId + "/acknowledge")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Reviewed and waiting on final confirmation."
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        UUID organizationUuid = UUID.fromString(organizationId);
+        UUID ownerUuid = UUID.fromString(ownerUserId);
+        for (int daysAgo = 2; daysAgo >= 1; daysAgo--) {
+            Notification reminder = new Notification();
+            reminder.setOrganization(organizationService.get(organizationUuid));
+            reminder.setUser(userService.get(ownerUuid));
+            reminder.setCategory(NotificationCategory.WORKFLOW);
+            reminder.setChannel(NotificationChannel.IN_APP);
+            reminder.setStatus(NotificationStatus.SENT);
+            reminder.setDeliveryState(NotificationDeliveryState.DELIVERED);
+            reminder.setReferenceType("close_control_follow_up");
+            reminder.setReferenceId(taskId);
+            reminder.setRecipientEmail(ownerEmail);
+            reminder.setScheduledFor(java.time.Instant.now().minus(java.time.Duration.ofDays(daysAgo)));
+            reminder.setSentAt(java.time.Instant.now().minus(java.time.Duration.ofDays(daysAgo)));
+            reminder.setAttemptCount(0);
+            reminder.setMessage("Historical attestation reminder");
+            notificationRepository.save(reminder);
+        }
+
+        mockMvc.perform(post("/api/workflows/close-control/escalations/run")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.notifications[0].referenceType").value("close_control_follow_up_escalation"))
+                .andExpect(jsonPath("$.notifications[0].message").value(org.hamcrest.Matchers.containsString("attestation for 2026-04")));
+
+        mockMvc.perform(get("/api/workflows/notifications/attention")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].referenceType").value("close_control_follow_up_escalation"))
+                .andExpect(jsonPath("$[0].message").value(org.hamcrest.Matchers.containsString("attestation for 2026-04")));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";

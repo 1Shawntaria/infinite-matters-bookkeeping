@@ -26,6 +26,7 @@ import java.util.UUID;
 public class NotificationService {
     private static final String PERFORMANCE_REFERENCE_TYPE = "dead_letter_support_performance";
     private static final String PERFORMANCE_ESCALATION_REFERENCE_TYPE = "dead_letter_support_performance_escalation";
+    private static final String CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE = "close_control_follow_up_escalation";
     private static final String CLOSE_CONTROL_REFERENCE_TYPE = "close_control_follow_up";
 
     private final NotificationRepository notificationRepository;
@@ -160,8 +161,26 @@ public class NotificationService {
                 .sorted(Comparator.comparing(Notification::getCreatedAt).reversed())
                 .map(NotificationSummary::from)
                 .toList();
+        java.util.Set<String> activeCloseControlTaskIds = reviewQueueService.listCloseControlAttentionTasks(organizationId).stream()
+                .map(task -> task.taskId().toString())
+                .collect(java.util.stream.Collectors.toSet());
+        List<NotificationSummary> closeControlEscalationNotifications = notificationRepository
+                .findByOrganizationIdAndReferenceTypeOrderByCreatedAtDesc(organizationId, CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE)
+                .stream()
+                .filter(notification -> activeCloseControlTaskIds.contains(notification.getReferenceId()))
+                .collect(java.util.stream.Collectors.toMap(
+                        Notification::getReferenceId,
+                        Function.identity(),
+                        (left, right) -> left.getCreatedAt().isAfter(right.getCreatedAt()) ? left : right))
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(Notification::getCreatedAt).reversed())
+                .map(NotificationSummary::from)
+                .toList();
         List<NotificationSummary> attentionNotifications = Stream.concat(
-                        performanceAttentionNotifications.stream(),
+                        Stream.concat(
+                                closeControlEscalationNotifications.stream(),
+                                performanceAttentionNotifications.stream()),
                         deliveryAttentionNotifications.stream())
                 .limit(10)
                 .toList();

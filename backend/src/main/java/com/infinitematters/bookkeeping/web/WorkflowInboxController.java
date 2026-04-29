@@ -12,6 +12,8 @@ import com.infinitematters.bookkeeping.notifications.DeadLetterSupportTaskOperat
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEffectivenessSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskFilter;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskQueueSummary;
+import com.infinitematters.bookkeeping.notifications.CloseControlEscalationRunResult;
+import com.infinitematters.bookkeeping.notifications.CloseControlEscalationService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorRunResult;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEscalationService;
@@ -47,6 +49,7 @@ public class WorkflowInboxController {
     private final DeadLetterWorkflowTaskService deadLetterWorkflowTaskService;
     private final DeadLetterSupportPerformanceMonitorService deadLetterSupportPerformanceMonitorService;
     private final DeadLetterSupportEscalationService deadLetterSupportEscalationService;
+    private final CloseControlEscalationService closeControlEscalationService;
     private final NotificationSuppressionService suppressionService;
     private final TenantAccessService tenantAccessService;
 
@@ -55,6 +58,7 @@ public class WorkflowInboxController {
                                    DeadLetterWorkflowTaskService deadLetterWorkflowTaskService,
                                    DeadLetterSupportPerformanceMonitorService deadLetterSupportPerformanceMonitorService,
                                    DeadLetterSupportEscalationService deadLetterSupportEscalationService,
+                                   CloseControlEscalationService closeControlEscalationService,
                                    NotificationSuppressionService suppressionService,
                                    TenantAccessService tenantAccessService) {
         this.reviewQueueService = reviewQueueService;
@@ -62,6 +66,7 @@ public class WorkflowInboxController {
         this.deadLetterWorkflowTaskService = deadLetterWorkflowTaskService;
         this.deadLetterSupportPerformanceMonitorService = deadLetterSupportPerformanceMonitorService;
         this.deadLetterSupportEscalationService = deadLetterSupportEscalationService;
+        this.closeControlEscalationService = closeControlEscalationService;
         this.suppressionService = suppressionService;
         this.tenantAccessService = tenantAccessService;
     }
@@ -213,6 +218,12 @@ public class WorkflowInboxController {
     public DeadLetterEscalationRunResult runDeadLetterEscalations(@RequestParam UUID organizationId) {
         tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
         return deadLetterSupportEscalationService.run(organizationId);
+    }
+
+    @PostMapping("/close-control/escalations/run")
+    public CloseControlEscalationRunResult runCloseControlEscalations(@RequestParam UUID organizationId) {
+        tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN));
+        return closeControlEscalationService.run(organizationId);
     }
 
     @GetMapping("/notifications/dead-letter/history")

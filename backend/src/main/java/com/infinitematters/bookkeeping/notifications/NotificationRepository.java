@@ -23,6 +23,7 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
                                                                                                       String referenceId);
     List<Notification> findByWorkflowTaskIdAndReferenceTypeOrderByCreatedAtAsc(UUID workflowTaskId, String referenceType);
     long countByWorkflowTaskIdAndReferenceType(UUID workflowTaskId, String referenceType);
+    long countByOrganizationIdAndReferenceTypeAndReferenceId(UUID organizationId, String referenceType, String referenceId);
 
     boolean existsByWorkflowTaskIdAndStatusAndScheduledForAfter(UUID workflowTaskId,
                                                                 NotificationStatus status,
@@ -33,6 +34,13 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
                                                                                                String referenceId,
                                                                                                NotificationStatus status,
                                                                                                Instant scheduledAfter);
+
+    boolean existsByOrganizationIdAndUserIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(UUID organizationId,
+                                                                                                         UUID userId,
+                                                                                                         String referenceType,
+                                                                                                         String referenceId,
+                                                                                                         NotificationStatus status,
+                                                                                                         Instant scheduledAfter);
 
     boolean existsByWorkflowTaskIdAndUserIdAndReferenceTypeAndStatusAndScheduledForAfter(UUID workflowTaskId,
                                                                                           UUID userId,
