@@ -29,6 +29,15 @@ import {
     SummaryMetric,
 } from "@/components/app-surfaces";
 
+type DashboardFollowUp = {
+    title: string;
+    message: string;
+    primaryHref: string;
+    primaryLabel: string;
+    secondaryHref: string;
+    secondaryLabel: string;
+};
+
 export default function DashboardPage() {
     const { organizationId, hydrated } = useOrganizationSession();
     const [error, setError] = useState("");
@@ -170,6 +179,25 @@ export default function DashboardPage() {
     ]
         .sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime())
         .slice(0, 6);
+    const closeControlFollowUp: DashboardFollowUp | null = data?.focusMonth
+        ? data?.period?.closeReady
+            ? {
+                  title: "Focus month is ready for final approval",
+                  message: `${data.focusMonth} is operationally clear on reconciliations. Use the close workspace to finish sign-off, attestation, and the final close decision.`,
+                  primaryHref: `/close?month=${encodeURIComponent(data.focusMonth)}`,
+                  primaryLabel: "Open close workspace",
+                  secondaryHref: "/readiness",
+                  secondaryLabel: "Review readiness",
+              }
+            : {
+                  title: "Focus month still needs close follow-through",
+                  message: `${data.focusMonth} still has ${data.period?.unreconciledAccountCount ?? 0} account(s) holding close open. Start with the close workflow for that month so the next blocker is obvious.`,
+                  primaryHref: `/close?month=${encodeURIComponent(data.focusMonth)}`,
+                  primaryLabel: "Open focus month",
+                  secondaryHref: "/run-close",
+                  secondaryLabel: "Resume guided close",
+              }
+        : null;
 
     if (!hydrated || loading) {
         return (
@@ -470,6 +498,32 @@ export default function DashboardPage() {
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-zinc-300">
                             {data.primaryAction.itemCount} items connected
                         </span>
+                    </div>
+                </SectionBand>
+            ) : null}
+
+            {closeControlFollowUp ? (
+                <SectionBand
+                    eyebrow="Close follow-up"
+                    title={closeControlFollowUp.title}
+                    description="Use this shortcut when the most important next move is tied to the current focus month."
+                >
+                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-5">
+                        <p className="text-sm leading-6 text-zinc-100">{closeControlFollowUp.message}</p>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                            <Link
+                                href={closeControlFollowUp.primaryHref}
+                                className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                            >
+                                {closeControlFollowUp.primaryLabel}
+                            </Link>
+                            <Link
+                                href={closeControlFollowUp.secondaryHref}
+                                className="rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                            >
+                                {closeControlFollowUp.secondaryLabel}
+                            </Link>
+                        </div>
                     </div>
                 </SectionBand>
             ) : null}

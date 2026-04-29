@@ -1804,6 +1804,11 @@ test("login stores organization context and lands on dashboard", async ({ page }
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.locator("select:visible").first()).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Focus month still needs close follow-through" })).toBeVisible();
+  await page.getByRole("link", { name: "Open focus month" }).click();
+  await expect(page).toHaveURL(/\/close\?month=2026-04/);
+  await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
+  await page.goto("/dashboard");
   await expect(page.getByText("Session and trust").filter({ visible: true })).toBeVisible();
   await expect(page.getByText("Acme Owner").filter({ visible: true })).toBeVisible();
 });
