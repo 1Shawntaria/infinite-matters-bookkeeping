@@ -1,6 +1,58 @@
 import { apiFetch } from "./client";
 import { NotificationSummaryItem } from "./auth";
 
+export type WorkflowAttentionTask = {
+    taskId: string;
+    transactionId: string | null;
+    notificationId: string | null;
+    taskType: string;
+    priority: string;
+    overdue: boolean;
+    title: string;
+    description: string;
+    dueDate: string | null;
+    assignedToUserId: string | null;
+    assignedToUserName: string | null;
+    merchant: string | null;
+    amount: number | null;
+    transactionDate: string | null;
+    proposedCategory: string | null;
+    confidenceScore: number | null;
+    route: string | null;
+    actionPath: string | null;
+    resolutionComment: string | null;
+    acknowledgedByUserId: string | null;
+    acknowledgedAt: string | null;
+    snoozedUntil: string | null;
+    resolvedByUserId: string | null;
+    resolvedAt: string | null;
+};
+
+export type WorkflowInboxSummary = {
+    cardId: string;
+    openCount: number;
+    overdueCount: number;
+    dueTodayCount: number;
+    highPriorityCount: number;
+    unassignedCount: number;
+    assignedToCurrentUserCount: number;
+    recommendedActionLabel: string | null;
+    recommendedActionKey: string | null;
+    recommendedActionPath: string | null;
+    recommendedActionUrgency: string | null;
+    attentionTasks: WorkflowAttentionTask[];
+};
+
+export async function getWorkflowInbox(
+    organizationId: string
+): Promise<WorkflowInboxSummary> {
+    const query = new URLSearchParams({ organizationId });
+    return apiFetch<WorkflowInboxSummary>(
+        `/api/workflows/inbox?${query.toString()}`,
+        { method: "GET" }
+    );
+}
+
 export async function listWorkflowNotifications(
     organizationId: string
 ): Promise<NotificationSummaryItem[]> {

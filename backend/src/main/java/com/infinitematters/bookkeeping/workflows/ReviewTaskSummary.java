@@ -25,6 +25,7 @@ public record ReviewTaskSummary(
         Category proposedCategory,
         double confidenceScore,
         String route,
+        String actionPath,
         String resolutionComment,
         UUID acknowledgedByUserId,
         Instant acknowledgedAt,

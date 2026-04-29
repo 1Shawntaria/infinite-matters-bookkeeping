@@ -164,6 +164,85 @@ function dashboardSnapshot(organizationId: string) {
   };
 }
 
+function workflowInboxSummary(organizationId: string) {
+  if (organizationId === "org-empty") {
+    return {
+      cardId: "workflow-inbox",
+      openCount: 0,
+      overdueCount: 0,
+      dueTodayCount: 0,
+      highPriorityCount: 0,
+      unassignedCount: 0,
+      assignedToCurrentUserCount: 0,
+      recommendedActionLabel: null,
+      recommendedActionKey: null,
+      recommendedActionPath: null,
+      recommendedActionUrgency: null,
+      attentionTasks: [],
+    };
+  }
+
+  if (organizationId === "org-secondary") {
+    return {
+      cardId: "workflow-inbox",
+      openCount: 1,
+      overdueCount: 0,
+      dueTodayCount: 0,
+      highPriorityCount: 0,
+      unassignedCount: 1,
+      assignedToCurrentUserCount: 0,
+      recommendedActionLabel: "Open review queue",
+      recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
+      recommendedActionPath: "/review-queue",
+      recommendedActionUrgency: "NORMAL",
+      attentionTasks: [],
+    };
+  }
+
+  return {
+    cardId: "workflow-inbox",
+    openCount: 5,
+    overdueCount: 1,
+    dueTodayCount: 1,
+    highPriorityCount: 2,
+    unassignedCount: 1,
+    assignedToCurrentUserCount: 1,
+    recommendedActionLabel: "Resolve open review tasks",
+    recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
+    recommendedActionPath: "/review-queue",
+    recommendedActionUrgency: "HIGH",
+    attentionTasks: [
+      {
+        taskId: "close-follow-up-1",
+        transactionId: null,
+        notificationId: null,
+        taskType: "CLOSE_ATTESTATION_FOLLOW_UP",
+        priority: "HIGH",
+        overdue: false,
+        title: "Confirm month-end attestation for 2026-04",
+        description:
+          "Attestation routing or summary was updated, but the month still does not show a recorded confirmation from the assigned approver.",
+        dueDate: "2026-04-25",
+        assignedToUserId: "user-1",
+        assignedToUserName: "Taylor Owner",
+        merchant: null,
+        amount: null,
+        transactionDate: null,
+        proposedCategory: null,
+        confidenceScore: null,
+        route: null,
+        actionPath: "/close?month=2026-04",
+        resolutionComment: "Approver updated after checklist completion.",
+        acknowledgedByUserId: null,
+        acknowledgedAt: null,
+        snoozedUntil: null,
+        resolvedByUserId: null,
+        resolvedAt: null,
+      },
+    ],
+  };
+}
+
 function reviewTasks() {
   return [
     {
@@ -1457,6 +1536,11 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       return;
     }
 
+    if (url.pathname === "/api/workflows/inbox" && request.method() === "GET") {
+      await fulfillJson(route, workflowInboxSummary(organizationHeader));
+      return;
+    }
+
     if (url.pathname === "/api/reviews/tasks" && request.method() === "GET") {
       await fulfillJson(route, remainingReviewTasks);
       return;
@@ -1872,11 +1956,19 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await page.goto("/notifications");
 
   await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Workflow follow-up" })).toBeVisible();
+  await expect(page.getByText("Confirm month-end attestation for 2026-04")).toBeVisible();
+  await expect(page.getByText("Assigned Taylor Owner")).toBeVisible();
   await expect(page.getByText("Your password was changed successfully.")).toBeVisible();
   await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();
   await expect(page.getByText("Mailbox unavailable").first()).toBeVisible();
   await expect(page.locator("span").filter({ hasText: "Attention" }).first()).toBeVisible();
   await expect(page.getByText("Monthly close escalation entered dead-letter handling.").first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Open attestation month" }).click();
+  await expect(page).toHaveURL(/\/close\?month=2026-04/);
+  await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
+  await page.goto("/notifications");
 
   await page.getByRole("button", { name: "Retry delivery" }).first().click();
   await expect(page.getByText("Delivery retry queued successfully.")).toBeVisible();

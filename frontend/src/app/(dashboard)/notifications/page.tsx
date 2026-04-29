@@ -6,6 +6,7 @@ import Link from "next/link";
 import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from "@/components/app-surfaces";
 import { listOrganizations, NotificationSummaryItem, OrganizationSummary, listAuthNotifications } from "@/lib/api/auth";
 import {
+    getWorkflowInbox,
     listAttentionNotifications,
     listDeadLetterNotifications,
     listResolvedDeadLetterNotifications,
@@ -13,6 +14,7 @@ import {
     requeueFailedNotification,
     resolveDeadLetterNotification,
     retryDeadLetterNotification,
+    WorkflowInboxSummary,
 } from "@/lib/api/notifications";
 import { useOrganizationSession } from "@/lib/auth/session";
 
@@ -30,6 +32,15 @@ function formatTimestamp(value?: string | null) {
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
+    });
+}
+
+function formatDate(value?: string | null) {
+    if (!value) return "No due date";
+
+    return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
     });
 }
 
@@ -68,6 +79,11 @@ export default function NotificationsPage() {
         enabled: hydrated && Boolean(organizationId) && isAdminOperator,
         queryFn: () => listAttentionNotifications(organizationId),
     });
+    const workflowInboxQuery = useQuery<WorkflowInboxSummary, Error>({
+        queryKey: ["workflowInbox", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => getWorkflowInbox(organizationId),
+    });
     const deadLetterNotificationsQuery = useQuery<NotificationSummaryItem[], Error>({
         queryKey: ["deadLetterNotifications", organizationId],
         enabled: hydrated && Boolean(organizationId) && isAdminOperator,
@@ -83,6 +99,7 @@ export default function NotificationsPage() {
         hydrated && organizationId
             ? organizationsQuery.isLoading ||
               authNotificationsQuery.isLoading ||
+              workflowInboxQuery.isLoading ||
               workflowNotificationsQuery.isLoading ||
               (isAdminOperator &&
                   (attentionNotificationsQuery.isLoading ||
@@ -92,6 +109,7 @@ export default function NotificationsPage() {
     const queryError =
         organizationsQuery.error?.message ??
         authNotificationsQuery.error?.message ??
+        workflowInboxQuery.error?.message ??
         workflowNotificationsQuery.error?.message ??
         attentionNotificationsQuery.error?.message ??
         deadLetterNotificationsQuery.error?.message ??
@@ -118,6 +136,7 @@ export default function NotificationsPage() {
     const deliveryIssues = mergedNotifications.filter(
         (item) => item.deliveryState === "FAILED" || item.deliveryState === "DEAD_LETTER"
     );
+    const workflowAttentionTasks = workflowInboxQuery.data?.attentionTasks ?? [];
     const deadLetterNotifications = deadLetterNotificationsQuery.data ?? [];
     const resolvedDeadLetters = resolvedDeadLetterNotificationsQuery.data ?? [];
 
@@ -268,6 +287,82 @@ export default function NotificationsPage() {
                     detail={mergedNotifications[0]?.message ?? "No recent notifications yet."}
                 />
             </div>
+
+            <SectionBand
+                eyebrow="Workflow inbox"
+                title="Workflow follow-up"
+                description="Stay on top of review queue pressure and close-control escalations without leaving the notifications workspace."
+            >
+                {workflowAttentionTasks.length > 0 ? (
+                    <div className="space-y-3">
+                        {workflowAttentionTasks.map((task) => {
+                            const actionPath =
+                                task.actionPath ??
+                                (task.transactionId ? "/review-queue" : workflowInboxQuery.data?.recommendedActionPath) ??
+                                "/dashboard";
+                            const actionLabel =
+                                task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP"
+                                    ? "Open attestation month"
+                                    : task.taskType === "FORCE_CLOSE_REVIEW"
+                                      ? "Review override month"
+                                      : "Open workflow task";
+
+                            return (
+                                <div
+                                    key={task.taskId}
+                                    className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4"
+                                >
+                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="space-y-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <p className="text-sm font-semibold text-white">{task.title}</p>
+                                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                    {titleCase(task.priority)}
+                                                </span>
+                                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                    {titleCase(task.taskType)}
+                                                </span>
+                                                {task.overdue ? (
+                                                    <span className="rounded-full border border-rose-300/40 bg-rose-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-rose-100">
+                                                        Overdue
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                            <p className="text-sm text-zinc-300">{task.description}</p>
+                                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+                                                <span>Due {formatDate(task.dueDate)}</span>
+                                                <span>
+                                                    Assigned {task.assignedToUserName ?? "Unassigned"}
+                                                </span>
+                                            </div>
+                                            {task.resolutionComment ? (
+                                                <p className="text-xs text-zinc-500">
+                                                    Audit detail: {task.resolutionComment}
+                                                </p>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="flex shrink-0 flex-wrap gap-2">
+                                            <Link
+                                                href={actionPath}
+                                                className="rounded-md bg-emerald-300 px-3 py-2 text-sm font-semibold text-black hover:bg-emerald-200"
+                                            >
+                                                {actionLabel}
+                                            </Link>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <StatusBanner
+                        tone="success"
+                        title="Workflow follow-up is under control"
+                        message="No review or close-control tasks are currently bubbling up into the operational inbox."
+                    />
+                )}
+            </SectionBand>
 
             {actionError ? (
                 <StatusBanner

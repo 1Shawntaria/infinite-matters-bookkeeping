@@ -382,6 +382,7 @@ class DashboardServiceTests {
                         null,
                         null,
                         null,
+                        null,
                         null));
         when(reviewQueueService.toSummary(urgentIgnoredTask))
                 .thenReturn(new com.infinitematters.bookkeeping.workflows.ReviewTaskSummary(
@@ -401,6 +402,7 @@ class DashboardServiceTests {
                         null,
                         null,
                         0.0,
+                        null,
                         null,
                         null,
                         null,
