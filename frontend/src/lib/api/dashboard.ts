@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import type { WorkflowAttentionTask } from "./notifications";
 
 export type PrimaryAction = {
     cardId: string;
@@ -22,7 +23,7 @@ export type WorkflowInbox = {
     recommendedActionKey: string | null;
     recommendedActionPath: string | null;
     recommendedActionUrgency: string | null;
-    attentionTasks: unknown[];
+    attentionTasks: WorkflowAttentionTask[];
 };
 
 export type PeriodSummary = {

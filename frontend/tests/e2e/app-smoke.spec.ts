@@ -45,6 +45,65 @@ const organizations = [
   },
 ];
 
+function defaultWorkflowAttentionTasks() {
+  return [
+    {
+      taskId: "close-follow-up-1",
+      transactionId: null,
+      notificationId: null,
+      taskType: "CLOSE_ATTESTATION_FOLLOW_UP",
+      priority: "HIGH",
+      overdue: false,
+      title: "Confirm month-end attestation for 2026-04",
+      description:
+        "Attestation routing or summary was updated, but the month still does not show a recorded confirmation from the assigned approver.",
+      dueDate: "2026-04-25",
+      assignedToUserId: "user-1",
+      assignedToUserName: "Taylor Owner",
+      merchant: null,
+      amount: null,
+      transactionDate: null,
+      proposedCategory: null,
+      confidenceScore: null,
+      route: null,
+      actionPath: "/close?month=2026-04",
+      resolutionComment: "Approver updated after checklist completion.",
+      acknowledgedByUserId: null,
+      acknowledgedAt: null,
+      snoozedUntil: null,
+      resolvedByUserId: null,
+      resolvedAt: null,
+    },
+    {
+      taskId: "close-follow-up-2",
+      transactionId: null,
+      notificationId: null,
+      taskType: "FORCE_CLOSE_REVIEW",
+      priority: "HIGH",
+      overdue: true,
+      title: "Review force-close controls for 2026-02",
+      description:
+        "A recent month was force-closed. Revisit the close story and verify the override is fully documented and understood.",
+      dueDate: "2026-04-23",
+      assignedToUserId: "user-1",
+      assignedToUserName: "Taylor Owner",
+      merchant: null,
+      amount: null,
+      transactionDate: null,
+      proposedCategory: null,
+      confidenceScore: null,
+      route: null,
+      actionPath: "/close?month=2026-02",
+      resolutionComment: "Late bank statement override requires owner review.",
+      acknowledgedByUserId: null,
+      acknowledgedAt: null,
+      snoozedUntil: null,
+      resolvedByUserId: null,
+      resolvedAt: null,
+    },
+  ];
+}
+
 function dashboardSnapshot(organizationId: string) {
   if (organizationId === "org-empty") {
     return {
@@ -130,14 +189,14 @@ function dashboardSnapshot(organizationId: string) {
       openCount: 3,
       overdueCount: 1,
       dueTodayCount: 1,
-      highPriorityCount: 1,
+      highPriorityCount: 2,
       unassignedCount: 1,
       assignedToCurrentUserCount: 1,
       recommendedActionLabel: "Resolve open review tasks",
       recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
       recommendedActionPath: "/workflows/inbox",
       recommendedActionUrgency: "HIGH",
-      attentionTasks: [],
+      attentionTasks: defaultWorkflowAttentionTasks(),
     },
     period: {
       closeReady: false,
@@ -913,62 +972,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       createdAt: "2026-04-24T12:06:00Z",
     },
   ];
-  let workflowAttentionTasks = [
-    {
-      taskId: "close-follow-up-1",
-      transactionId: null,
-      notificationId: null,
-      taskType: "CLOSE_ATTESTATION_FOLLOW_UP",
-      priority: "HIGH",
-      overdue: false,
-      title: "Confirm month-end attestation for 2026-04",
-      description:
-        "Attestation routing or summary was updated, but the month still does not show a recorded confirmation from the assigned approver.",
-      dueDate: "2026-04-25",
-      assignedToUserId: "user-1",
-      assignedToUserName: "Taylor Owner",
-      merchant: null,
-      amount: null,
-      transactionDate: null,
-      proposedCategory: null,
-      confidenceScore: null,
-      route: null,
-      actionPath: "/close?month=2026-04",
-      resolutionComment: "Approver updated after checklist completion.",
-      acknowledgedByUserId: null,
-      acknowledgedAt: null,
-      snoozedUntil: null,
-      resolvedByUserId: null,
-      resolvedAt: null,
-    },
-    {
-      taskId: "close-follow-up-2",
-      transactionId: null,
-      notificationId: null,
-      taskType: "FORCE_CLOSE_REVIEW",
-      priority: "HIGH",
-      overdue: true,
-      title: "Review force-close controls for 2026-02",
-      description:
-        "A recent month was force-closed. Revisit the close story and verify the override is fully documented and understood.",
-      dueDate: "2026-04-23",
-      assignedToUserId: "user-1",
-      assignedToUserName: "Taylor Owner",
-      merchant: null,
-      amount: null,
-      transactionDate: null,
-      proposedCategory: null,
-      confidenceScore: null,
-      route: null,
-      actionPath: "/close?month=2026-02",
-      resolutionComment: "Late bank statement override requires owner review.",
-      acknowledgedByUserId: null,
-      acknowledgedAt: null,
-      snoozedUntil: null,
-      resolvedByUserId: null,
-      resolvedAt: null,
-    },
-  ];
+  let workflowAttentionTasks = defaultWorkflowAttentionTasks();
 
   async function fulfillJson(
     route: Parameters<Parameters<typeof page.route>[1]>[0],
@@ -1954,9 +1958,9 @@ test("login stores organization context and lands on dashboard", async ({ page }
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.locator("select:visible").first()).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Focus month still needs close follow-through" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Push attestation through final approval" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review the latest override month" })).toBeVisible();
-  await page.getByRole("link", { name: "Open focus month" }).click();
+  await page.getByRole("link", { name: "Open attestation" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/dashboard");

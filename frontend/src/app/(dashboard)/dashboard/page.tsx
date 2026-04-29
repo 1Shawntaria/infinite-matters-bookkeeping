@@ -195,12 +195,13 @@ export default function DashboardPage() {
         ownerSignoffGap: 0,
         pendingPlaybookCount: 0,
         requireOwnerSignoffBeforeClose: false,
+        workflowAttentionTasks: data?.workflowInbox?.attentionTasks ?? [],
         context: "dashboard",
         closeReady: data?.period?.closeReady ?? false,
         unreconciledAccountCount: data?.period?.unreconciledAccountCount ?? 0,
     });
     const closeControlQualityFollowUp: FollowUpAction | null =
-        buildAuditCloseControlFollowUp(closeControlEvents);
+        buildAuditCloseControlFollowUp(closeControlEvents, data?.workflowInbox?.attentionTasks ?? []);
 
     if (!hydrated || loading) {
         return (

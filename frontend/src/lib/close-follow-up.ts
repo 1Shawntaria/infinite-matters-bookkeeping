@@ -1,4 +1,5 @@
 import { AuditEventSummary } from "./api/audit";
+import type { WorkflowAttentionTask } from "./api/notifications";
 
 export type FollowUpAction = {
     title: string;
@@ -18,6 +19,7 @@ type FocusMonthFollowUpInput = {
     pendingPlaybookCount: number;
     requireOwnerSignoffBeforeClose: boolean;
     closeApproverName?: string | null;
+    workflowAttentionTasks?: WorkflowAttentionTask[];
     context?: "dashboard" | "readiness";
     closeReady?: boolean;
     unreconciledAccountCount?: number;
@@ -44,6 +46,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
         pendingPlaybookCount,
         requireOwnerSignoffBeforeClose,
         closeApproverName,
+        workflowAttentionTasks = [],
         context = "readiness",
         closeReady = false,
         unreconciledAccountCount = 0,
@@ -51,6 +54,44 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
     if (!focusMonth) {
         return null;
+    }
+
+    const focusMonthAttestationTask = workflowAttentionTasks.find(
+        (task) =>
+            task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP" &&
+            workflowTaskMonth(task) === focusMonth
+    );
+
+    if (focusMonthAttestationTask) {
+        if (focusMonthAttestationTask.acknowledgedAt) {
+            return {
+                title:
+                    context === "dashboard"
+                        ? "Final attestation is waiting on approval"
+                        : "Attestation is reviewed and awaiting confirmation",
+                message: focusMonthAttestationTask.assignedToUserName
+                    ? `${focusMonthAttestationTask.assignedToUserName} has already reviewed the attestation follow-up for ${focusMonth}. Keep the month open until the final confirmation is recorded.`
+                    : `The attestation follow-up for ${focusMonth} has been reviewed, but the final confirmation still is not on record.`,
+                primaryHref: focusMonthAttestationTask.actionPath ?? `/close?month=${encodeURIComponent(focusMonth)}`,
+                primaryLabel: "Open attestation",
+                secondaryHref: "/notifications",
+                secondaryLabel: "Review workflow inbox",
+            };
+        }
+
+        return {
+            title:
+                context === "dashboard"
+                    ? "Push attestation through final approval"
+                    : "Finish month-end attestation",
+            message: focusMonthAttestationTask.assignedToUserName
+                ? `${focusMonthAttestationTask.assignedToUserName} still needs to confirm the month-end attestation for ${focusMonth}.`
+                : `The focus month still needs final month-level attestation confirmation.`,
+            primaryHref: focusMonthAttestationTask.actionPath ?? `/close?month=${encodeURIComponent(focusMonth)}`,
+            primaryLabel: "Open attestation",
+            secondaryHref: "/notifications",
+            secondaryLabel: "Review workflow inbox",
+        };
     }
 
     if (context === "dashboard") {
@@ -131,39 +172,59 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
     };
 }
 
-export function buildAuditCloseControlFollowUp(closeControlEvents: AuditEventSummary[]): FollowUpAction | null {
-    const latestForceClose = closeControlEvents.find((item) => item.eventType === "PERIOD_FORCE_CLOSED");
-    if (latestForceClose) {
-        return {
-            title: "Review the latest override month",
-            message: `The most recent exception landed on ${latestForceClose.entityId}. Revisit that month’s close workspace and confirm whether the override story is fully documented.`,
-            primaryHref: `/close?month=${encodeURIComponent(latestForceClose.entityId)}`,
-            primaryLabel: "Open override month",
-            secondaryHref: `/activity?lane=AUDIT&entityId=${encodeURIComponent(latestForceClose.entityId)}&label=${encodeURIComponent(`month ${latestForceClose.entityId}`)}`,
-            secondaryLabel: "Trace audit history",
-        };
-    }
-
-    const latestUnconfirmedAttestation = closeControlEvents.find(
-        (item) =>
-            item.eventType === "PERIOD_CLOSE_ATTESTATION_UPDATED" &&
-            !closeControlEvents.some(
-                (candidate) =>
-                    candidate.eventType === "PERIOD_CLOSE_ATTESTED" &&
-                    candidate.entityId === item.entityId &&
-                    new Date(candidate.createdAt).getTime() >= new Date(item.createdAt).getTime()
-            )
+export function buildAuditCloseControlFollowUp(
+    closeControlEvents: AuditEventSummary[],
+    workflowAttentionTasks: WorkflowAttentionTask[] = []
+): FollowUpAction | null {
+    const latestForceCloseTask = workflowAttentionTasks.find(
+        (task) => task.taskType === "FORCE_CLOSE_REVIEW"
     );
-    if (latestUnconfirmedAttestation) {
+    if (latestForceCloseTask) {
         return {
-            title: "Finish attestation follow-through",
-            message: `${latestUnconfirmedAttestation.entityId} still shows an attestation update without a later confirmation. Push that month back through the assigned approver handoff.`,
-            primaryHref: `/close?month=${encodeURIComponent(latestUnconfirmedAttestation.entityId)}`,
-            primaryLabel: "Open attestation month",
-            secondaryHref: "/run-close",
-            secondaryLabel: "Review close runbook",
+            title: latestForceCloseTask.acknowledgedAt
+                ? "Force-close review is already in motion"
+                : "Review the latest override month",
+            message: latestForceCloseTask.acknowledgedAt
+                ? `${workflowTaskMonth(latestForceCloseTask) ?? "The latest override month"} has already been reviewed by an operator, but the control-quality signal remains open until that review is cleared.`
+                : `The most recent exception landed on ${workflowTaskMonth(latestForceCloseTask) ?? "a recent month"}. Revisit that month’s close workspace and confirm whether the override story is fully documented.`,
+            primaryHref: latestForceCloseTask.actionPath ?? "/activity",
+            primaryLabel: "Open override month",
+            secondaryHref: "/notifications",
+            secondaryLabel: "Review workflow inbox",
         };
     }
 
+    const latestUnconfirmedAttestationTask = workflowAttentionTasks.find(
+        (task) => task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP"
+    );
+    if (latestUnconfirmedAttestationTask) {
+        return {
+            title: latestUnconfirmedAttestationTask.acknowledgedAt
+                ? "Attestation follow-through is being worked"
+                : "Finish attestation follow-through",
+            message: latestUnconfirmedAttestationTask.acknowledgedAt
+                ? `${workflowTaskMonth(latestUnconfirmedAttestationTask) ?? "The focus month"} has been reviewed, but the final attestation confirmation is still missing.`
+                : `${workflowTaskMonth(latestUnconfirmedAttestationTask) ?? "A recent month"} still shows an attestation update without a later confirmation. Push that month back through the assigned approver handoff.`,
+            primaryHref:
+                latestUnconfirmedAttestationTask.actionPath ??
+                `/close?month=${encodeURIComponent(workflowTaskMonth(latestUnconfirmedAttestationTask) ?? "")}`,
+            primaryLabel: "Open attestation month",
+            secondaryHref: "/notifications",
+            secondaryLabel: "Review workflow inbox",
+        };
+    }
+
+    void closeControlEvents;
     return null;
+}
+
+function workflowTaskMonth(task: WorkflowAttentionTask): string | null {
+    const explicitPath = task.actionPath ?? "";
+    const monthMatch = explicitPath.match(/[?&]month=([^&]+)/);
+    if (monthMatch) {
+        return decodeURIComponent(monthMatch[1]);
+    }
+
+    const titleMatch = task.title.match(/\b(\d{4}-\d{2})\b/);
+    return titleMatch ? titleMatch[1] : null;
 }

@@ -387,11 +387,13 @@ export default function CloseReadinessPage() {
                 pendingPlaybookCount,
                 requireOwnerSignoffBeforeClose,
                 closeApproverName: closeAttestation?.closeApprover?.fullName ?? null,
+                workflowAttentionTasks: dashboardQuery.data?.workflowInbox.attentionTasks ?? [],
             }),
         [
             attestationGap,
             attestationRoutingGap,
             closeAttestation?.closeApprover?.fullName,
+            dashboardQuery.data?.workflowInbox.attentionTasks,
             focusMonth,
             ownerSignoffGap,
             pendingPlaybookCount,

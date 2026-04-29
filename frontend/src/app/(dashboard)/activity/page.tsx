@@ -14,6 +14,7 @@ import {
     revokeAuthSession,
 } from "@/lib/api/auth";
 import { AuditEventSummary, listAuditEvents } from "@/lib/api/audit";
+import { getDashboardSnapshot } from "@/lib/api/dashboard";
 import { ImportedTransactionHistoryItem, listImportHistory } from "@/lib/api/imports";
 import {
     buildAuditCloseControlFollowUp,
@@ -126,19 +127,26 @@ function ActivityPageContent() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listAuditEvents(organizationId),
     });
+    const dashboardQuery = useQuery({
+        queryKey: ["dashboardSnapshot", organizationId],
+        enabled: hydrated && Boolean(organizationId),
+        queryFn: () => getDashboardSnapshot(organizationId),
+    });
 
     const loading =
         hydrated && organizationId
             ? authSessionsQuery.isLoading ||
               authActivityQuery.isLoading ||
               importHistoryQuery.isLoading ||
-              auditEventsQuery.isLoading
+              auditEventsQuery.isLoading ||
+              dashboardQuery.isLoading
             : false;
     const queryError =
         authSessionsQuery.error?.message ??
         authActivityQuery.error?.message ??
         importHistoryQuery.error?.message ??
         auditEventsQuery.error?.message ??
+        dashboardQuery.error?.message ??
         "";
 
     const allEntries = useMemo(
@@ -187,8 +195,12 @@ function ActivityPageContent() {
                 ? "Recent close history shows attestation and closure events landing without obvious override pressure."
                 : "Once close attestation and close actions happen, this panel will summarize how clean that control sequence has been.";
     const closeControlFollowUp: FollowUpAction | null = useMemo(
-        () => buildAuditCloseControlFollowUp(closeControlEvents),
-        [closeControlEvents]
+        () =>
+            buildAuditCloseControlFollowUp(
+                closeControlEvents,
+                dashboardQuery.data?.workflowInbox.attentionTasks ?? []
+            ),
+        [closeControlEvents, dashboardQuery.data?.workflowInbox.attentionTasks]
     );
 
     const visibleEntries = useMemo(() => {
