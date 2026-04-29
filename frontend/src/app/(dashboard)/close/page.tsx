@@ -140,9 +140,10 @@ function closeTemplateStorageKey(organizationId: string) {
 function ClosePageContent() {
     const searchParams = useSearchParams();
     const accountCodeParam = searchParams.get("accountCode") ?? "";
+    const monthParam = searchParams.get("month") ?? "";
     const queryClient = useQueryClient();
     const { organizationId, hydrated } = useOrganizationSession();
-    const [selectedMonth, setSelectedMonth] = useState("");
+    const [selectedMonth, setSelectedMonth] = useState(monthParam);
     const [closeError, setCloseError] = useState("");
     const [closeSuccess, setCloseSuccess] = useState("");
     const [forceCloseReason, setForceCloseReason] = useState("");
@@ -242,6 +243,12 @@ function ClosePageContent() {
         enabled: hydrated && Boolean(organizationId),
         queryFn: () => listMemberships(organizationId),
     });
+
+    useEffect(() => {
+        if (monthParam && monthParam !== selectedMonth) {
+            setSelectedMonth(monthParam);
+        }
+    }, [monthParam, selectedMonth]);
 
     useEffect(() => {
         if (!selectedMonth && dashboardQuery.data?.focusMonth) {

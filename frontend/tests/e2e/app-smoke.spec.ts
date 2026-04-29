@@ -1834,9 +1834,15 @@ test("activity page shows merged operational timeline and filter views", async (
   await expect(page.getByText("Force-close activity needs review")).toBeVisible();
   await expect(page.getByText("Attestation plans updated")).toBeVisible();
   await expect(page.getByText("Attestations confirmed")).toBeVisible();
+  await expect(page.getByText("Review the latest override month")).toBeVisible();
   await expect(page.getByText("Auth Login Succeeded")).toBeVisible();
   await expect(page.getByText("Organization Member Added").last()).toBeVisible();
   await expect(page.getByText("Operating Checking: CLOUDCO")).toBeVisible();
+
+  await page.getByRole("link", { name: "Open override month" }).click();
+  await expect(page).toHaveURL(/\/close\?month=2026-02/);
+  await expect(page.locator('input[type="month"]')).toHaveValue("2026-02");
+  await page.goto("/activity");
 
   await page.getByRole("button", { name: "Revoke session" }).nth(1).click();
   await expect(page.getByText("Session revoked. The activity feed has been refreshed.")).toBeVisible();

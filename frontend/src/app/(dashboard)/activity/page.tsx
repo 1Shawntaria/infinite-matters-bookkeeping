@@ -28,6 +28,15 @@ type TimelineEntry = {
     entityId: string;
 };
 
+type CloseControlFollowUp = {
+    title: string;
+    message: string;
+    primaryHref: string;
+    primaryLabel: string;
+    secondaryHref: string;
+    secondaryLabel: string;
+};
+
 function formatTimestamp(value: string) {
     return new Date(value).toLocaleString("en-US", {
         month: "short",
@@ -191,6 +200,42 @@ function ActivityPageContent() {
               : closeControlEvents.length > 0
                 ? "Recent close history shows attestation and closure events landing without obvious override pressure."
                 : "Once close attestation and close actions happen, this panel will summarize how clean that control sequence has been.";
+    const closeControlFollowUp: CloseControlFollowUp | null = useMemo(() => {
+        const latestForceClose = closeControlEvents.find((item) => item.eventType === "PERIOD_FORCE_CLOSED");
+        if (latestForceClose) {
+            return {
+                title: "Review the latest override month",
+                message: `The most recent exception landed on ${latestForceClose.entityId}. Revisit that month’s close workspace and confirm whether the override story is fully documented.`,
+                primaryHref: `/close?month=${encodeURIComponent(latestForceClose.entityId)}`,
+                primaryLabel: "Open override month",
+                secondaryHref: `/activity?lane=AUDIT&entityId=${encodeURIComponent(latestForceClose.entityId)}&label=${encodeURIComponent(`month ${latestForceClose.entityId}`)}`,
+                secondaryLabel: "Trace audit history",
+            };
+        }
+
+        const latestUnconfirmedAttestation = closeControlEvents.find(
+            (item) =>
+                item.eventType === "PERIOD_CLOSE_ATTESTATION_UPDATED" &&
+                !closeControlEvents.some(
+                    (candidate) =>
+                        candidate.eventType === "PERIOD_CLOSE_ATTESTED" &&
+                        candidate.entityId === item.entityId &&
+                        new Date(candidate.createdAt).getTime() >= new Date(item.createdAt).getTime()
+                )
+        );
+        if (latestUnconfirmedAttestation) {
+            return {
+                title: "Finish attestation follow-through",
+                message: `${latestUnconfirmedAttestation.entityId} still shows an attestation update without a later confirmation. Push that month back through the assigned approver handoff.`,
+                primaryHref: `/close?month=${encodeURIComponent(latestUnconfirmedAttestation.entityId)}`,
+                primaryLabel: "Open attestation month",
+                secondaryHref: `/run-close`,
+                secondaryLabel: "Review close runbook",
+            };
+        }
+
+        return null;
+    }, [closeControlEvents]);
 
     const visibleEntries = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase();
@@ -403,6 +448,26 @@ function ActivityPageContent() {
                                 </p>
                             </div>
                         </div>
+                        {closeControlFollowUp ? (
+                            <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-4">
+                                <h3 className="text-sm font-semibold text-white">{closeControlFollowUp.title}</h3>
+                                <p className="mt-3 text-sm text-zinc-200">{closeControlFollowUp.message}</p>
+                                <div className="mt-4 flex flex-wrap gap-3">
+                                    <Link
+                                        href={closeControlFollowUp.primaryHref}
+                                        className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                                    >
+                                        {closeControlFollowUp.primaryLabel}
+                                    </Link>
+                                    <Link
+                                        href={closeControlFollowUp.secondaryHref}
+                                        className="rounded-md border border-white/10 px-4 py-2.5 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                                    >
+                                        {closeControlFollowUp.secondaryLabel}
+                                    </Link>
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </SectionBand>
