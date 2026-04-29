@@ -971,6 +971,34 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       sentAt: null,
       createdAt: "2026-04-24T12:06:00Z",
     },
+    {
+      id: "workflow-notification-4",
+      workflowTaskId: "close-follow-up-1",
+      userId: "user-1",
+      category: "WORKFLOW",
+      channel: "IN_APP",
+      status: "SENT",
+      deliveryState: "DELIVERED",
+      message:
+        "Escalation (2026-04-29): attestation for 2026-04 still lacks final confirmation after repeated reminders. Owner/admin review is now required.",
+      referenceType: "close_control_follow_up_escalation",
+      referenceId: "close-follow-up-1",
+      recipientEmail: "owner@acme.test",
+      providerName: null,
+      providerMessageId: null,
+      attemptCount: 0,
+      lastError: null,
+      lastFailureCode: null,
+      deadLetterResolutionStatus: null,
+      deadLetterResolutionReasonCode: null,
+      deadLetterResolutionNote: null,
+      deadLetterResolvedAt: null,
+      deadLetterResolvedByUserId: null,
+      scheduledFor: "2026-04-29T15:00:00Z",
+      lastAttemptedAt: null,
+      sentAt: "2026-04-29T15:00:00Z",
+      createdAt: "2026-04-29T15:00:00Z",
+    },
   ];
   let workflowAttentionTasks = defaultWorkflowAttentionTasks();
 
@@ -1125,7 +1153,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
     }
 
     if (url.pathname === "/api/workflows/notifications/attention" && request.method() === "GET") {
-      await fulfillJson(route, [workflowNotifications[0], workflowNotifications[2]]);
+      await fulfillJson(route, [workflowNotifications[3], workflowNotifications[0], workflowNotifications[2]]);
       return;
     }
 
@@ -2024,8 +2052,12 @@ test("activity page shows merged operational timeline and filter views", async (
 test("notifications inbox merges auth and workflow delivery signals", async ({ page }) => {
   await seedOrganization(page);
   await page.goto("/notifications");
+  const escalationsSection = page.getByRole("heading", { name: "Escalated close controls" }).locator("..").locator("..");
 
   await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Escalated close controls" })).toBeVisible();
+  await expect(page.getByText("Escalated attestation follow-up")).toBeVisible();
+  await expect(page.getByText("Focus month 2026-04")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Workflow follow-up" })).toBeVisible();
   await expect(page.getByText("Confirm month-end attestation for 2026-04")).toBeVisible();
   await expect(page.getByText("Review force-close controls for 2026-02")).toBeVisible();
@@ -2035,6 +2067,11 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.getByText("Mailbox unavailable").first()).toBeVisible();
   await expect(page.locator("span").filter({ hasText: "Attention" }).first()).toBeVisible();
   await expect(page.getByText("Monthly close escalation entered dead-letter handling.").first()).toBeVisible();
+
+  await escalationsSection.getByRole("link", { name: "Open attestation month" }).click();
+  await expect(page).toHaveURL(/\/close\?month=2026-04/);
+  await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
+  await page.goto("/notifications");
 
   await page.getByRole("link", { name: "Open attestation month" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
@@ -2069,6 +2106,8 @@ test("exceptions workspace groups blockers that still stand in the way of close"
 
   await expect(page.getByRole("heading", { name: "Exceptions" })).toBeVisible();
   await expect(page.getByText("Active blockers")).toBeVisible();
+  await expect(page.getByText("Escalated close-control risk is active")).toBeVisible();
+  await expect(page.getByText("Escalated attestation follow-up").first()).toBeVisible();
   await expect(page.getByText("Review AMZN MKTP")).toBeVisible();
   await expect(page.getByText("Operating Checking")).toBeVisible();
   await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();

@@ -1,4 +1,5 @@
 import { AuditEventSummary } from "./api/audit";
+import { NotificationSummaryItem } from "./api/auth";
 import type { WorkflowAttentionTask } from "./api/notifications";
 
 export type FollowUpAction = {
@@ -8,6 +9,16 @@ export type FollowUpAction = {
     primaryLabel: string;
     secondaryHref: string;
     secondaryLabel: string;
+};
+
+export type EscalatedCloseControlAction = {
+    title: string;
+    message: string;
+    primaryHref: string;
+    primaryLabel: string;
+    secondaryHref: string;
+    secondaryLabel: string;
+    monthLabel: string;
 };
 
 type FocusMonthFollowUpInput = {
@@ -218,7 +229,48 @@ export function buildAuditCloseControlFollowUp(
     return null;
 }
 
-function workflowTaskMonth(task: WorkflowAttentionTask): string | null {
+export function isEscalatedCloseControlNotification(
+    notification: Pick<NotificationSummaryItem, "referenceType">
+): boolean {
+    return notification.referenceType === "close_control_follow_up_escalation";
+}
+
+export function buildEscalatedCloseControlAction(
+    notification: Pick<NotificationSummaryItem, "referenceId" | "message">,
+    workflowAttentionTasks: WorkflowAttentionTask[] = []
+): EscalatedCloseControlAction {
+    const matchedTask =
+        workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
+    const month = matchedTask ? workflowTaskMonth(matchedTask) : null;
+    const monthLabel = month ?? "the affected month";
+    const primaryHref =
+        matchedTask?.actionPath ??
+        (month ? `/close?month=${encodeURIComponent(month)}` : "/notifications");
+
+    if (matchedTask?.taskType === "FORCE_CLOSE_REVIEW") {
+        return {
+            title: "Escalated force-close review",
+            message: `${monthLabel} still carries an unresolved override review after repeated reminders. Owner or admin follow-through is now required.`,
+            primaryHref,
+            primaryLabel: "Open override month",
+            secondaryHref: "/notifications",
+            secondaryLabel: "Review workflow inbox",
+            monthLabel,
+        };
+    }
+
+    return {
+        title: "Escalated attestation follow-up",
+        message: `${monthLabel} still lacks final attestation confirmation after repeated reminders. Move the month back through owner/admin review now.`,
+        primaryHref,
+        primaryLabel: "Open attestation month",
+        secondaryHref: "/notifications",
+        secondaryLabel: "Review workflow inbox",
+        monthLabel,
+    };
+}
+
+export function workflowTaskMonth(task: WorkflowAttentionTask): string | null {
     const explicitPath = task.actionPath ?? "";
     const monthMatch = explicitPath.match(/[?&]month=([^&]+)/);
     if (monthMatch) {

@@ -22,6 +22,10 @@ import {
 } from "@/lib/api/close";
 import { useOrganizationSession } from "@/lib/auth/session";
 import { NotificationSummaryItem } from "@/lib/api/auth";
+import {
+    buildEscalatedCloseControlAction,
+    isEscalatedCloseControlNotification,
+} from "@/lib/close-follow-up";
 
 function toneForCount(count: number) {
     return count > 0 ? "warning" : "success";
@@ -97,6 +101,13 @@ export default function ExceptionsPage() {
     const blockingChecklistItems = checklistItems.filter((item) => !item.complete);
     const attentionNotifications = attentionNotificationsQuery.data ?? [];
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
+    const workflowAttentionTasks = dashboardQuery.data?.workflowInbox.attentionTasks ?? [];
+    const escalatedCloseControlNotifications = attentionNotifications.filter(
+        isEscalatedCloseControlNotification
+    );
+    const deliveryAttentionNotifications = attentionNotifications.filter(
+        (item) => !isEscalatedCloseControlNotification(item)
+    );
 
     const groupedExceptionCount =
         reviewTasks.length +
@@ -106,6 +117,14 @@ export default function ExceptionsPage() {
         deadLetters.length;
 
     const topBlockers = [
+        ...escalatedCloseControlNotifications.slice(0, 2).map((item) => {
+            const action = buildEscalatedCloseControlAction(item, workflowAttentionTasks);
+            return {
+                label: action.title,
+                reason: action.message,
+                href: action.primaryHref,
+            };
+        }),
         ...reviewTasks.slice(0, 2).map((task) => ({
             label: task.title,
             reason: task.description,
@@ -182,7 +201,7 @@ export default function ExceptionsPage() {
                 </div>
             </PageHero>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
                 <SummaryMetric
                     label="Review blockers"
                     value={`${reviewTasks.length}`}
@@ -202,10 +221,16 @@ export default function ExceptionsPage() {
                     tone={toneForCount(blockingChecklistItems.length)}
                 />
                 <SummaryMetric
+                    label="Escalated close controls"
+                    value={`${escalatedCloseControlNotifications.length}`}
+                    detail="Months where owner/admin intervention is now required."
+                    tone={toneForCount(escalatedCloseControlNotifications.length)}
+                />
+                <SummaryMetric
                     label="Attention notifications"
-                    value={`${attentionNotifications.length}`}
-                    detail="Operational sends already flagged as risky."
-                    tone={toneForCount(attentionNotifications.length)}
+                    value={`${deliveryAttentionNotifications.length}`}
+                    detail="Other operational sends already flagged as risky."
+                    tone={toneForCount(deliveryAttentionNotifications.length)}
                 />
                 <SummaryMetric
                     label="Dead letters"
@@ -220,6 +245,14 @@ export default function ExceptionsPage() {
                     tone="muted"
                     title="This month includes an override history"
                     message={`Latest override reason: ${currentPeriod.overrideReason}`}
+                />
+            ) : null}
+
+            {escalatedCloseControlNotifications.length > 0 ? (
+                <StatusBanner
+                    tone="error"
+                    title="Escalated close-control risk is active"
+                    message="At least one month is still stuck after repeated reminders. Move owner/admin review to the front of the exception queue before treating remaining issues as routine cleanup."
                 />
             ) : null}
 
@@ -351,11 +384,13 @@ export default function ExceptionsPage() {
                 </SectionBand>
 
                 <SectionBand
-                    eyebrow="Delivery operations"
+                    eyebrow="Operational signals"
                     title="Notifications that still need a human"
-                    description="This is the operational cleanup lane for delivery failures and dead letters that should not survive into handoff."
+                    description="Separate truly stuck close-control risk from general delivery cleanup so owners know what needs judgment versus what just needs operator maintenance."
                 >
-                    {attentionNotifications.length === 0 && deadLetters.length === 0 ? (
+                    {escalatedCloseControlNotifications.length === 0 &&
+                    deliveryAttentionNotifications.length === 0 &&
+                    deadLetters.length === 0 ? (
                         <StatusBanner
                             tone="success"
                             title="No delivery exceptions"
@@ -363,7 +398,20 @@ export default function ExceptionsPage() {
                         />
                     ) : (
                         <div className="space-y-3">
-                            {[...attentionNotifications, ...deadLetters].map((item) => (
+                            {escalatedCloseControlNotifications.map((item) => {
+                                const action = buildEscalatedCloseControlAction(item, workflowAttentionTasks);
+                                return (
+                                    <Link
+                                        key={item.id}
+                                        href={action.primaryHref}
+                                        className="block rounded-lg border border-rose-300/30 bg-rose-300/10 p-4 hover:border-rose-200/50"
+                                    >
+                                        <p className="text-sm font-semibold text-white">{action.title}</p>
+                                        <p className="mt-1 text-sm text-zinc-200">{action.message}</p>
+                                    </Link>
+                                );
+                            })}
+                            {[...deliveryAttentionNotifications, ...deadLetters].map((item) => (
                                 <Link
                                     key={item.id}
                                     href="/notifications"

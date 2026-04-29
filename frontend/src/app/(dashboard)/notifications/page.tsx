@@ -19,6 +19,10 @@ import {
     WorkflowInboxSummary,
 } from "@/lib/api/notifications";
 import { useOrganizationSession } from "@/lib/auth/session";
+import {
+    buildEscalatedCloseControlAction,
+    isEscalatedCloseControlNotification,
+} from "@/lib/close-follow-up";
 
 type NotificationFilter = "ALL" | "AUTH" | "WORKFLOW" | "ATTENTION";
 
@@ -142,6 +146,9 @@ export default function NotificationsPage() {
     const workflowAttentionTasks = workflowInboxQuery.data?.attentionTasks ?? [];
     const deadLetterNotifications = deadLetterNotificationsQuery.data ?? [];
     const resolvedDeadLetters = resolvedDeadLetterNotificationsQuery.data ?? [];
+    const escalatedCloseControlNotifications = (attentionNotificationsQuery.data ?? []).filter(
+        isEscalatedCloseControlNotification
+    );
 
     async function refreshNotificationData() {
         await Promise.all([
@@ -339,6 +346,78 @@ export default function NotificationsPage() {
                     detail={mergedNotifications[0]?.message ?? "No recent notifications yet."}
                 />
             </div>
+
+            {escalatedCloseControlNotifications.length > 0 ? (
+                <StatusBanner
+                    tone="error"
+                    title="Escalated close controls need owner or admin action"
+                    message={`${escalatedCloseControlNotifications.length} close-control escalation(s) are now beyond routine reminders. Route those months back through the close workspace before treating the workflow as healthy again.`}
+                />
+            ) : null}
+
+            <SectionBand
+                eyebrow="Escalations"
+                title="Escalated close controls"
+                description="These are the months where routine reminders were not enough and the system is now asking an owner or admin to intervene directly."
+            >
+                {escalatedCloseControlNotifications.length > 0 ? (
+                    <div className="space-y-3">
+                        {escalatedCloseControlNotifications.map((notification) => {
+                            const action = buildEscalatedCloseControlAction(
+                                notification,
+                                workflowAttentionTasks
+                            );
+                            return (
+                                <div
+                                    key={`escalation-${notification.id}`}
+                                    className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-4"
+                                >
+                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="space-y-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <p className="text-sm font-semibold text-white">{action.title}</p>
+                                                <span className="rounded-full border border-rose-300/40 bg-rose-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-rose-100">
+                                                    Escalated
+                                                </span>
+                                                <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-amber-100">
+                                                    Owner/Admin
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-zinc-200">{action.message}</p>
+                                            <p className="text-sm text-zinc-300">{notification.message}</p>
+                                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
+                                                <span>Focus month {action.monthLabel}</span>
+                                                <span>Recipient {notification.recipientEmail ?? "Unknown"}</span>
+                                                <span>Sent {formatTimestamp(notification.sentAt ?? notification.createdAt)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex shrink-0 flex-wrap gap-2">
+                                            <Link
+                                                href={action.primaryHref}
+                                                className="rounded-md bg-rose-200 px-3 py-2 text-sm font-semibold text-black hover:bg-rose-100"
+                                            >
+                                                {action.primaryLabel}
+                                            </Link>
+                                            <Link
+                                                href={action.secondaryHref}
+                                                className="rounded-md border border-white/10 px-3 py-2 text-sm text-zinc-100 hover:bg-white/[0.05]"
+                                            >
+                                                {action.secondaryLabel}
+                                            </Link>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <StatusBanner
+                        tone="success"
+                        title="No escalated close controls"
+                        message="Routine reminders are currently enough to keep the close-control workflow moving."
+                    />
+                )}
+            </SectionBand>
 
             <SectionBand
                 eyebrow="Workflow inbox"
