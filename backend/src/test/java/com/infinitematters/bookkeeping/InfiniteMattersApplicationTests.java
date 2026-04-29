@@ -437,6 +437,57 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void unresolvedAttestationAppearsInWorkflowInboxAndDashboardAttentionTasks() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "close-attention-owner-" + suffix + "@example.test";
+        String approverEmail = "close-attention-approver-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Close Attention Owner", password);
+        String approverUserId = createUser(approverEmail, "Close Attention Approver", password);
+        String organizationId = createOrganization("Close Attention Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        AuthTokens approverTokens = issueToken(approverEmail, password);
+        addMembership(organizationId, approverUserId, ownerTokens.accessToken());
+
+        mockMvc.perform(post("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "closeOwnerUserId":"%s",
+                                  "closeApproverUserId":"%s",
+                                  "summary":"April close is materially complete and waiting on final approver confirmation."
+                                }
+                                """.formatted(ownerUserId, approverUserId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openCount").value(1))
+                .andExpect(jsonPath("$.highPriorityCount").value(1))
+                .andExpect(jsonPath("$.assignedToCurrentUserCount").value(1))
+                .andExpect(jsonPath("$.attentionTasks[0].taskType").value("CLOSE_ATTESTATION_FOLLOW_UP"))
+                .andExpect(jsonPath("$.attentionTasks[0].assignedToUserId").value(approverUserId))
+                .andExpect(jsonPath("$.attentionTasks[0].title").value("Confirm month-end attestation for 2026-04"));
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workflowInbox.highPriorityCount").value(1))
+                .andExpect(jsonPath("$.workflowInbox.attentionTasks[0].taskType").value("CLOSE_ATTESTATION_FOLLOW_UP"))
+                .andExpect(jsonPath("$.workflowInbox.attentionTasks[0].assignedToUserId").value(approverUserId));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";

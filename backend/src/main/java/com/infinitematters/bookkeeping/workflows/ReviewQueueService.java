@@ -6,6 +6,8 @@ import com.infinitematters.bookkeeping.domain.Category;
 import com.infinitematters.bookkeeping.ledger.LedgerService;
 import com.infinitematters.bookkeeping.organization.Organization;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
+import com.infinitematters.bookkeeping.periods.AccountingPeriod;
+import com.infinitematters.bookkeeping.periods.AccountingPeriodRepository;
 import com.infinitematters.bookkeeping.periods.PeriodCloseService;
 import com.infinitematters.bookkeeping.security.RequestIdentityService;
 import com.infinitematters.bookkeeping.transactions.BookkeepingTransaction;
@@ -20,8 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 
 @Service
 public class ReviewQueueService {
@@ -31,6 +36,7 @@ public class ReviewQueueService {
     private final LedgerService ledgerService;
     private final AuditService auditService;
     private final PeriodCloseService periodCloseService;
+    private final AccountingPeriodRepository accountingPeriodRepository;
     private final UserService userService;
     private final RequestIdentityService requestIdentityService;
 
@@ -40,6 +46,7 @@ public class ReviewQueueService {
                               LedgerService ledgerService,
                               AuditService auditService,
                               PeriodCloseService periodCloseService,
+                              AccountingPeriodRepository accountingPeriodRepository,
                               UserService userService,
                               RequestIdentityService requestIdentityService) {
         this.taskRepository = taskRepository;
@@ -48,6 +55,7 @@ public class ReviewQueueService {
         this.ledgerService = ledgerService;
         this.auditService = auditService;
         this.periodCloseService = periodCloseService;
+        this.accountingPeriodRepository = accountingPeriodRepository;
         this.userService = userService;
         this.requestIdentityService = requestIdentityService;
     }
@@ -186,7 +194,24 @@ public class ReviewQueueService {
                 .filter(task -> task.getAssignedToUser() != null && task.getAssignedToUser().getId().equals(currentUserId))
                 .count();
 
-        List<ReviewTaskSummary> attention = openTasks.stream()
+        List<ReviewTaskSummary> syntheticAttention = closeControlAttentionTasks(organizationId, currentUserId, today);
+        long syntheticHighPriorityCount = syntheticAttention.stream()
+                .filter(task -> "HIGH".equals(task.priority()) || "CRITICAL".equals(task.priority()))
+                .count();
+        long syntheticUnassignedCount = syntheticAttention.stream()
+                .filter(task -> task.assignedToUserId() == null)
+                .count();
+        long syntheticAssignedToCurrentUserCount = syntheticAttention.stream()
+                .filter(task -> task.assignedToUserId() != null && task.assignedToUserId().equals(currentUserId))
+                .count();
+        long syntheticDueTodayCount = syntheticAttention.stream()
+                .filter(task -> task.dueDate() != null && task.dueDate().isEqual(today))
+                .count();
+        long syntheticOverdueCount = syntheticAttention.stream()
+                .filter(ReviewTaskSummary::overdue)
+                .count();
+
+        List<ReviewTaskSummary> attention = new ArrayList<>(openTasks.stream()
                 .sorted((left, right) -> {
                     int priorityCompare = Integer.compare(priorityRank(right.getPriority()), priorityRank(left.getPriority()));
                     if (priorityCompare != 0) {
@@ -196,23 +221,129 @@ public class ReviewQueueService {
                     LocalDate rightDue = right.getDueDate() != null ? right.getDueDate() : LocalDate.MAX;
                     return leftDue.compareTo(rightDue);
                 })
-                .limit(5)
                 .map(this::toSummary)
+                .toList());
+        attention.addAll(syntheticAttention);
+        attention = attention.stream()
+                .sorted((left, right) -> {
+                    int priorityCompare = Integer.compare(priorityRank(right.priority()), priorityRank(left.priority()));
+                    if (priorityCompare != 0) {
+                        return priorityCompare;
+                    }
+                    LocalDate leftDue = left.dueDate() != null ? left.dueDate() : LocalDate.MAX;
+                    LocalDate rightDue = right.dueDate() != null ? right.dueDate() : LocalDate.MAX;
+                    return leftDue.compareTo(rightDue);
+                })
+                .limit(5)
                 .toList();
 
         return new WorkflowInboxSummary(
                 "workflow-inbox",
-                openTasks.size(),
-                Math.toIntExact(overdueCount),
-                Math.toIntExact(dueTodayCount),
-                Math.toIntExact(highPriorityCount),
-                Math.toIntExact(unassignedCount),
-                Math.toIntExact(assignedToCurrentUserCount),
-                recommendedInboxAction(overdueCount, highPriorityCount, openTasks.size()),
-                recommendedInboxActionKey(overdueCount, highPriorityCount, openTasks.size()),
-                recommendedInboxActionPath(overdueCount, highPriorityCount, openTasks.size()),
-                recommendedInboxActionUrgency(overdueCount, highPriorityCount, openTasks.size()),
+                openTasks.size() + syntheticAttention.size(),
+                Math.toIntExact(overdueCount + syntheticOverdueCount),
+                Math.toIntExact(dueTodayCount + syntheticDueTodayCount),
+                Math.toIntExact(highPriorityCount + syntheticHighPriorityCount),
+                Math.toIntExact(unassignedCount + syntheticUnassignedCount),
+                Math.toIntExact(assignedToCurrentUserCount + syntheticAssignedToCurrentUserCount),
+                recommendedInboxAction(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
+                recommendedInboxActionKey(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
+                recommendedInboxActionPath(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
+                recommendedInboxActionUrgency(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
                 attention);
+    }
+
+    private List<ReviewTaskSummary> closeControlAttentionTasks(UUID organizationId, UUID currentUserId, LocalDate today) {
+        List<ReviewTaskSummary> attention = new ArrayList<>();
+
+        auditService.listRecentForOrganizationByEventType(organizationId, "PERIOD_CLOSE_ATTESTATION_UPDATED", 5)
+                .stream()
+                .filter(event -> event.entityId() != null)
+                .filter(event -> auditService.listForOrganizationByEventTypeAndEntity(
+                                organizationId,
+                                "PERIOD_CLOSE_ATTESTED",
+                                event.entityId()).stream()
+                        .noneMatch(attested -> !attested.createdAt().isBefore(event.createdAt())))
+                .findFirst()
+                .flatMap(event -> toCloseControlTask(
+                        organizationId,
+                        event,
+                        "CLOSE_ATTESTATION_FOLLOW_UP",
+                        "HIGH",
+                        "Confirm month-end attestation for " + event.entityId(),
+                        "Attestation routing or summary was updated, but the month still does not show a recorded confirmation from the assigned approver.",
+                        today))
+                .ifPresent(attention::add);
+
+        auditService.listRecentForOrganizationByEventType(organizationId, "PERIOD_FORCE_CLOSED", 5)
+                .stream()
+                .filter(event -> event.entityId() != null)
+                .findFirst()
+                .flatMap(event -> toCloseControlTask(
+                        organizationId,
+                        event,
+                        "FORCE_CLOSE_REVIEW",
+                        "HIGH",
+                        "Review force-close controls for " + event.entityId(),
+                        "A recent month was force-closed. Revisit the close story and verify the override is fully documented and understood.",
+                        today))
+                .ifPresent(attention::add);
+
+        return attention;
+    }
+
+    private java.util.Optional<ReviewTaskSummary> toCloseControlTask(UUID organizationId,
+                                                                     com.infinitematters.bookkeeping.audit.AuditEventSummary event,
+                                                                     String taskType,
+                                                                     String priority,
+                                                                     String title,
+                                                                     String description,
+                                                                     LocalDate today) {
+        YearMonth month;
+        try {
+            month = YearMonth.parse(event.entityId());
+        } catch (RuntimeException ex) {
+            return java.util.Optional.empty();
+        }
+
+        AccountingPeriod period = accountingPeriodRepository.findPeriodContaining(organizationId, month.atDay(1))
+                .orElse(null);
+        UUID assignedUserId = null;
+        String assignedUserName = null;
+        if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(taskType) && period != null && period.getCloseApproverUser() != null) {
+            assignedUserId = period.getCloseApproverUser().getId();
+            assignedUserName = period.getCloseApproverUser().getFullName();
+        } else if (period != null && period.getCloseOwnerUser() != null) {
+            assignedUserId = period.getCloseOwnerUser().getId();
+            assignedUserName = period.getCloseOwnerUser().getFullName();
+        }
+
+        LocalDate dueDate = event.createdAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate().plusDays(1);
+        boolean overdue = dueDate.isBefore(today);
+
+        return java.util.Optional.of(new ReviewTaskSummary(
+                UUID.nameUUIDFromBytes((taskType + ":" + organizationId + ":" + event.entityId()).getBytes(StandardCharsets.UTF_8)),
+                null,
+                null,
+                taskType,
+                priority,
+                overdue,
+                title,
+                description,
+                dueDate,
+                assignedUserId,
+                assignedUserName,
+                null,
+                null,
+                null,
+                null,
+                0.0,
+                null,
+                event.details(),
+                null,
+                null,
+                null,
+                null,
+                null));
     }
 
     @Transactional
@@ -347,6 +478,16 @@ public class ReviewQueueService {
             case MEDIUM -> 2;
             case HIGH -> 3;
             case CRITICAL -> 4;
+        };
+    }
+
+    private int priorityRank(String priority) {
+        return switch (priority) {
+            case "LOW" -> 1;
+            case "MEDIUM" -> 2;
+            case "HIGH" -> 3;
+            case "CRITICAL" -> 4;
+            default -> 0;
         };
     }
 
