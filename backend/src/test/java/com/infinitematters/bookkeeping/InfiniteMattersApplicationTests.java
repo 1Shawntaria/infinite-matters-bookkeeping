@@ -568,6 +568,80 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void reviewedAttestationFollowUpGeneratesWorkflowReminder() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "close-reminder-owner-" + suffix + "@example.test";
+        String approverEmail = "close-reminder-approver-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Close Reminder Owner", password);
+        String approverUserId = createUser(approverEmail, "Close Reminder Approver", password);
+        String organizationId = createOrganization("Close Reminder Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        AuthTokens approverTokens = issueToken(approverEmail, password);
+        addMembership(organizationId, approverUserId, ownerTokens.accessToken());
+
+        mockMvc.perform(post("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-04",
+                                  "closeOwnerUserId":"%s",
+                                  "closeApproverUserId":"%s",
+                                  "summary":"April close is materially complete and waiting on final approver confirmation."
+                                }
+                                """.formatted(ownerUserId, approverUserId)))
+                .andExpect(status().isOk());
+
+        MvcResult inboxResult = mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String taskId = objectMapper.readTree(inboxResult.getResponse().getContentAsString())
+                .path("attentionTasks")
+                .path(0)
+                .path("taskId")
+                .asText();
+
+        mockMvc.perform(post("/api/workflows/inbox/attention-tasks/" + taskId + "/acknowledge")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Reviewed and waiting on final confirmation."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.acknowledgedByUserId").value(approverUserId));
+
+        mockMvc.perform(post("/api/workflows/reminders/run")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.notifications[0].workflowTaskId").doesNotExist())
+                .andExpect(jsonPath("$.notifications[0].userId").value(approverUserId))
+                .andExpect(jsonPath("$.notifications[0].message").value(org.hamcrest.Matchers.containsString("final attestation confirmation is still missing for 2026-04")));
+
+        mockMvc.perform(get("/api/workflows/notifications")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(approverTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].referenceType").value("close_control_follow_up"))
+                .andExpect(jsonPath("$[0].message").value(org.hamcrest.Matchers.containsString("final attestation confirmation is still missing for 2026-04")));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";

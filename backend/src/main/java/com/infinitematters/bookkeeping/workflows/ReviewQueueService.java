@@ -256,6 +256,12 @@ public class ReviewQueueService {
                 attention);
     }
 
+    @Transactional(readOnly = true)
+    public List<ReviewTaskSummary> listCloseControlAttentionTasks(UUID organizationId) {
+        organizationService.get(organizationId);
+        return closeControlAttentionTasks(organizationId, null, LocalDate.now());
+    }
+
     @Transactional
     public ReviewTaskSummary acknowledgeCloseControlTask(UUID organizationId, UUID taskId, UUID actorUserId, String note) {
         ReviewTaskSummary task = requireCurrentCloseControlTask(organizationId, taskId, actorUserId);

@@ -28,6 +28,12 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
                                                                 NotificationStatus status,
                                                                 Instant scheduledAfter);
 
+    boolean existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(UUID organizationId,
+                                                                                               String referenceType,
+                                                                                               String referenceId,
+                                                                                               NotificationStatus status,
+                                                                                               Instant scheduledAfter);
+
     boolean existsByWorkflowTaskIdAndUserIdAndReferenceTypeAndStatusAndScheduledForAfter(UUID workflowTaskId,
                                                                                           UUID userId,
                                                                                           String referenceType,

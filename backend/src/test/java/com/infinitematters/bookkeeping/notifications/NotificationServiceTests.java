@@ -5,6 +5,8 @@ import com.infinitematters.bookkeeping.organization.Organization;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
 import com.infinitematters.bookkeeping.users.AppUser;
 import com.infinitematters.bookkeeping.users.UserService;
+import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
+import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
 import com.infinitematters.bookkeeping.workflows.WorkflowTask;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskPriority;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskRepository;
@@ -48,6 +50,9 @@ class NotificationServiceTests {
     @Mock
     private UserService userService;
 
+    @Mock
+    private ReviewQueueService reviewQueueService;
+
     private NotificationService notificationService;
 
     @BeforeEach
@@ -58,7 +63,8 @@ class NotificationServiceTests {
                 organizationService,
                 suppressionService,
                 auditService,
-                userService);
+                userService,
+                reviewQueueService);
     }
 
     @Test
@@ -84,6 +90,7 @@ class NotificationServiceTests {
 
         when(workflowTaskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
                 .thenReturn(List.of(task));
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId)).thenReturn(List.of());
         when(notificationRepository.existsByWorkflowTaskIdAndStatusAndScheduledForAfter(eq(taskId), eq(NotificationStatus.SENT), any()))
                 .thenReturn(false);
         when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
@@ -119,6 +126,7 @@ class NotificationServiceTests {
 
         when(workflowTaskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
                 .thenReturn(List.of(task));
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId)).thenReturn(List.of());
         when(notificationRepository.existsByWorkflowTaskIdAndStatusAndScheduledForAfter(eq(taskId), eq(NotificationStatus.SENT), any()))
                 .thenReturn(true);
 
@@ -126,6 +134,67 @@ class NotificationServiceTests {
 
         assertThat(result.createdCount()).isZero();
         verify(notificationRepository).existsByWorkflowTaskIdAndStatusAndScheduledForAfter(eq(taskId), eq(NotificationStatus.SENT), any());
+    }
+
+    @Test
+    void generatesReminderForReviewedCloseAttestationFollowUp() {
+        UUID organizationId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        AppUser user = new AppUser();
+        setId(user, userId);
+
+        when(workflowTaskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
+                .thenReturn(List.of());
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId))
+                .thenReturn(List.of(new ReviewTaskSummary(
+                        taskId,
+                        null,
+                        null,
+                        "CLOSE_ATTESTATION_FOLLOW_UP",
+                        "HIGH",
+                        false,
+                        "Confirm month-end attestation for 2026-04",
+                        "Awaiting final confirmation",
+                        LocalDate.now(),
+                        userId,
+                        "Acme Owner",
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.0,
+                        null,
+                        "/close?month=2026-04",
+                        null,
+                        userId,
+                        Instant.now().minusSeconds(60),
+                        null,
+                        null,
+                        null)));
+        when(notificationRepository.existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(
+                eq(organizationId),
+                eq("close_control_follow_up"),
+                eq(taskId.toString()),
+                eq(NotificationStatus.SENT),
+                any()))
+                .thenReturn(false);
+        when(userService.get(userId)).thenReturn(user);
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            setId(notification, UUID.randomUUID());
+            return notification;
+        });
+
+        ReminderRunResult result = notificationService.generateTaskReminders(organizationId);
+
+        assertThat(result.createdCount()).isEqualTo(1);
+        assertThat(result.notifications()).hasSize(1);
+        assertThat(result.notifications().get(0).workflowTaskId()).isNull();
+        assertThat(result.notifications().get(0).userId()).isEqualTo(userId);
+        assertThat(result.notifications().get(0).message()).contains("final attestation confirmation is still missing for 2026-04");
+        verify(auditService).record(eq(organizationId), eq("CLOSE_CONTROL_REMINDER_SENT"), eq("notification"), any(), any());
     }
 
     @Test

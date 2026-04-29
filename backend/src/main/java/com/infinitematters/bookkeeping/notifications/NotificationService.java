@@ -4,6 +4,8 @@ import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
 import com.infinitematters.bookkeeping.users.AppUser;
 import com.infinitematters.bookkeeping.users.UserService;
+import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
+import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
 import com.infinitematters.bookkeeping.workflows.WorkflowTask;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskPriority;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskRepository;
@@ -24,6 +26,7 @@ import java.util.UUID;
 public class NotificationService {
     private static final String PERFORMANCE_REFERENCE_TYPE = "dead_letter_support_performance";
     private static final String PERFORMANCE_ESCALATION_REFERENCE_TYPE = "dead_letter_support_performance_escalation";
+    private static final String CLOSE_CONTROL_REFERENCE_TYPE = "close_control_follow_up";
 
     private final NotificationRepository notificationRepository;
     private final WorkflowTaskRepository workflowTaskRepository;
@@ -31,19 +34,22 @@ public class NotificationService {
     private final NotificationSuppressionService suppressionService;
     private final AuditService auditService;
     private final UserService userService;
+    private final ReviewQueueService reviewQueueService;
 
     public NotificationService(NotificationRepository notificationRepository,
                                WorkflowTaskRepository workflowTaskRepository,
                                OrganizationService organizationService,
                                NotificationSuppressionService suppressionService,
                                AuditService auditService,
-                               UserService userService) {
+                               UserService userService,
+                               ReviewQueueService reviewQueueService) {
         this.notificationRepository = notificationRepository;
         this.workflowTaskRepository = workflowTaskRepository;
         this.organizationService = organizationService;
         this.suppressionService = suppressionService;
         this.auditService = auditService;
         this.userService = userService;
+        this.reviewQueueService = reviewQueueService;
     }
 
     @Transactional
@@ -61,7 +67,21 @@ public class NotificationService {
                 .map(task -> createReminder(task, today))
                 .toList();
 
-        return new ReminderRunResult(created.size(), created);
+        List<NotificationSummary> closeControlCreated = reviewQueueService.listCloseControlAttentionTasks(organizationId)
+                .stream()
+                .filter(this::needsCloseControlReminder)
+                .filter(task -> !notificationRepository.existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(
+                        organizationId,
+                        CLOSE_CONTROL_REFERENCE_TYPE,
+                        task.taskId().toString(),
+                        NotificationStatus.SENT,
+                        dayStart))
+                .map(task -> createCloseControlReminder(organizationId, task, today))
+                .toList();
+
+        List<NotificationSummary> notifications = Stream.concat(created.stream(), closeControlCreated.stream())
+                .toList();
+        return new ReminderRunResult(notifications.size(), notifications);
     }
 
     @Transactional(readOnly = true)
@@ -463,6 +483,16 @@ public class NotificationService {
                 || task.getPriority() == WorkflowTaskPriority.CRITICAL;
     }
 
+    private boolean needsCloseControlReminder(ReviewTaskSummary task) {
+        if (task.assignedToUserId() == null) {
+            return false;
+        }
+        if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(task.taskType())) {
+            return task.acknowledgedAt() != null && task.resolvedAt() == null;
+        }
+        return "FORCE_CLOSE_REVIEW".equals(task.taskType()) && task.resolvedAt() == null;
+    }
+
     private NotificationSummary createReminder(WorkflowTask task, LocalDate today) {
         Notification notification = new Notification();
         notification.setOrganization(task.getOrganization());
@@ -481,9 +511,53 @@ public class NotificationService {
         return NotificationSummary.from(notification);
     }
 
+    private NotificationSummary createCloseControlReminder(UUID organizationId,
+                                                           ReviewTaskSummary task,
+                                                           LocalDate today) {
+        Notification notification = new Notification();
+        notification.setOrganization(organizationService.get(organizationId));
+        notification.setCategory(NotificationCategory.WORKFLOW);
+        notification.setUser(userService.get(task.assignedToUserId()));
+        notification.setChannel(NotificationChannel.IN_APP);
+        notification.setStatus(NotificationStatus.SENT);
+        notification.setDeliveryState(NotificationDeliveryState.DELIVERED);
+        notification.setReferenceType(CLOSE_CONTROL_REFERENCE_TYPE);
+        notification.setReferenceId(task.taskId().toString());
+        notification.setScheduledFor(Instant.now());
+        notification.setSentAt(Instant.now());
+        notification.setMessage(buildCloseControlReminderMessage(task, today));
+        notification = notificationRepository.save(notification);
+        auditService.record(organizationId,
+                "CLOSE_CONTROL_REMINDER_SENT",
+                "notification",
+                notification.getId().toString(),
+                notification.getMessage());
+        return NotificationSummary.from(notification);
+    }
+
     private String buildMessage(WorkflowTask task, LocalDate today) {
         String urgency = task.getDueDate() != null && task.getDueDate().isBefore(today) ? "Overdue" : "Attention needed";
         return urgency + ": " + task.getTitle();
+    }
+
+    private String buildCloseControlReminderMessage(ReviewTaskSummary task, LocalDate today) {
+        String urgency = task.dueDate() != null && task.dueDate().isBefore(today) ? "Overdue" : "Attention needed";
+        String month = extractTaskMonth(task);
+        if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(task.taskType())) {
+            return urgency + ": final attestation confirmation is still missing for " + month;
+        }
+        return urgency + ": force-close review still needs owner follow-up for " + month;
+    }
+
+    private String extractTaskMonth(ReviewTaskSummary task) {
+        String actionPath = task.actionPath();
+        if (actionPath != null) {
+            int monthIndex = actionPath.indexOf("month=");
+            if (monthIndex >= 0) {
+                return actionPath.substring(monthIndex + "month=".length());
+            }
+        }
+        return task.title();
     }
 
     private void resetForRequeue(Notification notification) {
