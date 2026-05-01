@@ -2125,7 +2125,7 @@ test("login stores organization context and lands on dashboard", async ({ page }
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/dashboard");
-  await page.getByRole("link", { name: "Open override month" }).click();
+  await page.getByRole("link", { name: "Resume override review on Apr 23" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-02/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-02");
   await page.goto("/dashboard");
@@ -2160,11 +2160,12 @@ test("activity page shows merged operational timeline and filter views", async (
   await expect(page.getByText("Attestation plans updated")).toBeVisible();
   await expect(page.getByText("Attestations confirmed")).toBeVisible();
   await expect(page.getByText("Review the latest override month")).toBeVisible();
+  await expect(page.getByText("Planned next touch: Apr 23, 2026")).toBeVisible();
   await expect(page.getByText("Auth Login Succeeded")).toBeVisible();
   await expect(page.getByText("Organization Member Added").last()).toBeVisible();
   await expect(page.getByText("Operating Checking: CLOUDCO")).toBeVisible();
 
-  await page.getByRole("link", { name: "Open override month" }).click();
+  await page.getByRole("link", { name: "Resume override review on Apr 23" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-02/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-02");
   await page.goto("/activity");
@@ -2262,6 +2263,8 @@ test("exceptions workspace groups blockers that still stand in the way of close"
   await expect(page.getByText("Active blockers")).toBeVisible();
   await expect(page.getByText("Escalated close-control risk is active")).toBeVisible();
   await expect(page.getByText("Escalated attestation follow-up").first()).toBeVisible();
+  await expect(page.getByText("Revisit attestation on Apr 30").first()).toBeVisible();
+  await expect(page.getByText("Next touch Apr 30, 2026").first()).toBeVisible();
   await expect(page.getByText("Review AMZN MKTP")).toBeVisible();
   await expect(page.getByText("Operating Checking")).toBeVisible();
   await expect(page.getByText("Review queue escalation could not be delivered.").first()).toBeVisible();

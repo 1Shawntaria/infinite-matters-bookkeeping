@@ -24,6 +24,7 @@ import { useOrganizationSession } from "@/lib/auth/session";
 import { NotificationSummaryItem } from "@/lib/api/auth";
 import {
     buildEscalatedCloseControlAction,
+    getCloseControlNextTouchDate,
     isEscalatedCloseControlNotification,
 } from "@/lib/close-follow-up";
 
@@ -400,6 +401,10 @@ export default function ExceptionsPage() {
                         <div className="space-y-3">
                             {escalatedCloseControlNotifications.map((item) => {
                                 const action = buildEscalatedCloseControlAction(item, workflowAttentionTasks);
+                                const nextTouchDate = getCloseControlNextTouchDate(
+                                    item,
+                                    workflowAttentionTasks
+                                );
                                 return (
                                     <Link
                                         key={item.id}
@@ -408,6 +413,18 @@ export default function ExceptionsPage() {
                                     >
                                         <p className="text-sm font-semibold text-white">{action.title}</p>
                                         <p className="mt-1 text-sm text-zinc-200">{action.message}</p>
+                                        <p className="mt-3 text-xs font-medium uppercase tracking-[0.14em] text-rose-100/90">
+                                            {action.primaryLabel}
+                                        </p>
+                                        {nextTouchDate ? (
+                                            <p className="mt-1 text-xs text-rose-100/80">
+                                                Next touch {new Date(`${nextTouchDate}T00:00:00`).toLocaleDateString("en-US", {
+                                                    month: "short",
+                                                    day: "numeric",
+                                                    year: "numeric",
+                                                })}
+                                            </p>
+                                        ) : null}
                                     </Link>
                                 );
                             })}

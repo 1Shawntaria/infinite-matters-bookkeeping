@@ -418,6 +418,11 @@ function ActivityPageContent() {
                             <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-4">
                                 <h3 className="text-sm font-semibold text-white">{closeControlFollowUp.title}</h3>
                                 <p className="mt-3 text-sm text-zinc-200">{closeControlFollowUp.message}</p>
+                                {closeControlFollowUp.nextTouchLabel ? (
+                                    <p className="mt-3 text-xs text-emerald-100/80">
+                                        {closeControlFollowUp.nextTouchLabel}
+                                    </p>
+                                ) : null}
                                 <div className="mt-4 flex flex-wrap gap-3">
                                     <Link
                                         href={closeControlFollowUp.primaryHref}

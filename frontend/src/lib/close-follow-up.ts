@@ -256,6 +256,7 @@ export function buildAuditCloseControlFollowUp(
         (task) => task.taskType === "FORCE_CLOSE_REVIEW"
     );
     if (latestForceCloseTask) {
+        const nextTouchDate = latestForceCloseTask.dueDate;
         return {
             title: latestForceCloseTask.acknowledgedAt
                 ? "Force-close review is already in motion"
@@ -264,9 +265,15 @@ export function buildAuditCloseControlFollowUp(
                 ? `${workflowTaskMonth(latestForceCloseTask) ?? "The latest override month"} has already been reviewed by an operator, but the control-quality signal remains open until that review is cleared.`
                 : `The most recent exception landed on ${workflowTaskMonth(latestForceCloseTask) ?? "a recent month"}. Revisit that month’s close workspace and confirm whether the override story is fully documented.`,
             primaryHref: latestForceCloseTask.actionPath ?? "/activity",
-            primaryLabel: "Open override month",
+            primaryLabel: buildCloseControlTaskActionLabel(
+                latestForceCloseTask.taskType,
+                nextTouchDate
+            ),
             secondaryHref: "/notifications",
             secondaryLabel: "Review workflow inbox",
+            nextTouchLabel: nextTouchDate
+                ? `Planned next touch: ${formatCalendarDate(nextTouchDate)}`
+                : undefined,
         };
     }
 
@@ -274,6 +281,7 @@ export function buildAuditCloseControlFollowUp(
         (task) => task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP"
     );
     if (latestUnconfirmedAttestationTask) {
+        const nextTouchDate = latestUnconfirmedAttestationTask.dueDate;
         return {
             title: latestUnconfirmedAttestationTask.acknowledgedAt
                 ? "Attestation follow-through is being worked"
@@ -284,9 +292,15 @@ export function buildAuditCloseControlFollowUp(
             primaryHref:
                 latestUnconfirmedAttestationTask.actionPath ??
                 `/close?month=${encodeURIComponent(workflowTaskMonth(latestUnconfirmedAttestationTask) ?? "")}`,
-            primaryLabel: "Open attestation month",
+            primaryLabel: buildCloseControlTaskActionLabel(
+                latestUnconfirmedAttestationTask.taskType,
+                nextTouchDate
+            ),
             secondaryHref: "/notifications",
             secondaryLabel: "Review workflow inbox",
+            nextTouchLabel: nextTouchDate
+                ? `Planned next touch: ${formatCalendarDate(nextTouchDate)}`
+                : undefined,
         };
     }
 
