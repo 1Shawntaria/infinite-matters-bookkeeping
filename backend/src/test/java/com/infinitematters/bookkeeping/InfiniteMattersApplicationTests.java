@@ -759,6 +759,13 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.closeControlAcknowledgedAt").isNotEmpty())
                 .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and is pushing approver follow-through."));
 
+        mockMvc.perform(post("/api/workflows/reminders/run")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(0));
+
         mockMvc.perform(post("/api/workflows/notifications/" + escalationNotificationId + "/close-control-escalation/resolve")
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))

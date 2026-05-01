@@ -24,6 +24,7 @@ import java.util.UUID;
 
 @Service
 public class NotificationService {
+    private static final java.time.Duration CLOSE_CONTROL_ESCALATION_REMINDER_COOLDOWN = java.time.Duration.ofHours(24);
     private static final String PERFORMANCE_REFERENCE_TYPE = "dead_letter_support_performance";
     private static final String PERFORMANCE_ESCALATION_REFERENCE_TYPE = "dead_letter_support_performance_escalation";
     private static final String CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE = "close_control_follow_up_escalation";
@@ -72,7 +73,7 @@ public class NotificationService {
 
         List<NotificationSummary> closeControlCreated = reviewQueueService.listCloseControlAttentionTasks(organizationId)
                 .stream()
-                .filter(this::needsCloseControlReminder)
+                .filter(task -> needsCloseControlReminder(organizationId, task))
                 .filter(task -> !notificationRepository.existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(
                         organizationId,
                         CLOSE_CONTROL_REFERENCE_TYPE,
@@ -539,14 +540,27 @@ public class NotificationService {
                 || task.getPriority() == WorkflowTaskPriority.CRITICAL;
     }
 
-    private boolean needsCloseControlReminder(ReviewTaskSummary task) {
+    private boolean needsCloseControlReminder(UUID organizationId, ReviewTaskSummary task) {
         if (task.assignedToUserId() == null) {
+            return false;
+        }
+        if (hasRecentAcknowledgedCloseControlEscalation(organizationId, task.taskId())) {
             return false;
         }
         if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(task.taskType())) {
             return task.acknowledgedAt() != null && task.resolvedAt() == null;
         }
         return "FORCE_CLOSE_REVIEW".equals(task.taskType()) && task.resolvedAt() == null;
+    }
+
+    private boolean hasRecentAcknowledgedCloseControlEscalation(UUID organizationId, UUID taskId) {
+        Instant cooldownStart = Instant.now().minus(CLOSE_CONTROL_ESCALATION_REMINDER_COOLDOWN);
+        return auditService.listForOrganizationByEventTypeAndEntity(
+                        organizationId,
+                        CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT,
+                        taskId.toString())
+                .stream()
+                .anyMatch(event -> !event.createdAt().isBefore(cooldownStart));
     }
 
     private NotificationSummary createReminder(WorkflowTask task, LocalDate today) {

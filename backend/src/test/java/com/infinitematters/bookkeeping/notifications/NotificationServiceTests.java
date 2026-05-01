@@ -26,6 +26,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -195,6 +196,67 @@ class NotificationServiceTests {
         assertThat(result.notifications().get(0).userId()).isEqualTo(userId);
         assertThat(result.notifications().get(0).message()).contains("final attestation confirmation is still missing for 2026-04");
         verify(auditService).record(eq(organizationId), eq("CLOSE_CONTROL_REMINDER_SENT"), eq("notification"), any(), any());
+    }
+
+    @Test
+    void suppressesCloseControlReminderDuringEscalationAcknowledgementCooldown() {
+        UUID organizationId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        Organization organization = new Organization();
+        setId(organization, organizationId);
+        AppUser user = new AppUser();
+        setId(user, userId);
+        user.setEmail("owner@acme.test");
+
+        when(organizationService.get(organizationId)).thenReturn(organization);
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId))
+                .thenReturn(List.of(new ReviewTaskSummary(
+                        taskId,
+                        null,
+                        null,
+                        "CLOSE_ATTESTATION_FOLLOW_UP",
+                        "HIGH",
+                        false,
+                        "Confirm month-end attestation for 2026-04",
+                        "Awaiting final confirmation",
+                        LocalDate.now(),
+                        userId,
+                        "Acme Owner",
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.0,
+                        null,
+                        "/close?month=2026-04",
+                        null,
+                        userId,
+                        Instant.now().minusSeconds(60),
+                        null,
+                        null,
+                        null)));
+        when(auditService.listForOrganizationByEventTypeAndEntity(
+                organizationId,
+                "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
+                taskId.toString()))
+                .thenReturn(List.of(new com.infinitematters.bookkeeping.audit.AuditEventSummary(
+                        UUID.randomUUID(),
+                        organizationId,
+                        userId,
+                        "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
+                        "workflow_task",
+                        taskId.toString(),
+                        "Reviewed recently",
+                        Instant.now().minusSeconds(60))));
+
+        ReminderRunResult result = notificationService.generateTaskReminders(organizationId);
+
+        assertThat(result.createdCount()).isZero();
+        assertThat(result.notifications()).isEmpty();
+        verify(notificationRepository, never())
+                .save(any(Notification.class));
     }
 
     @Test
