@@ -779,7 +779,7 @@ class InfiniteMattersApplicationTests {
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.primaryAction.label").value("Queue scheduled close follow-up"))
-                .andExpect(jsonPath("$.primaryAction.reason").value("The close-control review is intentionally paused until the next scheduled follow-up window."))
+                .andExpect(jsonPath("$.primaryAction.reason").value("The close-control review for 2026-04 is intentionally paused until May 2, 2026."))
                 .andExpect(jsonPath("$.primaryAction.urgency").value("NORMAL"));
 
         mockMvc.perform(post("/api/workflows/reminders/run")

@@ -39,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.time.YearMonth;
 import java.util.Comparator;
@@ -55,6 +56,7 @@ public class DashboardService {
     private static final long STALE_ACCOUNT_DAYS = 30;
     private static final long STALE_ACCOUNT_HIGH_URGENCY_DAYS = 60;
     private static final BigDecimal EXPENSE_CATEGORY_HIGH_URGENCY_DELTA = new BigDecimal("50.00");
+    private static final DateTimeFormatter DASHBOARD_DATE_FORMAT = DateTimeFormatter.ofPattern("MMMM d, uuuu");
     private static final String PERFORMANCE_REACTIVATED_EVENT_TYPE = "DEAD_LETTER_SUPPORT_PERFORMANCE_TASK_REACTIVATED";
     private static final String HOME_CONTRACT_NEGOTIATION_POLICY =
             "If the client omits a version, the server returns the default version. "
@@ -456,6 +458,15 @@ public class DashboardService {
             return "An override month is under review and still needs documentation before close can be treated as clean.";
         }
         if ("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP".equals(inbox.recommendedActionKey())) {
+            ReviewTaskSummary scheduledFollowUp = scheduledCloseControlFollowUp(inbox);
+            if (scheduledFollowUp != null && scheduledFollowUp.dueDate() != null) {
+                String month = extractMonthFromActionPath(scheduledFollowUp.actionPath());
+                return "The close-control review for "
+                        + (month != null ? month : "the focus month")
+                        + " is intentionally paused until "
+                        + scheduledFollowUp.dueDate().format(DASHBOARD_DATE_FORMAT)
+                        + ".";
+            }
             return "The close-control review is intentionally paused until the next scheduled follow-up window.";
         }
         if (inbox.overdueCount() > 0) {
@@ -481,6 +492,26 @@ public class DashboardService {
             return DashboardActionUrgency.HIGH;
         }
         return DashboardActionUrgency.NORMAL;
+    }
+
+    private ReviewTaskSummary scheduledCloseControlFollowUp(WorkflowInboxSummary inbox) {
+        return inbox.attentionTasks().stream()
+                .filter(task -> "CLOSE_ATTESTATION_FOLLOW_UP".equals(task.taskType())
+                        || "FORCE_CLOSE_REVIEW".equals(task.taskType()))
+                .filter(task -> task.dueDate() != null)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String extractMonthFromActionPath(String actionPath) {
+        if (actionPath == null) {
+            return null;
+        }
+        int monthIndex = actionPath.indexOf("month=");
+        if (monthIndex < 0) {
+            return null;
+        }
+        return actionPath.substring(monthIndex + "month=".length());
     }
 
     private Long periodPrimaryCount(DashboardPeriodSnapshot period) {
