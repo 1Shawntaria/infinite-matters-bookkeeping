@@ -64,6 +64,16 @@ function formatCalendarDate(value?: string | null) {
     });
 }
 
+function todayDate() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function defaultNextTouchDate() {
+    const value = new Date();
+    value.setDate(value.getDate() + 1);
+    return value.toISOString().slice(0, 10);
+}
+
 function titleCase(value: string) {
     return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (match) => match.toUpperCase());
 }
@@ -109,6 +119,9 @@ export default function NotificationsPage() {
     const [escalationDispositions, setEscalationDispositions] = useState<
         Record<string, CloseControlDisposition>
     >({});
+    const [escalationNextTouchDates, setEscalationNextTouchDates] = useState<Record<string, string>>(
+        {}
+    );
     const queryClient = useQueryClient();
 
     const organizationsQuery = useQuery<OrganizationSummary[], Error>({
@@ -239,12 +252,17 @@ export default function NotificationsPage() {
         setActionError("");
         setActingNotificationId(notificationId);
 
+        const disposition =
+            escalationDispositions[notificationId] ?? DEFAULT_CLOSE_CONTROL_DISPOSITION;
         try {
             await acknowledgeCloseControlEscalation(
                 organizationId,
                 notificationId,
                 escalationNotes[notificationId] ?? "",
-                escalationDispositions[notificationId] ?? DEFAULT_CLOSE_CONTROL_DISPOSITION
+                disposition,
+                disposition === "REVISIT_TOMORROW"
+                    ? escalationNextTouchDates[notificationId] ?? null
+                    : null
             );
             await refreshNotificationData();
             setActionMessage("Escalated close-control review acknowledged.");
@@ -264,12 +282,17 @@ export default function NotificationsPage() {
         setActionError("");
         setActingNotificationId(notificationId);
 
+        const disposition =
+            escalationDispositions[notificationId] ?? DEFAULT_CLOSE_CONTROL_DISPOSITION;
         try {
             await resolveCloseControlEscalation(
                 organizationId,
                 notificationId,
                 escalationNotes[notificationId] ?? "",
-                escalationDispositions[notificationId] ?? DEFAULT_CLOSE_CONTROL_DISPOSITION
+                disposition,
+                disposition === "REVISIT_TOMORROW"
+                    ? escalationNextTouchDates[notificationId] ?? null
+                    : null
             );
             await refreshNotificationData();
             setActionMessage("Escalated close-control review resolved.");
@@ -471,6 +494,16 @@ export default function NotificationsPage() {
                             );
                             const busy = actingNotificationId === notification.id;
                             const reviewed = Boolean(notification.closeControlAcknowledgedAt);
+                            const selectedDisposition =
+                                escalationDispositions[notification.id] ??
+                                normalizeCloseControlDisposition(
+                                    notification.closeControlDisposition
+                                );
+                            const selectedNextTouchDate =
+                                escalationNextTouchDates[notification.id] ??
+                                notification.closeControlNextTouchOn ??
+                                nextTouchDate ??
+                                defaultNextTouchDate();
                             return (
                                 <div
                                     key={`escalation-${notification.id}`}
@@ -520,20 +553,25 @@ export default function NotificationsPage() {
                                                     Review state
                                                 </span>
                                                 <select
-                                                    value={
-                                                        escalationDispositions[notification.id] ??
-                                                        normalizeCloseControlDisposition(
-                                                            notification.closeControlDisposition
-                                                        )
-                                                    }
-                                                    onChange={(event) =>
+                                                    value={selectedDisposition}
+                                                    onChange={(event) => {
+                                                        const nextDisposition =
+                                                            event.target.value as CloseControlDisposition;
                                                         setEscalationDispositions((current) => ({
                                                             ...current,
-                                                            [notification.id]:
-                                                                event.target
-                                                                    .value as CloseControlDisposition,
-                                                        }))
-                                                    }
+                                                            [notification.id]: nextDisposition,
+                                                        }));
+                                                        if (nextDisposition === "REVISIT_TOMORROW") {
+                                                            setEscalationNextTouchDates((current) => ({
+                                                                ...current,
+                                                                [notification.id]:
+                                                                    current[notification.id] ??
+                                                                    notification.closeControlNextTouchOn ??
+                                                                    nextTouchDate ??
+                                                                    defaultNextTouchDate(),
+                                                            }));
+                                                        }
+                                                    }}
                                                     className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
                                                 >
                                                     {CLOSE_CONTROL_DISPOSITION_OPTIONS.map((option) => (
@@ -547,6 +585,25 @@ export default function NotificationsPage() {
                                                     ))}
                                                 </select>
                                             </label>
+                                            {selectedDisposition === "REVISIT_TOMORROW" ? (
+                                                <label className="block space-y-2 pt-2">
+                                                    <span className="text-xs uppercase tracking-[0.14em] text-zinc-300">
+                                                        Next touch date
+                                                    </span>
+                                                    <input
+                                                        type="date"
+                                                        min={todayDate()}
+                                                        value={selectedNextTouchDate}
+                                                        onChange={(event) =>
+                                                            setEscalationNextTouchDates((current) => ({
+                                                                ...current,
+                                                                [notification.id]: event.target.value,
+                                                            }))
+                                                        }
+                                                        className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                                                    />
+                                                </label>
+                                            ) : null}
                                             <label className="block space-y-2 pt-2">
                                                 <span className="text-xs uppercase tracking-[0.14em] text-zinc-300">
                                                     Review note

@@ -15,6 +15,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -108,6 +109,9 @@ public class Notification {
     @Enumerated(EnumType.STRING)
     @Column(name = "close_control_disposition", length = 64)
     private CloseControlDisposition closeControlDisposition;
+
+    @Column(name = "close_control_next_touch_on")
+    private LocalDate closeControlNextTouchOn;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -328,6 +332,14 @@ public class Notification {
 
     public void setCloseControlDisposition(CloseControlDisposition closeControlDisposition) {
         this.closeControlDisposition = closeControlDisposition;
+    }
+
+    public LocalDate getCloseControlNextTouchOn() {
+        return closeControlNextTouchOn;
+    }
+
+    public void setCloseControlNextTouchOn(LocalDate closeControlNextTouchOn) {
+        this.closeControlNextTouchOn = closeControlNextTouchOn;
     }
 
     public String resolvedRecipientEmail() {

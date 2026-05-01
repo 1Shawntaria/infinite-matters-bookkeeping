@@ -456,7 +456,7 @@ public class DashboardService {
             return "An override month is under review and still needs documentation before close can be treated as clean.";
         }
         if ("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP".equals(inbox.recommendedActionKey())) {
-            return "The close-control review is intentionally paused until tomorrow's follow-up window.";
+            return "The close-control review is intentionally paused until the next scheduled follow-up window.";
         }
         if (inbox.overdueCount() > 0) {
             return inbox.overdueCount() == 1

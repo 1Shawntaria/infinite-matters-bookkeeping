@@ -1,6 +1,7 @@
 package com.infinitematters.bookkeeping.notifications;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public record NotificationSummary(
@@ -29,6 +30,7 @@ public record NotificationSummary(
         Instant closeControlAcknowledgedAt,
         UUID closeControlAcknowledgedByUserId,
         CloseControlDisposition closeControlDisposition,
+        LocalDate closeControlNextTouchOn,
         String closeControlResolutionNote,
         Instant closeControlResolvedAt,
         UUID closeControlResolvedByUserId,
@@ -63,6 +65,7 @@ public record NotificationSummary(
                 null,
                 null,
                 notification.getCloseControlDisposition(),
+                notification.getCloseControlNextTouchOn(),
                 null,
                 null,
                 null,
@@ -77,6 +80,7 @@ public record NotificationSummary(
                                            Instant closeControlAcknowledgedAt,
                                            UUID closeControlAcknowledgedByUserId,
                                            CloseControlDisposition closeControlDisposition,
+                                           LocalDate closeControlNextTouchOn,
                                            String closeControlResolutionNote,
                                            Instant closeControlResolvedAt,
                                            UUID closeControlResolvedByUserId) {
@@ -106,6 +110,7 @@ public record NotificationSummary(
                 closeControlAcknowledgedAt,
                 closeControlAcknowledgedByUserId,
                 closeControlDisposition,
+                closeControlNextTouchOn,
                 closeControlResolutionNote,
                 closeControlResolvedAt,
                 closeControlResolvedByUserId,

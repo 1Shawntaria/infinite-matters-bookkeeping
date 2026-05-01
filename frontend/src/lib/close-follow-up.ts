@@ -408,14 +408,16 @@ function notificationMonth(
 export function getCloseControlNextTouchDate(
     notification: Pick<
         NotificationSummaryItem,
-        "referenceId" | "message" | "closeControlDisposition"
+        "referenceId" | "message" | "closeControlDisposition" | "closeControlNextTouchOn"
     >,
     workflowAttentionTasks: WorkflowAttentionTask[]
 ): string | null {
     if (normalizeCloseControlDisposition(notification.closeControlDisposition) !== "REVISIT_TOMORROW") {
         return null;
     }
-    return matchingEscalatedCloseControlTask(notification, workflowAttentionTasks)?.dueDate ?? null;
+    return notification.closeControlNextTouchOn
+        ?? matchingEscalatedCloseControlTask(notification, workflowAttentionTasks)?.dueDate
+        ?? null;
 }
 
 function matchingEscalatedCloseControlTask(

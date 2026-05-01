@@ -421,10 +421,13 @@ public class NotificationService {
                                                                  UUID notificationId,
                                                                  UUID actorUserId,
                                                                  String note,
-                                                                 CloseControlDisposition disposition) {
+                                                                 CloseControlDisposition disposition,
+                                                                 LocalDate nextTouchOn) {
         Notification notification = requireCloseControlEscalation(organizationId, notificationId);
         String trimmedNote = trimNote(note);
-        notification.setCloseControlDisposition(normalizeCloseControlDisposition(disposition));
+        CloseControlDisposition normalizedDisposition = normalizeCloseControlDisposition(disposition);
+        notification.setCloseControlDisposition(normalizedDisposition);
+        notification.setCloseControlNextTouchOn(normalizeCloseControlNextTouchOn(normalizedDisposition, nextTouchOn));
         notification = notificationRepository.save(notification);
         auditService.recordForUser(
                 actorUserId,
@@ -441,10 +444,13 @@ public class NotificationService {
                                                              UUID notificationId,
                                                              UUID actorUserId,
                                                              String note,
-                                                             CloseControlDisposition disposition) {
+                                                             CloseControlDisposition disposition,
+                                                             LocalDate nextTouchOn) {
         Notification notification = requireCloseControlEscalation(organizationId, notificationId);
         String trimmedNote = trimNote(note);
-        notification.setCloseControlDisposition(normalizeCloseControlDisposition(disposition));
+        CloseControlDisposition normalizedDisposition = normalizeCloseControlDisposition(disposition);
+        notification.setCloseControlDisposition(normalizedDisposition);
+        notification.setCloseControlNextTouchOn(normalizeCloseControlNextTouchOn(normalizedDisposition, nextTouchOn));
         notification = notificationRepository.save(notification);
         auditService.recordForUser(
                 actorUserId,
@@ -618,6 +624,7 @@ public class NotificationService {
         notification.setScheduledFor(Instant.now());
         notification.setSentAt(Instant.now());
         notification.setCloseControlDisposition(disposition);
+        notification.setCloseControlNextTouchOn(task.dueDate());
         notification.setMessage(buildCloseControlReminderMessage(task, today, disposition));
         notification = notificationRepository.save(notification);
         auditService.record(organizationId,
@@ -639,7 +646,7 @@ public class NotificationService {
         String urgency = task.dueDate() != null && task.dueDate().isBefore(today) ? "Overdue" : "Attention needed";
         String month = extractTaskMonth(task);
         if (disposition == CloseControlDisposition.REVISIT_TOMORROW) {
-            return urgency + ": revisit the close-control follow-up for " + month + " in today's review window";
+            return urgency + ": revisit the close-control follow-up for " + month + scheduledNextTouchSuffix(task.dueDate());
         }
         if (disposition == CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS) {
             return urgency + ": override documentation still needs owner follow-through for " + month;
@@ -721,6 +728,7 @@ public class NotificationService {
                 acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
                 acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
                 notification.getCloseControlDisposition(),
+                notification.getCloseControlNextTouchOn(),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::details).orElse(null),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null));
@@ -728,6 +736,18 @@ public class NotificationService {
 
     private CloseControlDisposition normalizeCloseControlDisposition(CloseControlDisposition disposition) {
         return disposition != null ? disposition : CloseControlDisposition.WAITING_ON_APPROVER;
+    }
+
+    private LocalDate normalizeCloseControlNextTouchOn(CloseControlDisposition disposition, LocalDate nextTouchOn) {
+        if (disposition != CloseControlDisposition.REVISIT_TOMORROW) {
+            return null;
+        }
+        LocalDate defaultDate = LocalDate.now().plusDays(1);
+        LocalDate effectiveDate = nextTouchOn != null ? nextTouchOn : defaultDate;
+        if (effectiveDate.isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException("Close-control next touch date cannot be in the past");
+        }
+        return effectiveDate;
     }
 
     private java.time.Duration closeControlReminderCooldownFor(CloseControlDisposition disposition) {
@@ -746,6 +766,10 @@ public class NotificationService {
                 .stream()
                 .filter(event -> !event.createdAt().isBefore(sourceCreatedAt))
                 .max(Comparator.comparing(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt));
+    }
+
+    private String scheduledNextTouchSuffix(LocalDate nextTouchOn) {
+        return nextTouchOn != null ? " on " + nextTouchOn : " in today's review window";
     }
 
     private void resetForRequeue(Notification notification) {

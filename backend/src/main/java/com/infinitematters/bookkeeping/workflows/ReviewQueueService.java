@@ -376,14 +376,24 @@ public class ReviewQueueService {
                 .orElse(defaultDisposition(taskType));
         Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestEscalationAcknowledgement =
                 latestCloseControlAction(organizationId, CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT, taskId, event.createdAt());
-        LocalDate effectiveDueDate = effectiveCloseControlDueDate(disposition, dueDate, latestEscalationAcknowledgement);
+        Optional<LocalDate> latestNextTouchOn = latestCloseControlNextTouchOn(organizationId, taskId);
+        LocalDate effectiveDueDate = effectiveCloseControlDueDate(
+                disposition,
+                dueDate,
+                latestEscalationAcknowledgement,
+                latestNextTouchOn);
         boolean effectiveOverdue = effectiveDueDate.isBefore(today);
         String effectivePriority = effectiveCloseControlPriority(taskType, disposition);
         AppUser assignedUser = resolveCloseControlAssignee(period, taskType, disposition);
         UUID assignedUserId = assignedUser != null ? assignedUser.getId() : null;
         String assignedUserName = assignedUser != null ? assignedUser.getFullName() : null;
-        String effectiveTitle = effectiveCloseControlTitle(title, month, disposition);
-        String effectiveDescription = effectiveCloseControlDescription(description, month, disposition, assignedUserName);
+        String effectiveTitle = effectiveCloseControlTitle(title, month, disposition, effectiveDueDate);
+        String effectiveDescription = effectiveCloseControlDescription(
+                description,
+                month,
+                disposition,
+                assignedUserName,
+                effectiveDueDate);
 
         return java.util.Optional.of(new ReviewTaskSummary(
                 taskId,
@@ -421,6 +431,15 @@ public class ReviewQueueService {
                 .map(Notification::getCloseControlDisposition);
     }
 
+    private Optional<LocalDate> latestCloseControlNextTouchOn(UUID organizationId, UUID taskId) {
+        return notificationRepository
+                .findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                        organizationId,
+                        "close_control_follow_up_escalation",
+                        taskId.toString())
+                .map(Notification::getCloseControlNextTouchOn);
+    }
+
     private CloseControlDisposition defaultDisposition(String taskType) {
         if ("FORCE_CLOSE_REVIEW".equals(taskType)) {
             return CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS;
@@ -448,7 +467,11 @@ public class ReviewQueueService {
     private LocalDate effectiveCloseControlDueDate(
             CloseControlDisposition disposition,
             LocalDate baseDueDate,
-            Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestEscalationAcknowledgement) {
+            Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestEscalationAcknowledgement,
+            Optional<LocalDate> latestNextTouchOn) {
+        if (disposition == CloseControlDisposition.REVISIT_TOMORROW && latestNextTouchOn.isPresent()) {
+            return latestNextTouchOn.get();
+        }
         if (disposition == CloseControlDisposition.REVISIT_TOMORROW && latestEscalationAcknowledgement.isPresent()) {
             return latestEscalationAcknowledgement.get()
                     .createdAt()
@@ -469,25 +492,31 @@ public class ReviewQueueService {
         return "HIGH";
     }
 
-    private String effectiveCloseControlTitle(String title, YearMonth month, CloseControlDisposition disposition) {
+    private String effectiveCloseControlTitle(String title,
+                                              YearMonth month,
+                                              CloseControlDisposition disposition,
+                                              LocalDate dueDate) {
         return switch (disposition) {
             case WAITING_ON_APPROVER -> title;
             case OVERRIDE_DOCS_IN_PROGRESS -> "Finish override documentation for " + month;
-            case REVISIT_TOMORROW -> "Revisit close follow-up tomorrow for " + month;
+            case REVISIT_TOMORROW -> "Revisit close follow-up on " + (dueDate != null ? dueDate : "the next touch date") + " for " + month;
         };
     }
 
     private String effectiveCloseControlDescription(String description,
                                                     YearMonth month,
                                                     CloseControlDisposition disposition,
-                                                    String assignedUserName) {
+                                                    String assignedUserName,
+                                                    LocalDate dueDate) {
         return switch (disposition) {
             case WAITING_ON_APPROVER -> assignedUserName != null
                     ? description + " Keep " + assignedUserName + " moving so " + month + " can clear final attestation."
                     : description;
             case OVERRIDE_DOCS_IN_PROGRESS -> "Owner review already confirmed that override support is being documented for " + month
                     + ". Finish the close memo, evidence, and rationale before treating the month as settled.";
-            case REVISIT_TOMORROW -> "Owner review intentionally deferred this close-control follow-up until tomorrow. Keep the plan visible, but avoid sending the team back into the month early unless risk changes.";
+            case REVISIT_TOMORROW -> "Owner review intentionally deferred this close-control follow-up until "
+                    + (dueDate != null ? dueDate : "the next touch date")
+                    + ". Keep the plan visible, but avoid sending the team back into the month early unless risk changes.";
         };
     }
 
@@ -709,7 +738,7 @@ public class ReviewQueueService {
                                 task.actionPath() != null ? task.actionPath() : "/close",
                                 DashboardActionUrgency.NORMAL);
                         case REVISIT_TOMORROW -> new InboxRecommendation(
-                                "Queue tomorrow's close follow-up",
+                                "Queue scheduled close follow-up",
                                 "QUEUE_TOMORROWS_CLOSE_FOLLOW_UP",
                                 task.actionPath() != null ? task.actionPath() : "/close",
                                 DashboardActionUrgency.NORMAL);

@@ -752,33 +752,35 @@ class InfiniteMattersApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "note":"Owner reviewed the escalation and is pushing approver follow-through.",
-                                  "disposition":"WAITING_ON_APPROVER"
+                                  "note":"Owner reviewed the escalation and scheduled the next touch.",
+                                  "disposition":"REVISIT_TOMORROW",
+                                  "nextTouchOn":"2026-05-02"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.closeControlAcknowledgedAt").isNotEmpty())
-                .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and is pushing approver follow-through."))
-                .andExpect(jsonPath("$.closeControlDisposition").value("WAITING_ON_APPROVER"));
+                .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and scheduled the next touch."))
+                .andExpect(jsonPath("$.closeControlDisposition").value("REVISIT_TOMORROW"))
+                .andExpect(jsonPath("$.closeControlNextTouchOn").value("2026-05-02"));
 
         mockMvc.perform(get("/api/workflows/inbox")
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recommendedActionLabel").value("Push approver follow-through"))
-                .andExpect(jsonPath("$.recommendedActionKey").value("PUSH_APPROVER_FOLLOW_THROUGH"))
+                .andExpect(jsonPath("$.recommendedActionLabel").value("Queue scheduled close follow-up"))
+                .andExpect(jsonPath("$.recommendedActionKey").value("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP"))
                 .andExpect(jsonPath("$.recommendedActionPath").value("/close?month=2026-04"))
-                .andExpect(jsonPath("$.recommendedActionUrgency").value("HIGH"));
+                .andExpect(jsonPath("$.recommendedActionUrgency").value("NORMAL"));
 
         mockMvc.perform(get("/api/dashboard/snapshot")
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.primaryAction.label").value("Push approver follow-through"))
-                .andExpect(jsonPath("$.primaryAction.reason").value("A reviewed attestation escalation is now waiting on final approver follow-through."))
-                .andExpect(jsonPath("$.primaryAction.urgency").value("HIGH"));
+                .andExpect(jsonPath("$.primaryAction.label").value("Queue scheduled close follow-up"))
+                .andExpect(jsonPath("$.primaryAction.reason").value("The close-control review is intentionally paused until the next scheduled follow-up window."))
+                .andExpect(jsonPath("$.primaryAction.urgency").value("NORMAL"));
 
         mockMvc.perform(post("/api/workflows/reminders/run")
                         .header(ORG_HEADER, organizationId)

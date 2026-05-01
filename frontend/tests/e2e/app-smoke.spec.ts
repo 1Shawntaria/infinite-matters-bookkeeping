@@ -247,6 +247,7 @@ function dashboardSnapshot(organizationId: string) {
         closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
         closeControlAcknowledgedByUserId: "user-1",
         closeControlDisposition: "REVISIT_TOMORROW",
+        closeControlNextTouchOn: "2026-04-30",
         closeControlResolutionNote: null,
         closeControlResolvedAt: null,
         closeControlResolvedByUserId: null,
@@ -1034,6 +1035,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
       closeControlAcknowledgedByUserId: "user-1",
       closeControlDisposition: "REVISIT_TOMORROW",
+      closeControlNextTouchOn: "2026-04-30",
       closeControlResolutionNote: null,
       closeControlResolvedAt: null,
       closeControlResolvedByUserId: null,
@@ -1069,6 +1071,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       closeControlAcknowledgedAt: null,
       closeControlAcknowledgedByUserId: null,
       closeControlDisposition: null,
+      closeControlNextTouchOn: null,
       closeControlResolutionNote: null,
       closeControlResolvedAt: null,
       closeControlResolvedByUserId: null,
@@ -1274,6 +1277,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         closeControlAcknowledgementNote: body.note || "Escalation reviewed from notifications workspace",
         closeControlAcknowledgedByUserId: "user-1",
         closeControlDisposition: body.disposition || "WAITING_ON_APPROVER",
+        closeControlNextTouchOn: body.nextTouchOn || null,
       };
       await fulfillJson(route, workflowNotifications[index]);
       return;
@@ -1293,6 +1297,8 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         closeControlResolutionNote: body.note || "Escalation resolved from notifications workspace",
         closeControlResolvedByUserId: "user-1",
         closeControlDisposition: body.disposition || workflowNotifications[index].closeControlDisposition,
+        closeControlNextTouchOn:
+          body.nextTouchOn || workflowNotifications[index].closeControlNextTouchOn || null,
       };
       await fulfillJson(route, workflowNotifications[index]);
       return;
@@ -2199,9 +2205,10 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");
 
-  await page.locator("textarea").first().fill("Owner reviewed the escalation and queued the next touch for tomorrow.");
-  await page.locator("select").filter({ has: page.getByRole("option", { name: "Revisit tomorrow" }) }).first().selectOption("REVISIT_TOMORROW");
-  await page.getByRole("button", { name: "Save review note" }).first().click();
+  await page.locator("textarea").last().fill("Owner reviewed the escalation and queued the next touch for tomorrow.");
+  await page.locator("select").filter({ has: page.getByRole("option", { name: "Revisit tomorrow" }) }).last().selectOption("REVISIT_TOMORROW");
+  await page.locator('input[type="date"]').last().fill("2026-05-02");
+  await page.getByRole("button", { name: "Save review note" }).last().click();
   await expect(page.getByText("Escalated close-control review acknowledged.")).toBeVisible();
   await expect(page.locator("p").filter({ hasText: "Revisit tomorrow" }).first()).toBeVisible();
   await expect(
@@ -2209,7 +2216,7 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
       hasText: "Owner reviewed the escalation and queued the next touch for tomorrow.",
     }).first()
   ).toBeVisible();
-  await expect(page.getByText("Next touch Apr 30, 2026")).toBeVisible();
+  await expect(page.getByText("Next touch May 2, 2026")).toBeVisible();
 
   await page.getByRole("button", { name: "Resolve escalation" }).last().click();
   await expect(page.getByText("Escalated close-control review resolved.")).toBeVisible();
