@@ -2202,7 +2202,7 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.locator("span").filter({ hasText: "Attention" }).first()).toBeVisible();
   await expect(page.getByText("Monthly close escalation entered dead-letter handling.").first()).toBeVisible();
 
-  await page.getByRole("link", { name: "Open attestation month" }).first().click();
+  await page.getByRole("link", { name: "Revisit attestation on Apr 30" }).first().click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");
@@ -2227,7 +2227,7 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.getByText("Escalated close-control review resolved.")).toBeVisible();
   await expect(page.getByText("Escalated force-close review")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Open attestation month" }).first().click();
+  await page.getByRole("link", { name: "Revisit attestation on Apr 30" }).first().click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");

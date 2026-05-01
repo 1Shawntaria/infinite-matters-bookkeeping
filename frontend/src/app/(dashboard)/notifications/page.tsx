@@ -24,6 +24,7 @@ import {
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     buildEscalatedCloseControlAction,
+    buildCloseControlTaskActionLabel,
     getCloseControlNextTouchDate,
     isEscalatedCloseControlNotification,
 } from "@/lib/close-follow-up";
@@ -770,12 +771,10 @@ export default function NotificationsPage() {
                                 task.actionPath ??
                                 (task.transactionId ? "/review-queue" : workflowInboxQuery.data?.recommendedActionPath) ??
                                 "/dashboard";
-                            const actionLabel =
-                                task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP"
-                                    ? "Open attestation month"
-                                    : task.taskType === "FORCE_CLOSE_REVIEW"
-                                      ? "Review override month"
-                                      : "Open workflow task";
+                            const actionLabel = buildCloseControlTaskActionLabel(
+                                task.taskType,
+                                task.dueDate
+                            );
                             const busy = actingWorkflowTaskId === task.taskId;
                             const canResolve = isAdminOperator && task.taskType === "FORCE_CLOSE_REVIEW";
 

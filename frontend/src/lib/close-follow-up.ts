@@ -301,7 +301,10 @@ export function isEscalatedCloseControlNotification(
 }
 
 export function buildEscalatedCloseControlAction(
-    notification: Pick<NotificationSummaryItem, "referenceId" | "message">,
+    notification: Pick<
+        NotificationSummaryItem,
+        "referenceId" | "message" | "closeControlDisposition" | "closeControlNextTouchOn"
+    >,
     workflowAttentionTasks: WorkflowAttentionTask[] = []
 ): EscalatedCloseControlAction {
     const matchedTask = matchingEscalatedCloseControlTask(notification, workflowAttentionTasks);
@@ -310,13 +313,17 @@ export function buildEscalatedCloseControlAction(
     const primaryHref =
         matchedTask?.actionPath ??
         (month ? `/close?month=${encodeURIComponent(month)}` : "/notifications");
+    const primaryLabel = buildCloseControlTaskActionLabel(
+        matchedTask?.taskType ?? null,
+        getCloseControlNextTouchDate(notification, workflowAttentionTasks) ?? matchedTask?.dueDate ?? null
+    );
 
     if (matchedTask?.taskType === "FORCE_CLOSE_REVIEW") {
         return {
             title: "Escalated force-close review",
             message: `${monthLabel} still carries an unresolved override review after repeated reminders. Owner or admin follow-through is now required.`,
             primaryHref,
-            primaryLabel: "Open override month",
+            primaryLabel,
             secondaryHref: "/notifications",
             secondaryLabel: "Review workflow inbox",
             monthLabel,
@@ -327,11 +334,29 @@ export function buildEscalatedCloseControlAction(
         title: "Escalated attestation follow-up",
         message: `${monthLabel} still lacks final attestation confirmation after repeated reminders. Move the month back through owner/admin review now.`,
         primaryHref,
-        primaryLabel: "Open attestation month",
+        primaryLabel,
         secondaryHref: "/notifications",
         secondaryLabel: "Review workflow inbox",
         monthLabel,
     };
+}
+
+export function buildCloseControlTaskActionLabel(
+    taskType: string | null | undefined,
+    dueDate: string | null | undefined
+): string {
+    const formattedDate = dueDate ? formatShortDate(dueDate) : null;
+    if (taskType === "FORCE_CLOSE_REVIEW") {
+        return formattedDate
+            ? `Resume override review on ${formattedDate}`
+            : "Resume override review";
+    }
+    if (taskType === "CLOSE_ATTESTATION_FOLLOW_UP") {
+        return formattedDate
+            ? `Revisit attestation on ${formattedDate}`
+            : "Revisit attestation";
+    }
+    return "Open workflow task";
 }
 
 function normalizeCloseControlDisposition(
@@ -482,6 +507,13 @@ function formatCalendarDate(value: string): string {
         month: "short",
         day: "numeric",
         year: "numeric",
+    });
+}
+
+function formatShortDate(value: string): string {
+    return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
     });
 }
 
