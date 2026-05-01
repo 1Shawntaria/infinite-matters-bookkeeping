@@ -74,6 +74,16 @@ function defaultNextTouchDate() {
     return value.toISOString().slice(0, 10);
 }
 
+function addDays(value: string, days: number) {
+    const date = new Date(`${value}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+}
+
+function laterDate(left: string, right: string) {
+    return left > right ? left : right;
+}
+
 function titleCase(value: string) {
     return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (match) => match.toUpperCase());
 }
@@ -106,6 +116,50 @@ function closeControlDispositionLabel(disposition: string | null | undefined) {
     return CLOSE_CONTROL_DISPOSITION_OPTIONS.find(
         (option) => option.value === normalizeCloseControlDisposition(disposition)
     )?.label ?? "Waiting on approver";
+}
+
+function suggestNextTouchDateForEscalation(
+    disposition: CloseControlDisposition,
+    notification: NotificationSummaryItem,
+    workflowAttentionTasks: WorkflowInboxSummary["attentionTasks"]
+) {
+    if (disposition !== "REVISIT_TOMORROW") {
+        return null;
+    }
+
+    const matchedTask =
+        workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
+    const tomorrow = defaultNextTouchDate();
+    if (!matchedTask) {
+        return tomorrow;
+    }
+    if (matchedTask.taskType === "FORCE_CLOSE_REVIEW" && !matchedTask.overdue) {
+        return laterDate(addDays(todayDate(), 2), matchedTask.dueDate ?? tomorrow);
+    }
+    return laterDate(tomorrow, matchedTask.dueDate ?? tomorrow);
+}
+
+function nextTouchSuggestionReason(
+    disposition: CloseControlDisposition,
+    notification: NotificationSummaryItem,
+    workflowAttentionTasks: WorkflowInboxSummary["attentionTasks"]
+) {
+    if (disposition !== "REVISIT_TOMORROW") {
+        return null;
+    }
+    const matchedTask =
+        workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
+    if (!matchedTask) {
+        return "Suggested from the default next review window.";
+    }
+    if (matchedTask.taskType === "FORCE_CLOSE_REVIEW") {
+        return matchedTask.overdue
+            ? "Suggested for the next review day because this override review is already overdue."
+            : "Suggested with extra owner time because this is override documentation follow-through.";
+    }
+    return matchedTask.overdue
+        ? "Suggested for the next review day because attestation follow-through is already overdue."
+        : "Suggested from the current attestation due date and approver follow-through pressure.";
 }
 
 export default function NotificationsPage() {
@@ -499,11 +553,22 @@ export default function NotificationsPage() {
                                 normalizeCloseControlDisposition(
                                     notification.closeControlDisposition
                                 );
+                            const suggestedNextTouchDate = suggestNextTouchDateForEscalation(
+                                selectedDisposition,
+                                notification,
+                                workflowAttentionTasks
+                            );
                             const selectedNextTouchDate =
                                 escalationNextTouchDates[notification.id] ??
                                 notification.closeControlNextTouchOn ??
                                 nextTouchDate ??
+                                suggestedNextTouchDate ??
                                 defaultNextTouchDate();
+                            const suggestedNextTouchReason = nextTouchSuggestionReason(
+                                selectedDisposition,
+                                notification,
+                                workflowAttentionTasks
+                            );
                             return (
                                 <div
                                     key={`escalation-${notification.id}`}
@@ -568,6 +633,11 @@ export default function NotificationsPage() {
                                                                     current[notification.id] ??
                                                                     notification.closeControlNextTouchOn ??
                                                                     nextTouchDate ??
+                                                                    suggestNextTouchDateForEscalation(
+                                                                        nextDisposition,
+                                                                        notification,
+                                                                        workflowAttentionTasks
+                                                                    ) ??
                                                                     defaultNextTouchDate(),
                                                             }));
                                                         }
@@ -602,6 +672,28 @@ export default function NotificationsPage() {
                                                         }
                                                         className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
                                                     />
+                                                    {suggestedNextTouchDate ? (
+                                                        <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+                                                            <span>
+                                                                Suggested {formatCalendarDate(suggestedNextTouchDate)}
+                                                            </span>
+                                                            {suggestedNextTouchReason ? (
+                                                                <span>{suggestedNextTouchReason}</span>
+                                                            ) : null}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    setEscalationNextTouchDates((current) => ({
+                                                                        ...current,
+                                                                        [notification.id]: suggestedNextTouchDate,
+                                                                    }))
+                                                                }
+                                                                className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-zinc-200 hover:bg-white/[0.05]"
+                                                            >
+                                                                Use suggestion
+                                                            </button>
+                                                        </div>
+                                                    ) : null}
                                                 </label>
                                             ) : null}
                                             <label className="block space-y-2 pt-2">

@@ -2207,7 +2207,10 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
 
   await page.locator("textarea").last().fill("Owner reviewed the escalation and queued the next touch for tomorrow.");
   await page.locator("select").filter({ has: page.getByRole("option", { name: "Revisit tomorrow" }) }).last().selectOption("REVISIT_TOMORROW");
-  await page.locator('input[type="date"]').last().fill("2026-05-02");
+  await expect(page.getByText("Suggested May 2, 2026").last()).toBeVisible();
+  await expect(page.getByText("Suggested for the next review day because this override review is already overdue.").last()).toBeVisible();
+  await page.getByRole("button", { name: "Use suggestion" }).last().click();
+  await expect(page.locator('input[type="date"]').last()).toHaveValue("2026-05-02");
   await page.getByRole("button", { name: "Save review note" }).last().click();
   await expect(page.getByText("Escalated close-control review acknowledged.")).toBeVisible();
   await expect(page.locator("p").filter({ hasText: "Revisit tomorrow" }).first()).toBeVisible();
