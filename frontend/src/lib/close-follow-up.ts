@@ -1,6 +1,9 @@
 import { AuditEventSummary } from "./api/audit";
 import { NotificationSummaryItem } from "./api/auth";
-import type { WorkflowAttentionTask } from "./api/notifications";
+import type {
+    CloseControlDisposition,
+    WorkflowAttentionTask,
+} from "./api/notifications";
 
 export type FollowUpAction = {
     title: string;
@@ -82,21 +85,23 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
     );
 
     if (focusMonthEscalation?.closeControlAcknowledgedAt) {
+        const reviewedDisposition = normalizeCloseControlDisposition(
+            focusMonthEscalation.closeControlDisposition
+        );
         return {
-            title:
-                context === "dashboard"
-                    ? "Escalated attestation is under owner review"
-                    : "Escalation reviewed, waiting on follow-through",
-            message: focusMonthEscalation.closeControlAcknowledgementNote
-                ? `Owner/admin review is already on record for ${focusMonth}: ${focusMonthEscalation.closeControlAcknowledgementNote}`
-                : `An owner or admin already reviewed the escalation for ${focusMonth}. Keep the month moving against that plan before triggering more escalation churn.`,
+            title: reviewedEscalationTitle(reviewedDisposition, context),
+            message: reviewedEscalationMessage(
+                focusMonth,
+                reviewedDisposition,
+                focusMonthEscalation.closeControlAcknowledgementNote
+            ),
             primaryHref:
                 focusMonthEscalation.referenceId
                     ? buildEscalatedCloseControlAction(focusMonthEscalation, workflowAttentionTasks).primaryHref
                     : `/close?month=${encodeURIComponent(focusMonth)}`,
-            primaryLabel: "Open reviewed month",
+            primaryLabel: reviewedEscalationPrimaryLabel(reviewedDisposition),
             secondaryHref: "/notifications",
-            secondaryLabel: "Review escalation note",
+            secondaryLabel: reviewedEscalationSecondaryLabel(reviewedDisposition),
         };
     }
 
@@ -312,6 +317,76 @@ export function buildEscalatedCloseControlAction(
         secondaryLabel: "Review workflow inbox",
         monthLabel,
     };
+}
+
+function normalizeCloseControlDisposition(
+    disposition: string | null | undefined
+): CloseControlDisposition {
+    if (
+        disposition === "WAITING_ON_APPROVER" ||
+        disposition === "OVERRIDE_DOCS_IN_PROGRESS" ||
+        disposition === "REVISIT_TOMORROW"
+    ) {
+        return disposition;
+    }
+    return "WAITING_ON_APPROVER";
+}
+
+function reviewedEscalationTitle(
+    disposition: CloseControlDisposition,
+    context: "dashboard" | "readiness"
+): string {
+    if (disposition === "OVERRIDE_DOCS_IN_PROGRESS") {
+        return context === "dashboard"
+            ? "Override documentation is under owner review"
+            : "Override documentation is being finalized";
+    }
+    if (disposition === "REVISIT_TOMORROW") {
+        return context === "dashboard"
+            ? "Escalated attestation is queued for tomorrow"
+            : "Escalation reviewed, revisit tomorrow";
+    }
+    return context === "dashboard"
+        ? "Escalated attestation is under owner review"
+        : "Escalation reviewed, waiting on follow-through";
+}
+
+function reviewedEscalationMessage(
+    focusMonth: string,
+    disposition: CloseControlDisposition,
+    note: string | null
+): string {
+    const noteSuffix = note ? `: ${note}` : ".";
+    if (disposition === "OVERRIDE_DOCS_IN_PROGRESS") {
+        return `Owner/admin review is already on record for ${focusMonth}. Override support and documentation are in progress${noteSuffix}`;
+    }
+    if (disposition === "REVISIT_TOMORROW") {
+        return `Owner/admin review is already on record for ${focusMonth}. The workflow is intentionally parked until the next review window${noteSuffix}`;
+    }
+    return note
+        ? `Owner/admin review is already on record for ${focusMonth}: ${note}`
+        : `An owner or admin already reviewed the escalation for ${focusMonth}. Keep the month moving against that plan before triggering more escalation churn.`;
+}
+
+function reviewedEscalationPrimaryLabel(
+    disposition: CloseControlDisposition
+): string {
+    if (disposition === "OVERRIDE_DOCS_IN_PROGRESS") {
+        return "Open documentation month";
+    }
+    if (disposition === "REVISIT_TOMORROW") {
+        return "Open follow-up month";
+    }
+    return "Open reviewed month";
+}
+
+function reviewedEscalationSecondaryLabel(
+    disposition: CloseControlDisposition
+): string {
+    if (disposition === "REVISIT_TOMORROW") {
+        return "Review follow-up timing";
+    }
+    return "Review escalation note";
 }
 
 function notificationMonth(

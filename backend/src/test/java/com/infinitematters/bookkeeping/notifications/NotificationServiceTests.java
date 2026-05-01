@@ -237,6 +237,15 @@ class NotificationServiceTests {
                         null,
                         null,
                         null)));
+        Notification escalation = new Notification();
+        escalation.setReferenceType("close_control_follow_up_escalation");
+        escalation.setReferenceId(taskId.toString());
+        escalation.setCloseControlDisposition(CloseControlDisposition.WAITING_ON_APPROVER);
+        when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString()))
+                .thenReturn(Optional.of(escalation));
         when(auditService.listForOrganizationByEventTypeAndEntity(
                 organizationId,
                 "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
@@ -257,6 +266,70 @@ class NotificationServiceTests {
         assertThat(result.notifications()).isEmpty();
         verify(notificationRepository, never())
                 .save(any(Notification.class));
+    }
+
+    @Test
+    void suppressesCloseControlReminderForRevisitTomorrowWindow() {
+        UUID organizationId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        when(workflowTaskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
+                .thenReturn(List.of());
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId))
+                .thenReturn(List.of(new ReviewTaskSummary(
+                        taskId,
+                        null,
+                        null,
+                        "CLOSE_ATTESTATION_FOLLOW_UP",
+                        "HIGH",
+                        false,
+                        "Confirm month-end attestation for 2026-04",
+                        "Awaiting final confirmation",
+                        LocalDate.now(),
+                        userId,
+                        "Acme Owner",
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.0,
+                        null,
+                        "/close?month=2026-04",
+                        null,
+                        userId,
+                        Instant.now().minusSeconds(60),
+                        null,
+                        null,
+                        null)));
+        Notification escalation = new Notification();
+        escalation.setReferenceType("close_control_follow_up_escalation");
+        escalation.setReferenceId(taskId.toString());
+        escalation.setCloseControlDisposition(CloseControlDisposition.REVISIT_TOMORROW);
+        when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString()))
+                .thenReturn(Optional.of(escalation));
+        when(auditService.listForOrganizationByEventTypeAndEntity(
+                organizationId,
+                "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
+                taskId.toString()))
+                .thenReturn(List.of(new com.infinitematters.bookkeeping.audit.AuditEventSummary(
+                        UUID.randomUUID(),
+                        organizationId,
+                        userId,
+                        "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
+                        "workflow_task",
+                        taskId.toString(),
+                        "Revisit tomorrow",
+                        Instant.now().minus(java.time.Duration.ofHours(23)))));
+
+        ReminderRunResult result = notificationService.generateTaskReminders(organizationId);
+
+        assertThat(result.createdCount()).isZero();
+        assertThat(result.notifications()).isEmpty();
+        verify(notificationRepository, never()).save(any(Notification.class));
     }
 
     @Test

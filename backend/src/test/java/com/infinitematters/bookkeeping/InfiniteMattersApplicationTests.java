@@ -752,12 +752,14 @@ class InfiniteMattersApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "note":"Owner reviewed the escalation and is pushing approver follow-through."
+                                  "note":"Owner reviewed the escalation and is pushing approver follow-through.",
+                                  "disposition":"WAITING_ON_APPROVER"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.closeControlAcknowledgedAt").isNotEmpty())
-                .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and is pushing approver follow-through."));
+                .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and is pushing approver follow-through."))
+                .andExpect(jsonPath("$.closeControlDisposition").value("WAITING_ON_APPROVER"));
 
         mockMvc.perform(post("/api/workflows/reminders/run")
                         .header(ORG_HEADER, organizationId)
@@ -773,12 +775,14 @@ class InfiniteMattersApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "note":"Escalation resolved after documenting the owner disposition."
+                                  "note":"Escalation resolved after documenting the owner disposition.",
+                                  "disposition":"OVERRIDE_DOCS_IN_PROGRESS"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.closeControlResolvedAt").isNotEmpty())
-                .andExpect(jsonPath("$.closeControlResolutionNote").value("Escalation resolved after documenting the owner disposition."));
+                .andExpect(jsonPath("$.closeControlResolutionNote").value("Escalation resolved after documenting the owner disposition."))
+                .andExpect(jsonPath("$.closeControlDisposition").value("OVERRIDE_DOCS_IN_PROGRESS"));
 
         mockMvc.perform(get("/api/workflows/notifications/attention")
                         .header(ORG_HEADER, organizationId)

@@ -152,10 +152,10 @@ class DashboardServiceTests {
         when(financialAccountRepository.findByOrganizationId(organizationId))
                 .thenReturn(List.of(account, staleAccount));
         when(journalEntryRepository.countTransactionEntriesForAccountInPeriod(
-                bankAccountId, YearMonth.of(2026, 3).atDay(1), YearMonth.of(2026, 3).atEndOfMonth()))
+                bankAccountId, YearMonth.of(2026, 4).atDay(1), YearMonth.of(2026, 4).atEndOfMonth()))
                 .thenReturn(2L);
         when(journalEntryRepository.countTransactionEntriesForAccountInPeriod(
-                staleAccountId, YearMonth.of(2026, 3).atDay(1), YearMonth.of(2026, 3).atEndOfMonth()))
+                staleAccountId, YearMonth.of(2026, 4).atDay(1), YearMonth.of(2026, 4).atEndOfMonth()))
                 .thenReturn(0L);
         when(categorizationDecisionRepository.findByTransactionOrganizationId(organizationId))
                 .thenReturn(List.of(
@@ -176,10 +176,10 @@ class DashboardServiceTests {
                         "/workflows/inbox",
                         DashboardActionUrgency.HIGH,
                         List.of()));
-        when(closeChecklistService.checklist(organizationId, YearMonth.of(2026, 3)))
+        when(closeChecklistService.checklist(organizationId, YearMonth.of(2026, 4)))
                 .thenReturn(new CloseChecklistSummary(
-                        LocalDate.of(2026, 3, 1),
-                        LocalDate.of(2026, 3, 31),
+                        LocalDate.of(2026, 4, 1),
+                        LocalDate.of(2026, 4, 30),
                         false,
                         List.of(
                                 new CloseChecklistItem("OPEN_REVIEW_TASKS", "Tasks resolved", true, "ok"),
@@ -196,7 +196,7 @@ class DashboardServiceTests {
                         UUID.randomUUID(), UUID.randomUUID(), userId, NotificationCategory.WORKFLOW, NotificationChannel.IN_APP,
                         NotificationStatus.SENT, NotificationDeliveryState.DELIVERED, "msg", "workflow_task", UUID.randomUUID().toString(),
                         "member@acme.test", null, null, 0, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, Instant.now(), Instant.now(), Instant.now(), Instant.now())));
+                        null, null, null, null, null, null, null, Instant.now(), Instant.now(), Instant.now(), Instant.now())));
         when(notificationService.operationsSummary(organizationId))
                 .thenReturn(new com.infinitematters.bookkeeping.notifications.NotificationOperationsSummary(
                         1,
@@ -210,7 +210,7 @@ class DashboardServiceTests {
                                 NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "failed", "workflow_task", UUID.randomUUID().toString(),
                                 "member@acme.test", "test-provider", "provider-message-1", 3, "provider unavailable", "PROVIDER_REJECTED",
                                 DeadLetterResolutionStatus.OPEN, null, "Investigating", Instant.now(), userId,
-                                null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())),
+                                null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())),
                         new com.infinitematters.bookkeeping.notifications.DeadLetterOperationsSummary(
                                 1,
                                 1,
@@ -220,7 +220,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "failed", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "test-provider", "provider-message-2", 3, "resolved", "PROVIDER_REJECTED",
                                         DeadLetterResolutionStatus.RESOLVED, com.infinitematters.bookkeeping.notifications.DeadLetterResolutionReasonCode.DELIVERY_NO_LONGER_REQUIRED, "Handled", Instant.now(), userId,
-                                        null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())))));
+                                        null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())))));
         when(notificationService.deadLetterQueue(organizationId))
                 .thenReturn(new DeadLetterQueueSummary(
                         List.of(new DeadLetterQueueItem(
@@ -229,7 +229,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "retry", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "test-provider", "provider-message-3", 1, "provider unavailable", "PROVIDER_REJECTED",
                                         DeadLetterResolutionStatus.OPEN, null, "Retry recommended", Instant.now(), userId,
-                                        null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
+                                        null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
                                 DeadLetterRecommendedAction.RETRY_DELIVERY,
                                 false,
                                 null,
@@ -240,7 +240,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "suppressed", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "sendgrid", "provider-message-4", 2, "recipient suppressed", "RECIPIENT_SUPPRESSED",
                                         DeadLetterResolutionStatus.OPEN, null, "Unsuppress first", Instant.now(), userId,
-                                        null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
+                                        null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
                                 DeadLetterRecommendedAction.UNSUPPRESS_AND_RETRY,
                                 true,
                                 null,
@@ -251,7 +251,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "ack", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "test-provider", "provider-message-5", 1, "acknowledged", "PROVIDER_REJECTED",
                                         DeadLetterResolutionStatus.ACKNOWLEDGED, null, "Waiting", Instant.now(), userId,
-                                        null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
+                                        null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
                                 DeadLetterRecommendedAction.REVIEW_ACKNOWLEDGED,
                                 false,
                                 null,
@@ -434,7 +434,7 @@ class DashboardServiceTests {
 
         DashboardSnapshot snapshot = dashboardService.snapshot(organizationId, userId);
 
-        assertThat(snapshot.focusMonth()).isEqualTo(YearMonth.of(2026, 3));
+        assertThat(snapshot.focusMonth()).isEqualTo(YearMonth.of(2026, 4));
         assertThat(snapshot.cashBalance()).isEqualByComparingTo("120.00");
         assertThat(snapshot.expenseCategories()).isNotEmpty();
         assertThat(snapshot.expenseCategories().get(0).itemId()).isEqualTo("expense-category-software");
@@ -462,7 +462,7 @@ class DashboardServiceTests {
         assertThat(snapshot.unreconciledAccounts()).hasSize(1);
         assertThat(snapshot.unreconciledAccounts().get(0).accountId()).isEqualTo(bankAccountId);
         assertThat(snapshot.unreconciledAccounts().get(0).accountName()).isEqualTo("Operating Checking");
-        assertThat(snapshot.unreconciledAccounts().get(0).actionPath()).isEqualTo("/reconciliation/" + bankAccountId + "?month=2026-03");
+        assertThat(snapshot.unreconciledAccounts().get(0).actionPath()).isEqualTo("/reconciliation/" + bankAccountId + "?month=2026-04");
         assertThat(snapshot.unreconciledAccounts().get(0).actionReason())
                 .isEqualTo("Account requires reconciliation before period close.");
         assertThat(snapshot.unreconciledAccounts().get(0).sessionStarted()).isFalse();

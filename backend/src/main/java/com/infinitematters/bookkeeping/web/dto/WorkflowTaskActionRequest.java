@@ -1,4 +1,6 @@
 package com.infinitematters.bookkeeping.web.dto;
 
-public record WorkflowTaskActionRequest(String note) {
+import com.infinitematters.bookkeeping.notifications.CloseControlDisposition;
+
+public record WorkflowTaskActionRequest(String note, CloseControlDisposition disposition) {
 }

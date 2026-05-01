@@ -1,6 +1,11 @@
 import { apiFetch } from "./client";
 import { NotificationSummaryItem } from "./auth";
 
+export type CloseControlDisposition =
+    | "WAITING_ON_APPROVER"
+    | "OVERRIDE_DOCS_IN_PROGRESS"
+    | "REVISIT_TOMORROW";
+
 export type WorkflowAttentionTask = {
     taskId: string;
     transactionId: string | null;
@@ -169,14 +174,15 @@ export async function requeueFailedNotification(
 export async function acknowledgeCloseControlEscalation(
     organizationId: string,
     notificationId: string,
-    note: string
+    note: string,
+    disposition: CloseControlDisposition
 ): Promise<NotificationSummaryItem> {
     const query = new URLSearchParams({ organizationId });
     return apiFetch<NotificationSummaryItem>(
         `/api/workflows/notifications/${notificationId}/close-control-escalation/acknowledge?${query.toString()}`,
         {
             method: "POST",
-            body: JSON.stringify({ note }),
+            body: JSON.stringify({ note, disposition }),
         }
     );
 }
@@ -184,14 +190,15 @@ export async function acknowledgeCloseControlEscalation(
 export async function resolveCloseControlEscalation(
     organizationId: string,
     notificationId: string,
-    note: string
+    note: string,
+    disposition: CloseControlDisposition
 ): Promise<NotificationSummaryItem> {
     const query = new URLSearchParams({ organizationId });
     return apiFetch<NotificationSummaryItem>(
         `/api/workflows/notifications/${notificationId}/close-control-escalation/resolve?${query.toString()}`,
         {
             method: "POST",
-            body: JSON.stringify({ note }),
+            body: JSON.stringify({ note, disposition }),
         }
     );
 }

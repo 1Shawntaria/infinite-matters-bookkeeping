@@ -105,6 +105,10 @@ public class Notification {
     @Column(name = "provider_message_id", length = 255)
     private String providerMessageId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "close_control_disposition", length = 64)
+    private CloseControlDisposition closeControlDisposition;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -316,6 +320,14 @@ public class Notification {
 
     public void setProviderMessageId(String providerMessageId) {
         this.providerMessageId = providerMessageId;
+    }
+
+    public CloseControlDisposition getCloseControlDisposition() {
+        return closeControlDisposition;
+    }
+
+    public void setCloseControlDisposition(CloseControlDisposition closeControlDisposition) {
+        this.closeControlDisposition = closeControlDisposition;
     }
 
     public String resolvedRecipientEmail() {

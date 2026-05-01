@@ -83,6 +83,7 @@ export type NotificationSummaryItem = {
     closeControlAcknowledgementNote: string | null;
     closeControlAcknowledgedAt: string | null;
     closeControlAcknowledgedByUserId: string | null;
+    closeControlDisposition: string | null;
     closeControlResolutionNote: string | null;
     closeControlResolvedAt: string | null;
     closeControlResolvedByUserId: string | null;

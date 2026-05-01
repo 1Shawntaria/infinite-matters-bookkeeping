@@ -7,6 +7,7 @@ import { LoadingPanel, PageHero, SectionBand, StatusBanner, SummaryMetric } from
 import { listOrganizations, NotificationSummaryItem, OrganizationSummary, listAuthNotifications } from "@/lib/api/auth";
 import {
     acknowledgeCloseControlEscalation,
+    CloseControlDisposition,
     acknowledgeWorkflowAttentionTask,
     getWorkflowInbox,
     listAttentionNotifications,
@@ -56,6 +57,36 @@ function titleCase(value: string) {
     return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+const DEFAULT_CLOSE_CONTROL_DISPOSITION: CloseControlDisposition = "WAITING_ON_APPROVER";
+
+const CLOSE_CONTROL_DISPOSITION_OPTIONS: Array<{
+    value: CloseControlDisposition;
+    label: string;
+}> = [
+    { value: "WAITING_ON_APPROVER", label: "Waiting on approver" },
+    { value: "OVERRIDE_DOCS_IN_PROGRESS", label: "Override docs in progress" },
+    { value: "REVISIT_TOMORROW", label: "Revisit tomorrow" },
+];
+
+function normalizeCloseControlDisposition(
+    disposition: string | null | undefined
+): CloseControlDisposition {
+    if (
+        disposition === "WAITING_ON_APPROVER" ||
+        disposition === "OVERRIDE_DOCS_IN_PROGRESS" ||
+        disposition === "REVISIT_TOMORROW"
+    ) {
+        return disposition;
+    }
+    return DEFAULT_CLOSE_CONTROL_DISPOSITION;
+}
+
+function closeControlDispositionLabel(disposition: string | null | undefined) {
+    return CLOSE_CONTROL_DISPOSITION_OPTIONS.find(
+        (option) => option.value === normalizeCloseControlDisposition(disposition)
+    )?.label ?? "Waiting on approver";
+}
+
 export default function NotificationsPage() {
     const { organizationId, hydrated } = useOrganizationSession();
     const [filter, setFilter] = useState<NotificationFilter>("ALL");
@@ -64,6 +95,9 @@ export default function NotificationsPage() {
     const [actingNotificationId, setActingNotificationId] = useState<string | null>(null);
     const [actingWorkflowTaskId, setActingWorkflowTaskId] = useState<string | null>(null);
     const [escalationNotes, setEscalationNotes] = useState<Record<string, string>>({});
+    const [escalationDispositions, setEscalationDispositions] = useState<
+        Record<string, CloseControlDisposition>
+    >({});
     const queryClient = useQueryClient();
 
     const organizationsQuery = useQuery<OrganizationSummary[], Error>({
@@ -198,7 +232,8 @@ export default function NotificationsPage() {
             await acknowledgeCloseControlEscalation(
                 organizationId,
                 notificationId,
-                escalationNotes[notificationId] ?? ""
+                escalationNotes[notificationId] ?? "",
+                escalationDispositions[notificationId] ?? DEFAULT_CLOSE_CONTROL_DISPOSITION
             );
             await refreshNotificationData();
             setActionMessage("Escalated close-control review acknowledged.");
@@ -222,7 +257,8 @@ export default function NotificationsPage() {
             await resolveCloseControlEscalation(
                 organizationId,
                 notificationId,
-                escalationNotes[notificationId] ?? ""
+                escalationNotes[notificationId] ?? "",
+                escalationDispositions[notificationId] ?? DEFAULT_CLOSE_CONTROL_DISPOSITION
             );
             await refreshNotificationData();
             setActionMessage("Escalated close-control review resolved.");
@@ -451,11 +487,46 @@ export default function NotificationsPage() {
                                             {notification.closeControlAcknowledgedAt ? (
                                                 <p className="text-xs text-zinc-300">
                                                     Reviewed {formatTimestamp(notification.closeControlAcknowledgedAt)}
+                                                    {notification.closeControlDisposition
+                                                        ? ` · ${closeControlDispositionLabel(notification.closeControlDisposition)}`
+                                                        : ""}
                                                     {notification.closeControlAcknowledgementNote
                                                         ? ` · ${notification.closeControlAcknowledgementNote}`
                                                         : ""}
                                                 </p>
                                             ) : null}
+                                            <label className="block space-y-2 pt-2">
+                                                <span className="text-xs uppercase tracking-[0.14em] text-zinc-300">
+                                                    Review state
+                                                </span>
+                                                <select
+                                                    value={
+                                                        escalationDispositions[notification.id] ??
+                                                        normalizeCloseControlDisposition(
+                                                            notification.closeControlDisposition
+                                                        )
+                                                    }
+                                                    onChange={(event) =>
+                                                        setEscalationDispositions((current) => ({
+                                                            ...current,
+                                                            [notification.id]:
+                                                                event.target
+                                                                    .value as CloseControlDisposition,
+                                                        }))
+                                                    }
+                                                    className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                                                >
+                                                    {CLOSE_CONTROL_DISPOSITION_OPTIONS.map((option) => (
+                                                        <option
+                                                            key={option.value}
+                                                            value={option.value}
+                                                            className="bg-zinc-950"
+                                                        >
+                                                            {option.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
                                             <label className="block space-y-2 pt-2">
                                                 <span className="text-xs uppercase tracking-[0.14em] text-zinc-300">
                                                     Review note

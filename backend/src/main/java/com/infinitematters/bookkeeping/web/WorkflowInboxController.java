@@ -241,7 +241,8 @@ public class WorkflowInboxController {
                 organizationId,
                 notificationId,
                 actorUserId,
-                request != null ? request.note() : null);
+                request != null ? request.note() : null,
+                request != null ? request.disposition() : null);
     }
 
     @PostMapping("/notifications/{notificationId}/close-control-escalation/resolve")
@@ -253,7 +254,8 @@ public class WorkflowInboxController {
                 organizationId,
                 notificationId,
                 actorUserId,
-                request != null ? request.note() : null);
+                request != null ? request.note() : null,
+                request != null ? request.disposition() : null);
     }
 
     @PostMapping("/notifications/{notificationId}/dead-letter/acknowledge")

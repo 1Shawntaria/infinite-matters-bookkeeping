@@ -246,6 +246,7 @@ function dashboardSnapshot(organizationId: string) {
         closeControlAcknowledgementNote: "Owner reviewed the escalation and is pushing approver follow-through today.",
         closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
         closeControlAcknowledgedByUserId: "user-1",
+        closeControlDisposition: "WAITING_ON_APPROVER",
         closeControlResolutionNote: null,
         closeControlResolvedAt: null,
         closeControlResolvedByUserId: null,
@@ -1032,6 +1033,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       closeControlAcknowledgementNote: "Owner reviewed the escalation and is pushing approver follow-through today.",
       closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
       closeControlAcknowledgedByUserId: "user-1",
+      closeControlDisposition: "WAITING_ON_APPROVER",
       closeControlResolutionNote: null,
       closeControlResolvedAt: null,
       closeControlResolvedByUserId: null,
@@ -1066,6 +1068,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       closeControlAcknowledgementNote: null,
       closeControlAcknowledgedAt: null,
       closeControlAcknowledgedByUserId: null,
+      closeControlDisposition: null,
       closeControlResolutionNote: null,
       closeControlResolvedAt: null,
       closeControlResolvedByUserId: null,
@@ -1270,6 +1273,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
         closeControlAcknowledgementNote: body.note || "Escalation reviewed from notifications workspace",
         closeControlAcknowledgedByUserId: "user-1",
+        closeControlDisposition: body.disposition || "WAITING_ON_APPROVER",
       };
       await fulfillJson(route, workflowNotifications[index]);
       return;
@@ -1288,6 +1292,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
         closeControlResolvedAt: "2026-04-29T15:12:00Z",
         closeControlResolutionNote: body.note || "Escalation resolved from notifications workspace",
         closeControlResolvedByUserId: "user-1",
+        closeControlDisposition: body.disposition || workflowNotifications[index].closeControlDisposition,
       };
       await fulfillJson(route, workflowNotifications[index]);
       return;
@@ -2172,7 +2177,6 @@ test("activity page shows merged operational timeline and filter views", async (
 test("notifications inbox merges auth and workflow delivery signals", async ({ page }) => {
   await seedOrganization(page);
   await page.goto("/notifications");
-  const escalationsSection = page.getByRole("heading", { name: "Escalated close controls" }).locator("..").locator("..");
 
   await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Escalated close controls" })).toBeVisible();
@@ -2189,21 +2193,27 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.locator("span").filter({ hasText: "Attention" }).first()).toBeVisible();
   await expect(page.getByText("Monthly close escalation entered dead-letter handling.").first()).toBeVisible();
 
-  await escalationsSection.getByRole("link", { name: "Open attestation month" }).click();
+  await page.getByRole("link", { name: "Open attestation month" }).first().click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");
 
   await page.locator("textarea").last().fill("Owner reviewed and is documenting the override follow-through today.");
+  await page.locator("select").filter({ has: page.getByRole("option", { name: "Override docs in progress" }) }).last().selectOption("OVERRIDE_DOCS_IN_PROGRESS");
   await page.getByRole("button", { name: "Save review note" }).click();
   await expect(page.getByText("Escalated close-control review acknowledged.")).toBeVisible();
-  await expect(page.getByText("Owner reviewed and is documenting the override follow-through today.")).toBeVisible();
+  await expect(page.locator("p").filter({ hasText: "Override docs in progress" }).first()).toBeVisible();
+  await expect(
+    page.locator("p").filter({
+      hasText: "Owner reviewed and is documenting the override follow-through today.",
+    }).first()
+  ).toBeVisible();
 
-  await page.getByRole("button", { name: "Resolve escalation" }).click();
+  await page.getByRole("button", { name: "Resolve escalation" }).last().click();
   await expect(page.getByText("Escalated close-control review resolved.")).toBeVisible();
   await expect(page.getByText("Escalated force-close review")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Open attestation month" }).click();
+  await page.getByRole("link", { name: "Open attestation month" }).first().click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");

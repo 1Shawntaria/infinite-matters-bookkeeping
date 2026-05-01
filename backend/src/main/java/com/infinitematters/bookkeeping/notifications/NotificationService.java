@@ -24,7 +24,8 @@ import java.util.UUID;
 
 @Service
 public class NotificationService {
-    private static final java.time.Duration CLOSE_CONTROL_ESCALATION_REMINDER_COOLDOWN = java.time.Duration.ofHours(24);
+    private static final java.time.Duration CLOSE_CONTROL_ESCALATION_DEFAULT_REMINDER_COOLDOWN = java.time.Duration.ofHours(12);
+    private static final java.time.Duration CLOSE_CONTROL_ESCALATION_REVISIT_REMINDER_COOLDOWN = java.time.Duration.ofHours(24);
     private static final String PERFORMANCE_REFERENCE_TYPE = "dead_letter_support_performance";
     private static final String PERFORMANCE_ESCALATION_REFERENCE_TYPE = "dead_letter_support_performance_escalation";
     private static final String CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE = "close_control_follow_up_escalation";
@@ -419,9 +420,12 @@ public class NotificationService {
     public NotificationSummary acknowledgeCloseControlEscalation(UUID organizationId,
                                                                  UUID notificationId,
                                                                  UUID actorUserId,
-                                                                 String note) {
+                                                                 String note,
+                                                                 CloseControlDisposition disposition) {
         Notification notification = requireCloseControlEscalation(organizationId, notificationId);
         String trimmedNote = trimNote(note);
+        notification.setCloseControlDisposition(normalizeCloseControlDisposition(disposition));
+        notification = notificationRepository.save(notification);
         auditService.recordForUser(
                 actorUserId,
                 organizationId,
@@ -436,9 +440,12 @@ public class NotificationService {
     public NotificationSummary resolveCloseControlEscalation(UUID organizationId,
                                                              UUID notificationId,
                                                              UUID actorUserId,
-                                                             String note) {
+                                                             String note,
+                                                             CloseControlDisposition disposition) {
         Notification notification = requireCloseControlEscalation(organizationId, notificationId);
         String trimmedNote = trimNote(note);
+        notification.setCloseControlDisposition(normalizeCloseControlDisposition(disposition));
+        notification = notificationRepository.save(notification);
         auditService.recordForUser(
                 actorUserId,
                 organizationId,
@@ -554,7 +561,16 @@ public class NotificationService {
     }
 
     private boolean hasRecentAcknowledgedCloseControlEscalation(UUID organizationId, UUID taskId) {
-        Instant cooldownStart = Instant.now().minus(CLOSE_CONTROL_ESCALATION_REMINDER_COOLDOWN);
+        java.util.Optional<Notification> latestEscalation = notificationRepository
+                .findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                        organizationId,
+                        CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE,
+                        taskId.toString());
+        java.time.Duration cooldownWindow = latestEscalation
+                .map(Notification::getCloseControlDisposition)
+                .map(this::closeControlReminderCooldownFor)
+                .orElse(CLOSE_CONTROL_ESCALATION_DEFAULT_REMINDER_COOLDOWN);
+        Instant cooldownStart = Instant.now().minus(cooldownWindow);
         return auditService.listForOrganizationByEventTypeAndEntity(
                         organizationId,
                         CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT,
@@ -667,9 +683,21 @@ public class NotificationService {
                 acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::details).orElse(null),
                 acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
                 acknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
+                notification.getCloseControlDisposition(),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::details).orElse(null),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null));
+    }
+
+    private CloseControlDisposition normalizeCloseControlDisposition(CloseControlDisposition disposition) {
+        return disposition != null ? disposition : CloseControlDisposition.WAITING_ON_APPROVER;
+    }
+
+    private java.time.Duration closeControlReminderCooldownFor(CloseControlDisposition disposition) {
+        if (disposition == CloseControlDisposition.REVISIT_TOMORROW) {
+            return CLOSE_CONTROL_ESCALATION_REVISIT_REMINDER_COOLDOWN;
+        }
+        return CLOSE_CONTROL_ESCALATION_DEFAULT_REMINDER_COOLDOWN;
     }
 
     private java.util.Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestCloseControlEscalationAction(
