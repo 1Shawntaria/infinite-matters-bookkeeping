@@ -22,6 +22,8 @@ import { useOrganizationSession } from "@/lib/auth/session";
 import {
     buildAuditCloseControlFollowUp,
     buildFocusMonthFollowUp,
+    closeFollowUpSeverityClasses,
+    closeFollowUpSeverityLabel,
     FollowUpAction,
     getCloseControlEvents,
 } from "@/lib/close-follow-up";
@@ -203,6 +205,12 @@ export default function DashboardPage() {
     });
     const closeControlQualityFollowUp: FollowUpAction | null =
         buildAuditCloseControlFollowUp(closeControlEvents, data?.workflowInbox?.attentionTasks ?? []);
+    const focusFollowUpStyles = closeControlFollowUp
+        ? closeFollowUpSeverityClasses(closeControlFollowUp.severity)
+        : null;
+    const qualityFollowUpStyles = closeControlQualityFollowUp
+        ? closeFollowUpSeverityClasses(closeControlQualityFollowUp.severity)
+        : null;
 
     if (!hydrated || loading) {
         return (
@@ -513,11 +521,14 @@ export default function DashboardPage() {
                     title={closeControlFollowUp.title}
                     description="Use this shortcut when the most important next move is tied to the current focus month."
                 >
-                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-5">
+                    <div className={`rounded-lg p-5 ${focusFollowUpStyles?.card}`}>
+                        <span className={`mb-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${focusFollowUpStyles?.badge}`}>
+                            {closeFollowUpSeverityLabel(closeControlFollowUp.severity)}
+                        </span>
                         <p className="text-sm leading-6 text-zinc-100">{closeControlFollowUp.message}</p>
                         {closeControlFollowUp.nextTouchLabel ? (
                             <div className="mt-3 space-y-1 text-sm">
-                                <p className="text-emerald-100">{closeControlFollowUp.nextTouchLabel}</p>
+                                <p className={focusFollowUpStyles?.nextTouch}>{closeControlFollowUp.nextTouchLabel}</p>
                                 {closeControlFollowUp.nextTouchReason ? (
                                     <p className="text-zinc-300">{closeControlFollowUp.nextTouchReason}</p>
                                 ) : null}
@@ -526,7 +537,7 @@ export default function DashboardPage() {
                         <div className="mt-4 flex flex-wrap gap-3">
                             <Link
                                 href={closeControlFollowUp.primaryHref}
-                                className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                                className={`rounded-md px-4 py-2.5 text-sm font-semibold ${focusFollowUpStyles?.primaryButton}`}
                             >
                                 {closeControlFollowUp.primaryLabel}
                             </Link>
@@ -547,12 +558,20 @@ export default function DashboardPage() {
                     title={closeControlQualityFollowUp.title}
                     description="Use this when recent close history suggests the team should revisit a month-end control pattern, not just the current blocker."
                 >
-                    <div className="rounded-lg border border-amber-400/20 bg-amber-300/10 p-5">
+                    <div className={`rounded-lg p-5 ${qualityFollowUpStyles?.card}`}>
+                        <span className={`mb-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${qualityFollowUpStyles?.badge}`}>
+                            {closeFollowUpSeverityLabel(closeControlQualityFollowUp.severity)}
+                        </span>
                         <p className="text-sm leading-6 text-zinc-100">{closeControlQualityFollowUp.message}</p>
+                        {closeControlQualityFollowUp.nextTouchLabel ? (
+                            <p className={`mt-3 text-sm ${qualityFollowUpStyles?.nextTouch}`}>
+                                {closeControlQualityFollowUp.nextTouchLabel}
+                            </p>
+                        ) : null}
                         <div className="mt-4 flex flex-wrap gap-3">
                             <Link
                                 href={closeControlQualityFollowUp.primaryHref}
-                                className="rounded-md bg-amber-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-amber-200"
+                                className={`rounded-md px-4 py-2.5 text-sm font-semibold ${qualityFollowUpStyles?.primaryButton}`}
                             >
                                 {closeControlQualityFollowUp.primaryLabel}
                             </Link>

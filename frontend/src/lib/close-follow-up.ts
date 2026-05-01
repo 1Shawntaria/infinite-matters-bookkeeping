@@ -5,7 +5,10 @@ import type {
     WorkflowAttentionTask,
 } from "./api/notifications";
 
+export type FollowUpSeverity = "routine" | "scheduled" | "escalated";
+
 export type FollowUpAction = {
+    severity: FollowUpSeverity;
     title: string;
     message: string;
     primaryHref: string;
@@ -53,6 +56,75 @@ export function getCloseControlEvents(events: AuditEventSummary[]): AuditEventSu
     return events.filter((item) => CLOSE_CONTROL_EVENT_TYPES.has(item.eventType));
 }
 
+export function closeFollowUpSeverityLabel(severity: FollowUpSeverity): string {
+    switch (severity) {
+        case "escalated":
+            return "Escalated";
+        case "scheduled":
+            return "Scheduled";
+        default:
+            return "Routine";
+    }
+}
+
+export function closeFollowUpSeverityTone(
+    severity: FollowUpSeverity
+): "success" | "warning" | "error" {
+    switch (severity) {
+        case "escalated":
+            return "error";
+        case "scheduled":
+            return "warning";
+        default:
+            return "success";
+    }
+}
+
+export function closeFollowUpSeverityClasses(severity: FollowUpSeverity): {
+    card: string;
+    badge: string;
+    primaryButton: string;
+    nextTouch: string;
+} {
+    switch (severity) {
+        case "escalated":
+            return {
+                card: "border-rose-300/30 bg-rose-300/10",
+                badge: "border border-rose-300/40 bg-rose-300/10 text-rose-100",
+                primaryButton: "bg-rose-200 text-black hover:bg-rose-100",
+                nextTouch: "text-rose-100/80",
+            };
+        case "scheduled":
+            return {
+                card: "border-amber-400/20 bg-amber-300/10",
+                badge: "border border-amber-300/40 bg-amber-300/10 text-amber-100",
+                primaryButton: "bg-amber-300 text-black hover:bg-amber-200",
+                nextTouch: "text-amber-100",
+            };
+        default:
+            return {
+                card: "border-emerald-400/20 bg-emerald-300/10",
+                badge: "border border-emerald-300/40 bg-emerald-300/10 text-emerald-100",
+                primaryButton: "bg-emerald-300 text-black hover:bg-emerald-200",
+                nextTouch: "text-emerald-100",
+            };
+    }
+}
+
+export function closeControlEscalationSeverity(
+    notification: Pick<
+        NotificationSummaryItem,
+        "closeControlAcknowledgedAt" | "closeControlDisposition"
+    >
+): FollowUpSeverity {
+    if (!notification.closeControlAcknowledgedAt) {
+        return "escalated";
+    }
+    return normalizeCloseControlDisposition(notification.closeControlDisposition) === "REVISIT_TOMORROW"
+        ? "scheduled"
+        : "escalated";
+}
+
 export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowUpAction | null {
     const {
         focusMonth,
@@ -95,6 +167,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
             workflowAttentionTasks
         );
         return {
+            severity: reviewedDisposition === "REVISIT_TOMORROW" ? "scheduled" : "escalated",
             title: reviewedEscalationTitle(reviewedDisposition, context),
             message: reviewedEscalationMessage(
                 focusMonth,
@@ -123,6 +196,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
     if (focusMonthEscalation) {
         return {
+            severity: "escalated",
             title:
                 context === "dashboard"
                     ? "Escalated attestation needs owner follow-through"
@@ -141,6 +215,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
     if (focusMonthAttestationTask) {
         if (focusMonthAttestationTask.acknowledgedAt) {
             return {
+                severity: "scheduled",
                 title:
                     context === "dashboard"
                         ? "Final attestation is waiting on approval"
@@ -156,6 +231,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
         }
 
         return {
+            severity: "routine",
             title:
                 context === "dashboard"
                     ? "Push attestation through final approval"
@@ -173,6 +249,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
     if (context === "dashboard") {
         return closeReady
             ? {
+                  severity: "routine",
                   title: "Focus month is ready for final approval",
                   message: `${focusMonth} is operationally clear on reconciliations. Use the close workspace to finish sign-off, attestation, and the final close decision.`,
                   primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
@@ -181,6 +258,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
                   secondaryLabel: "Review readiness",
               }
             : {
+                  severity: "routine",
                   title: "Focus month still needs close follow-through",
                   message: `${focusMonth} still has ${unreconciledAccountCount} account(s) holding close open. Start with the close workflow for that month so the next blocker is obvious.`,
                   primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
@@ -192,6 +270,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
     if (attestationRoutingGap > 0) {
         return {
+            severity: "routine",
             title: "Fix attestation routing first",
             message: "Assign a close owner and a different approver for the focus month before expecting the final month-end certification to clear.",
             primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
@@ -203,6 +282,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
     if (attestationGap > 0) {
         return {
+            severity: "routine",
             title: "Finish month-end attestation",
             message: closeApproverName
                 ? `${closeApproverName} is assigned to confirm the month-level attestation for ${focusMonth}.`
@@ -216,6 +296,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
     if (signoffGap > 0 || ownerSignoffGap > 0) {
         return {
+            severity: "routine",
             title: "Capture the remaining sign-off",
             message: requireOwnerSignoffBeforeClose
                 ? "Record the required approvals, including at least one owner sign-off, before treating the month as ready to close."
@@ -229,6 +310,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
     if (pendingPlaybookCount > 0) {
         return {
+            severity: "routine",
             title: "Finish the standing close playbook",
             message: `${pendingPlaybookCount} recurring close playbook item(s) still need completion or approval for ${focusMonth}.`,
             primaryHref: "/run-close",
@@ -239,6 +321,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
     }
 
     return {
+        severity: "routine",
         title: "The month is ready for final close",
         message: `The focus month is in a good place to close once the owner is comfortable committing ${focusMonth}.`,
         primaryHref: `/close?month=${encodeURIComponent(focusMonth)}`,
@@ -258,6 +341,7 @@ export function buildAuditCloseControlFollowUp(
     if (latestForceCloseTask) {
         const nextTouchDate = latestForceCloseTask.dueDate;
         return {
+            severity: latestForceCloseTask.acknowledgedAt ? "scheduled" : "escalated",
             title: latestForceCloseTask.acknowledgedAt
                 ? "Force-close review is already in motion"
                 : "Review the latest override month",
@@ -283,6 +367,7 @@ export function buildAuditCloseControlFollowUp(
     if (latestUnconfirmedAttestationTask) {
         const nextTouchDate = latestUnconfirmedAttestationTask.dueDate;
         return {
+            severity: latestUnconfirmedAttestationTask.acknowledgedAt ? "scheduled" : "routine",
             title: latestUnconfirmedAttestationTask.acknowledgedAt
                 ? "Attestation follow-through is being worked"
                 : "Finish attestation follow-through",

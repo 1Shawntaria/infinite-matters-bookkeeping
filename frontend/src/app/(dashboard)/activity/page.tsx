@@ -18,6 +18,8 @@ import { getDashboardSnapshot } from "@/lib/api/dashboard";
 import { ImportedTransactionHistoryItem, listImportHistory } from "@/lib/api/imports";
 import {
     buildAuditCloseControlFollowUp,
+    closeFollowUpSeverityClasses,
+    closeFollowUpSeverityLabel,
     FollowUpAction,
     getCloseControlEvents,
 } from "@/lib/close-follow-up";
@@ -202,6 +204,9 @@ function ActivityPageContent() {
             ),
         [closeControlEvents, dashboardQuery.data?.workflowInbox.attentionTasks]
     );
+    const closeControlFollowUpStyles = closeControlFollowUp
+        ? closeFollowUpSeverityClasses(closeControlFollowUp.severity)
+        : null;
 
     const visibleEntries = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase();
@@ -415,18 +420,21 @@ function ActivityPageContent() {
                             </div>
                         </div>
                         {closeControlFollowUp ? (
-                            <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-4">
+                            <div className={`rounded-lg p-4 ${closeControlFollowUpStyles?.card}`}>
+                                <span className={`mb-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${closeControlFollowUpStyles?.badge}`}>
+                                    {closeFollowUpSeverityLabel(closeControlFollowUp.severity)}
+                                </span>
                                 <h3 className="text-sm font-semibold text-white">{closeControlFollowUp.title}</h3>
                                 <p className="mt-3 text-sm text-zinc-200">{closeControlFollowUp.message}</p>
                                 {closeControlFollowUp.nextTouchLabel ? (
-                                    <p className="mt-3 text-xs text-emerald-100/80">
+                                    <p className={`mt-3 text-xs ${closeControlFollowUpStyles?.nextTouch}`}>
                                         {closeControlFollowUp.nextTouchLabel}
                                     </p>
                                 ) : null}
                                 <div className="mt-4 flex flex-wrap gap-3">
                                     <Link
                                         href={closeControlFollowUp.primaryHref}
-                                        className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                                        className={`rounded-md px-4 py-2.5 text-sm font-semibold ${closeControlFollowUpStyles?.primaryButton}`}
                                     >
                                         {closeControlFollowUp.primaryLabel}
                                     </Link>

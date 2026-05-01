@@ -32,7 +32,12 @@ import { useOrganizationSession } from "@/lib/auth/session";
 import { AuditEventSummary } from "@/lib/api/audit";
 import { NotificationSummaryItem } from "@/lib/api/auth";
 import { getWorkspaceSettings } from "@/lib/api/settings";
-import { buildFocusMonthFollowUp, FollowUpAction } from "@/lib/close-follow-up";
+import {
+    buildFocusMonthFollowUp,
+    closeFollowUpSeverityClasses,
+    closeFollowUpSeverityLabel,
+    FollowUpAction,
+} from "@/lib/close-follow-up";
 
 type DecisionState =
     | "READY_TO_CLOSE"
@@ -403,6 +408,9 @@ export default function CloseReadinessPage() {
             signoffGap,
         ]
     );
+    const readinessFollowUpStyles = readinessFollowUp
+        ? closeFollowUpSeverityClasses(readinessFollowUp.severity)
+        : null;
 
     if (!hydrated || loading) {
         return (
@@ -488,11 +496,14 @@ export default function CloseReadinessPage() {
                     title={readinessFollowUp.title}
                     description="Use this shortcut when you already know the focus month is the right place to act."
                 >
-                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-5">
+                    <div className={`rounded-lg p-5 ${readinessFollowUpStyles?.card}`}>
+                        <span className={`mb-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${readinessFollowUpStyles?.badge}`}>
+                            {closeFollowUpSeverityLabel(readinessFollowUp.severity)}
+                        </span>
                         <p className="text-sm leading-6 text-zinc-100">{readinessFollowUp.message}</p>
                         {readinessFollowUp.nextTouchLabel ? (
                             <div className="mt-3 space-y-1 text-sm">
-                                <p className="text-emerald-100">{readinessFollowUp.nextTouchLabel}</p>
+                                <p className={readinessFollowUpStyles?.nextTouch}>{readinessFollowUp.nextTouchLabel}</p>
                                 {readinessFollowUp.nextTouchReason ? (
                                     <p className="text-zinc-300">{readinessFollowUp.nextTouchReason}</p>
                                 ) : null}
@@ -501,7 +512,7 @@ export default function CloseReadinessPage() {
                         <div className="mt-4 flex flex-wrap gap-3">
                             <Link
                                 href={readinessFollowUp.primaryHref}
-                                className="rounded-md bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-200"
+                                className={`rounded-md px-4 py-2.5 text-sm font-semibold ${readinessFollowUpStyles?.primaryButton}`}
                             >
                                 {readinessFollowUp.primaryLabel}
                             </Link>

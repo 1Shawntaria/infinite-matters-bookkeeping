@@ -2116,6 +2116,7 @@ test("login stores organization context and lands on dashboard", async ({ page }
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.locator("select:visible").first()).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "Scheduled" }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Escalated attestation is queued for tomorrow" })).toBeVisible();
   await expect(page.getByText("Owner/admin review is already on record for 2026-04. The workflow is intentionally parked until Apr 30, 2026: Owner reviewed the escalation and queued the next touch for tomorrow.")).toBeVisible();
   await expect(page.getByText("Planned next touch: Apr 30, 2026")).toBeVisible();
@@ -2156,6 +2157,7 @@ test("activity page shows merged operational timeline and filter views", async (
 
   await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Attestation control quality" })).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "Escalated" }).first()).toBeVisible();
   await expect(page.getByText("Force-close activity needs review")).toBeVisible();
   await expect(page.getByText("Attestation plans updated")).toBeVisible();
   await expect(page.getByText("Attestations confirmed")).toBeVisible();
@@ -2261,6 +2263,7 @@ test("exceptions workspace groups blockers that still stand in the way of close"
 
   await expect(page.getByRole("heading", { name: "Exceptions" })).toBeVisible();
   await expect(page.getByText("Active blockers")).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "Scheduled" }).first()).toBeVisible();
   await expect(page.getByText("Escalated close-control risk is active")).toBeVisible();
   await expect(page.getByText("Escalated attestation follow-up").first()).toBeVisible();
   await expect(page.getByText("Revisit attestation on Apr 30").first()).toBeVisible();
@@ -2293,6 +2296,7 @@ test("readiness workspace gives an owner-level pre-close summary", async ({ page
   await page.goto("/readiness");
 
   await expect(page.getByRole("heading", { name: "Close Readiness" })).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "Scheduled" }).first()).toBeVisible();
   await expect(page.getByText("Wait before closing")).toBeVisible();
   await expect(page.getByText("Readiness score")).toBeVisible();
   await expect(page.getByText("Final pre-close review")).toBeVisible();

@@ -24,6 +24,9 @@ import { useOrganizationSession } from "@/lib/auth/session";
 import { NotificationSummaryItem } from "@/lib/api/auth";
 import {
     buildEscalatedCloseControlAction,
+    closeControlEscalationSeverity,
+    closeFollowUpSeverityClasses,
+    closeFollowUpSeverityLabel,
     getCloseControlNextTouchDate,
     isEscalatedCloseControlNotification,
 } from "@/lib/close-follow-up";
@@ -401,6 +404,8 @@ export default function ExceptionsPage() {
                         <div className="space-y-3">
                             {escalatedCloseControlNotifications.map((item) => {
                                 const action = buildEscalatedCloseControlAction(item, workflowAttentionTasks);
+                                const severity = closeControlEscalationSeverity(item);
+                                const severityStyles = closeFollowUpSeverityClasses(severity);
                                 const nextTouchDate = getCloseControlNextTouchDate(
                                     item,
                                     workflowAttentionTasks
@@ -409,15 +414,18 @@ export default function ExceptionsPage() {
                                     <Link
                                         key={item.id}
                                         href={action.primaryHref}
-                                        className="block rounded-lg border border-rose-300/30 bg-rose-300/10 p-4 hover:border-rose-200/50"
+                                        className={`block rounded-lg p-4 hover:border-white/20 ${severityStyles.card}`}
                                     >
+                                        <span className={`mb-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${severityStyles.badge}`}>
+                                            {closeFollowUpSeverityLabel(severity)}
+                                        </span>
                                         <p className="text-sm font-semibold text-white">{action.title}</p>
                                         <p className="mt-1 text-sm text-zinc-200">{action.message}</p>
-                                        <p className="mt-3 text-xs font-medium uppercase tracking-[0.14em] text-rose-100/90">
+                                        <p className={`mt-3 text-xs font-medium uppercase tracking-[0.14em] ${severityStyles.nextTouch}`}>
                                             {action.primaryLabel}
                                         </p>
                                         {nextTouchDate ? (
-                                            <p className="mt-1 text-xs text-rose-100/80">
+                                            <p className={`mt-1 text-xs ${severityStyles.nextTouch}`}>
                                                 Next touch {new Date(`${nextTouchDate}T00:00:00`).toLocaleDateString("en-US", {
                                                     month: "short",
                                                     day: "numeric",
