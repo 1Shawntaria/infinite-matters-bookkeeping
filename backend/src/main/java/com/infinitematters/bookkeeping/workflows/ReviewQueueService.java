@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
@@ -36,6 +37,7 @@ import java.util.Optional;
 
 @Service
 public class ReviewQueueService {
+    private static final DateTimeFormatter RECOMMENDATION_DATE_FORMAT = DateTimeFormatter.ofPattern("MMM d");
     private static final String CLOSE_CONTROL_TASK_ACKNOWLEDGED_EVENT = "CLOSE_CONTROL_TASK_ACKNOWLEDGED";
     private static final String CLOSE_CONTROL_TASK_RESOLVED_EVENT = "CLOSE_CONTROL_TASK_RESOLVED";
     private static final String CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT = "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED";
@@ -738,11 +740,21 @@ public class ReviewQueueService {
                                 task.actionPath() != null ? task.actionPath() : "/close",
                                 DashboardActionUrgency.NORMAL);
                         case REVISIT_TOMORROW -> new InboxRecommendation(
-                                "Queue scheduled close follow-up",
+                                scheduledCloseControlLabel(task),
                                 "QUEUE_TOMORROWS_CLOSE_FOLLOW_UP",
                                 task.actionPath() != null ? task.actionPath() : "/close",
                                 DashboardActionUrgency.NORMAL);
                     };
                 });
+    }
+
+    private String scheduledCloseControlLabel(ReviewTaskSummary task) {
+        String scheduledDate = task.dueDate() != null
+                ? task.dueDate().format(RECOMMENDATION_DATE_FORMAT)
+                : "the next review day";
+        if ("FORCE_CLOSE_REVIEW".equals(task.taskType())) {
+            return "Resume override review on " + scheduledDate;
+        }
+        return "Revisit attestation on " + scheduledDate;
     }
 }
