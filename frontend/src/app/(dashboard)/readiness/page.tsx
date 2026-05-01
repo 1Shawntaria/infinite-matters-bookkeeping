@@ -388,8 +388,10 @@ export default function CloseReadinessPage() {
                 requireOwnerSignoffBeforeClose,
                 closeApproverName: closeAttestation?.closeApprover?.fullName ?? null,
                 workflowAttentionTasks: dashboardQuery.data?.workflowInbox.attentionTasks ?? [],
+                attentionNotifications,
             }),
         [
+            attentionNotifications,
             attestationGap,
             attestationRoutingGap,
             closeAttestation?.closeApprover?.fullName,

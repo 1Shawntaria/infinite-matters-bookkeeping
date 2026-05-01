@@ -34,6 +34,7 @@ type FocusMonthFollowUpInput = {
     context?: "dashboard" | "readiness";
     closeReady?: boolean;
     unreconciledAccountCount?: number;
+    attentionNotifications?: NotificationSummaryItem[];
 };
 
 const CLOSE_CONTROL_EVENT_TYPES = new Set([
@@ -61,6 +62,7 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
         context = "readiness",
         closeReady = false,
         unreconciledAccountCount = 0,
+        attentionNotifications = [],
     } = input;
 
     if (!focusMonth) {
@@ -72,6 +74,48 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
             task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP" &&
             workflowTaskMonth(task) === focusMonth
     );
+    const focusMonthEscalation = attentionNotifications.find(
+        (notification) =>
+            isEscalatedCloseControlNotification(notification) &&
+            !notification.closeControlResolvedAt &&
+            notificationMonth(notification, workflowAttentionTasks) === focusMonth
+    );
+
+    if (focusMonthEscalation?.closeControlAcknowledgedAt) {
+        return {
+            title:
+                context === "dashboard"
+                    ? "Escalated attestation is under owner review"
+                    : "Escalation reviewed, waiting on follow-through",
+            message: focusMonthEscalation.closeControlAcknowledgementNote
+                ? `Owner/admin review is already on record for ${focusMonth}: ${focusMonthEscalation.closeControlAcknowledgementNote}`
+                : `An owner or admin already reviewed the escalation for ${focusMonth}. Keep the month moving against that plan before triggering more escalation churn.`,
+            primaryHref:
+                focusMonthEscalation.referenceId
+                    ? buildEscalatedCloseControlAction(focusMonthEscalation, workflowAttentionTasks).primaryHref
+                    : `/close?month=${encodeURIComponent(focusMonth)}`,
+            primaryLabel: "Open reviewed month",
+            secondaryHref: "/notifications",
+            secondaryLabel: "Review escalation note",
+        };
+    }
+
+    if (focusMonthEscalation) {
+        return {
+            title:
+                context === "dashboard"
+                    ? "Escalated attestation needs owner follow-through"
+                    : "Escalated attestation is still open",
+            message: `The focus month already crossed the escalation threshold. Route ${focusMonth} back through owner/admin review before treating it like a routine attestation delay.`,
+            primaryHref:
+                focusMonthEscalation.referenceId
+                    ? buildEscalatedCloseControlAction(focusMonthEscalation, workflowAttentionTasks).primaryHref
+                    : `/close?month=${encodeURIComponent(focusMonth)}`,
+            primaryLabel: "Open escalated month",
+            secondaryHref: "/notifications",
+            secondaryLabel: "Review escalation",
+        };
+    }
 
     if (focusMonthAttestationTask) {
         if (focusMonthAttestationTask.acknowledgedAt) {
@@ -268,6 +312,19 @@ export function buildEscalatedCloseControlAction(
         secondaryLabel: "Review workflow inbox",
         monthLabel,
     };
+}
+
+function notificationMonth(
+    notification: Pick<NotificationSummaryItem, "referenceId" | "message">,
+    workflowAttentionTasks: WorkflowAttentionTask[]
+): string | null {
+    const matchedTask =
+        workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
+    if (matchedTask) {
+        return workflowTaskMonth(matchedTask);
+    }
+    const messageMatch = notification.message.match(/\b(\d{4}-\d{2})\b/);
+    return messageMatch ? messageMatch[1] : null;
 }
 
 export function workflowTaskMonth(task: WorkflowAttentionTask): string | null {

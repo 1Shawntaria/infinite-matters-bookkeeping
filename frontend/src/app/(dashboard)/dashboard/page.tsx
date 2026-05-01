@@ -196,6 +196,7 @@ export default function DashboardPage() {
         pendingPlaybookCount: 0,
         requireOwnerSignoffBeforeClose: false,
         workflowAttentionTasks: data?.workflowInbox?.attentionTasks ?? [],
+        attentionNotifications: recentNotifications,
         context: "dashboard",
         closeReady: data?.period?.closeReady ?? false,
         unreconciledAccountCount: data?.period?.unreconciledAccountCount ?? 0,

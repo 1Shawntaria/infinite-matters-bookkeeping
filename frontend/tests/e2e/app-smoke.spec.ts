@@ -219,7 +219,42 @@ function dashboardSnapshot(organizationId: string) {
       },
     ],
     staleAccounts: [],
-    recentNotifications: [],
+    recentNotifications: [
+      {
+        id: "dashboard-notification-close-escalation",
+        workflowTaskId: "close-follow-up-1",
+        userId: "user-1",
+        category: "WORKFLOW",
+        channel: "IN_APP",
+        status: "SENT",
+        deliveryState: "DELIVERED",
+        message:
+          "Escalation (2026-04-29): attestation for 2026-04 still lacks final confirmation after repeated reminders. Owner/admin review is now required.",
+        referenceType: "close_control_follow_up_escalation",
+        referenceId: "close-follow-up-1",
+        recipientEmail: "owner@acme.test",
+        providerName: null,
+        providerMessageId: null,
+        attemptCount: 0,
+        lastError: null,
+        lastFailureCode: null,
+        deadLetterResolutionStatus: null,
+        deadLetterResolutionReasonCode: null,
+        deadLetterResolutionNote: null,
+        deadLetterResolvedAt: null,
+        deadLetterResolvedByUserId: null,
+        closeControlAcknowledgementNote: "Owner reviewed the escalation and is pushing approver follow-through today.",
+        closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
+        closeControlAcknowledgedByUserId: "user-1",
+        closeControlResolutionNote: null,
+        closeControlResolvedAt: null,
+        closeControlResolvedByUserId: null,
+        scheduledFor: "2026-04-29T15:00:00Z",
+        lastAttemptedAt: null,
+        sentAt: "2026-04-29T15:00:00Z",
+        createdAt: "2026-04-29T15:00:00Z",
+      },
+    ],
   };
 }
 
@@ -994,10 +1029,50 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       deadLetterResolutionNote: null,
       deadLetterResolvedAt: null,
       deadLetterResolvedByUserId: null,
+      closeControlAcknowledgementNote: "Owner reviewed the escalation and is pushing approver follow-through today.",
+      closeControlAcknowledgedAt: "2026-04-29T15:10:00Z",
+      closeControlAcknowledgedByUserId: "user-1",
+      closeControlResolutionNote: null,
+      closeControlResolvedAt: null,
+      closeControlResolvedByUserId: null,
       scheduledFor: "2026-04-29T15:00:00Z",
       lastAttemptedAt: null,
       sentAt: "2026-04-29T15:00:00Z",
       createdAt: "2026-04-29T15:00:00Z",
+    },
+    {
+      id: "workflow-notification-5",
+      workflowTaskId: "close-follow-up-2",
+      userId: "user-1",
+      category: "WORKFLOW",
+      channel: "IN_APP",
+      status: "SENT",
+      deliveryState: "DELIVERED",
+      message:
+        "Escalation (2026-04-29): force-close review for 2026-02 remains unresolved after repeated reminders. Owner/admin review is now required.",
+      referenceType: "close_control_follow_up_escalation",
+      referenceId: "close-follow-up-2",
+      recipientEmail: "owner@acme.test",
+      providerName: null,
+      providerMessageId: null,
+      attemptCount: 0,
+      lastError: null,
+      lastFailureCode: null,
+      deadLetterResolutionStatus: null,
+      deadLetterResolutionReasonCode: null,
+      deadLetterResolutionNote: null,
+      deadLetterResolvedAt: null,
+      deadLetterResolvedByUserId: null,
+      closeControlAcknowledgementNote: null,
+      closeControlAcknowledgedAt: null,
+      closeControlAcknowledgedByUserId: null,
+      closeControlResolutionNote: null,
+      closeControlResolvedAt: null,
+      closeControlResolvedByUserId: null,
+      scheduledFor: "2026-04-29T15:20:00Z",
+      lastAttemptedAt: null,
+      sentAt: "2026-04-29T15:20:00Z",
+      createdAt: "2026-04-29T15:20:00Z",
     },
   ];
   let workflowAttentionTasks = defaultWorkflowAttentionTasks();
@@ -2030,9 +2105,10 @@ test("login stores organization context and lands on dashboard", async ({ page }
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.locator("select:visible").first()).toHaveValue("org-primary");
   await expect(page.getByText("$15234.12")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Push attestation through final approval" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Escalated attestation is under owner review" })).toBeVisible();
+  await expect(page.getByText("Owner/admin review is already on record for 2026-04: Owner reviewed the escalation and is pushing approver follow-through today.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review the latest override month" })).toBeVisible();
-  await page.getByRole("link", { name: "Open attestation" }).click();
+  await page.getByRole("link", { name: "Open reviewed month" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/dashboard");
@@ -2102,6 +2178,7 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.getByRole("heading", { name: "Escalated close controls" })).toBeVisible();
   await expect(page.getByText("Escalated attestation follow-up")).toBeVisible();
   await expect(page.getByText("Focus month 2026-04")).toBeVisible();
+  await expect(page.getByText("Owner reviewed the escalation and is pushing approver follow-through today.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Workflow follow-up" })).toBeVisible();
   await expect(page.getByText("Confirm month-end attestation for 2026-04")).toBeVisible();
   await expect(page.getByText("Review force-close controls for 2026-02")).toBeVisible();
@@ -2117,14 +2194,14 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");
 
-  await page.getByPlaceholder("Document what was reviewed, who owns follow-through, or why the escalation can be cleared.").fill("Owner reviewed and is pushing approver follow-through today.");
+  await page.locator("textarea").last().fill("Owner reviewed and is documenting the override follow-through today.");
   await page.getByRole("button", { name: "Save review note" }).click();
   await expect(page.getByText("Escalated close-control review acknowledged.")).toBeVisible();
-  await expect(page.getByText("Owner reviewed and is pushing approver follow-through today.")).toBeVisible();
+  await expect(page.getByText("Owner reviewed and is documenting the override follow-through today.")).toBeVisible();
 
   await page.getByRole("button", { name: "Resolve escalation" }).click();
   await expect(page.getByText("Escalated close-control review resolved.")).toBeVisible();
-  await expect(page.getByText("Escalated attestation follow-up")).toHaveCount(0);
+  await expect(page.getByText("Escalated force-close review")).toHaveCount(0);
 
   await page.getByRole("link", { name: "Open attestation month" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
@@ -2194,8 +2271,9 @@ test("readiness workspace gives an owner-level pre-close summary", async ({ page
   await expect(page.getByText("Final pre-close review")).toBeVisible();
   await expect(page.getByText("Outstanding review tasks")).toBeVisible();
   await expect(page.getByText("Month attestation", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Finish month-end attestation" })).toBeVisible();
-  await page.getByRole("link", { name: "Open attestation" }).click();
+  await expect(page.getByRole("heading", { name: "Escalation reviewed, waiting on follow-through" })).toBeVisible();
+  await expect(page.getByText("Owner/admin review is already on record for 2026-04: Owner reviewed the escalation and is pushing approver follow-through today.")).toBeVisible();
+  await page.getByRole("link", { name: "Open reviewed month" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/readiness");
