@@ -24,6 +24,7 @@ import {
 import { useOrganizationSession } from "@/lib/auth/session";
 import {
     buildEscalatedCloseControlAction,
+    getCloseControlNextTouchDate,
     isEscalatedCloseControlNotification,
 } from "@/lib/close-follow-up";
 
@@ -50,6 +51,16 @@ function formatDate(value?: string | null) {
     return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
+    });
+}
+
+function formatCalendarDate(value?: string | null) {
+    if (!value) return "No scheduled follow-up";
+
+    return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
     });
 }
 
@@ -454,6 +465,10 @@ export default function NotificationsPage() {
                                 notification,
                                 workflowAttentionTasks
                             );
+                            const nextTouchDate = getCloseControlNextTouchDate(
+                                notification,
+                                workflowAttentionTasks
+                            );
                             const busy = actingNotificationId === notification.id;
                             const reviewed = Boolean(notification.closeControlAcknowledgedAt);
                             return (
@@ -493,6 +508,11 @@ export default function NotificationsPage() {
                                                     {notification.closeControlAcknowledgementNote
                                                         ? ` · ${notification.closeControlAcknowledgementNote}`
                                                         : ""}
+                                                </p>
+                                            ) : null}
+                                            {nextTouchDate ? (
+                                                <p className="text-xs text-zinc-400">
+                                                    Next touch {formatCalendarDate(nextTouchDate)}
                                                 </p>
                                             ) : null}
                                             <label className="block space-y-2 pt-2">

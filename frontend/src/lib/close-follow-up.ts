@@ -93,7 +93,8 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
             message: reviewedEscalationMessage(
                 focusMonth,
                 reviewedDisposition,
-                focusMonthEscalation.closeControlAcknowledgementNote
+                focusMonthEscalation.closeControlAcknowledgementNote,
+                getCloseControlNextTouchDate(focusMonthEscalation, workflowAttentionTasks)
             ),
             primaryHref:
                 focusMonthEscalation.referenceId
@@ -288,8 +289,7 @@ export function buildEscalatedCloseControlAction(
     notification: Pick<NotificationSummaryItem, "referenceId" | "message">,
     workflowAttentionTasks: WorkflowAttentionTask[] = []
 ): EscalatedCloseControlAction {
-    const matchedTask =
-        workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
+    const matchedTask = matchingEscalatedCloseControlTask(notification, workflowAttentionTasks);
     const month = matchedTask ? workflowTaskMonth(matchedTask) : null;
     const monthLabel = month ?? "the affected month";
     const primaryHref =
@@ -354,14 +354,18 @@ function reviewedEscalationTitle(
 function reviewedEscalationMessage(
     focusMonth: string,
     disposition: CloseControlDisposition,
-    note: string | null
+    note: string | null,
+    nextTouchDate?: string | null
 ): string {
     const noteSuffix = note ? `: ${note}` : ".";
     if (disposition === "OVERRIDE_DOCS_IN_PROGRESS") {
         return `Owner/admin review is already on record for ${focusMonth}. Override support and documentation are in progress${noteSuffix}`;
     }
     if (disposition === "REVISIT_TOMORROW") {
-        return `Owner/admin review is already on record for ${focusMonth}. The workflow is intentionally parked until the next review window${noteSuffix}`;
+        const nextTouchSuffix = nextTouchDate
+            ? ` until ${formatCalendarDate(nextTouchDate)}`
+            : " until the next review window";
+        return `Owner/admin review is already on record for ${focusMonth}. The workflow is intentionally parked${nextTouchSuffix}${noteSuffix}`;
     }
     return note
         ? `Owner/admin review is already on record for ${focusMonth}: ${note}`
@@ -393,13 +397,40 @@ function notificationMonth(
     notification: Pick<NotificationSummaryItem, "referenceId" | "message">,
     workflowAttentionTasks: WorkflowAttentionTask[]
 ): string | null {
-    const matchedTask =
-        workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
+    const matchedTask = matchingEscalatedCloseControlTask(notification, workflowAttentionTasks);
     if (matchedTask) {
         return workflowTaskMonth(matchedTask);
     }
     const messageMatch = notification.message.match(/\b(\d{4}-\d{2})\b/);
     return messageMatch ? messageMatch[1] : null;
+}
+
+export function getCloseControlNextTouchDate(
+    notification: Pick<
+        NotificationSummaryItem,
+        "referenceId" | "message" | "closeControlDisposition"
+    >,
+    workflowAttentionTasks: WorkflowAttentionTask[]
+): string | null {
+    if (normalizeCloseControlDisposition(notification.closeControlDisposition) !== "REVISIT_TOMORROW") {
+        return null;
+    }
+    return matchingEscalatedCloseControlTask(notification, workflowAttentionTasks)?.dueDate ?? null;
+}
+
+function matchingEscalatedCloseControlTask(
+    notification: Pick<NotificationSummaryItem, "referenceId" | "message">,
+    workflowAttentionTasks: WorkflowAttentionTask[]
+): WorkflowAttentionTask | null {
+    return workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
+}
+
+function formatCalendarDate(value: string): string {
+    return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+    });
 }
 
 export function workflowTaskMonth(task: WorkflowAttentionTask): string | null {
