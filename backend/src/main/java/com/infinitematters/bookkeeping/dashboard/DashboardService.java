@@ -434,6 +434,11 @@ public class DashboardService {
     }
 
     private long inboxPrimaryCount(WorkflowInboxSummary inbox) {
+        if ("PUSH_APPROVER_FOLLOW_THROUGH".equals(inbox.recommendedActionKey())
+                || "FINISH_OVERRIDE_DOCUMENTATION".equals(inbox.recommendedActionKey())
+                || "QUEUE_TOMORROWS_CLOSE_FOLLOW_UP".equals(inbox.recommendedActionKey())) {
+            return 1;
+        }
         if (inbox.overdueCount() > 0) {
             return inbox.overdueCount();
         }
@@ -444,6 +449,15 @@ public class DashboardService {
     }
 
     private String inboxPrimaryReason(WorkflowInboxSummary inbox) {
+        if ("PUSH_APPROVER_FOLLOW_THROUGH".equals(inbox.recommendedActionKey())) {
+            return "A reviewed attestation escalation is now waiting on final approver follow-through.";
+        }
+        if ("FINISH_OVERRIDE_DOCUMENTATION".equals(inbox.recommendedActionKey())) {
+            return "An override month is under review and still needs documentation before close can be treated as clean.";
+        }
+        if ("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP".equals(inbox.recommendedActionKey())) {
+            return "The close-control review is intentionally paused until tomorrow's follow-up window.";
+        }
         if (inbox.overdueCount() > 0) {
             return inbox.overdueCount() == 1
                     ? "1 overdue bookkeeping task needs attention."
@@ -460,6 +474,9 @@ public class DashboardService {
     }
 
     private DashboardActionUrgency inboxPrimaryUrgency(WorkflowInboxSummary inbox) {
+        if (inbox.recommendedActionUrgency() != null) {
+            return inbox.recommendedActionUrgency();
+        }
         if (inbox.overdueCount() > 0 || inbox.highPriorityCount() > 0) {
             return DashboardActionUrgency.HIGH;
         }

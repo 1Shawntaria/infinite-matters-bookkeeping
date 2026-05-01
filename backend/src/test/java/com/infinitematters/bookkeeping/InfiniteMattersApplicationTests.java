@@ -761,6 +761,25 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and is pushing approver follow-through."))
                 .andExpect(jsonPath("$.closeControlDisposition").value("WAITING_ON_APPROVER"));
 
+        mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendedActionLabel").value("Push approver follow-through"))
+                .andExpect(jsonPath("$.recommendedActionKey").value("PUSH_APPROVER_FOLLOW_THROUGH"))
+                .andExpect(jsonPath("$.recommendedActionPath").value("/close?month=2026-04"))
+                .andExpect(jsonPath("$.recommendedActionUrgency").value("HIGH"));
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.primaryAction.label").value("Push approver follow-through"))
+                .andExpect(jsonPath("$.primaryAction.reason").value("A reviewed attestation escalation is now waiting on final approver follow-through."))
+                .andExpect(jsonPath("$.primaryAction.urgency").value("HIGH"));
+
         mockMvc.perform(post("/api/workflows/reminders/run")
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))

@@ -4,6 +4,9 @@ import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.dashboard.DashboardActionUrgency;
 import com.infinitematters.bookkeeping.domain.Category;
 import com.infinitematters.bookkeeping.ledger.LedgerService;
+import com.infinitematters.bookkeeping.notifications.CloseControlDisposition;
+import com.infinitematters.bookkeeping.notifications.Notification;
+import com.infinitematters.bookkeeping.notifications.NotificationRepository;
 import com.infinitematters.bookkeeping.organization.Organization;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
 import com.infinitematters.bookkeeping.periods.AccountingPeriod;
@@ -41,6 +44,7 @@ public class ReviewQueueService {
     private final AccountingPeriodRepository accountingPeriodRepository;
     private final UserService userService;
     private final RequestIdentityService requestIdentityService;
+    private final NotificationRepository notificationRepository;
 
     public ReviewQueueService(WorkflowTaskRepository taskRepository,
                               CategorizationDecisionRepository decisionRepository,
@@ -50,7 +54,8 @@ public class ReviewQueueService {
                               PeriodCloseService periodCloseService,
                               AccountingPeriodRepository accountingPeriodRepository,
                               UserService userService,
-                              RequestIdentityService requestIdentityService) {
+                              RequestIdentityService requestIdentityService,
+                              NotificationRepository notificationRepository) {
         this.taskRepository = taskRepository;
         this.decisionRepository = decisionRepository;
         this.organizationService = organizationService;
@@ -60,6 +65,7 @@ public class ReviewQueueService {
         this.accountingPeriodRepository = accountingPeriodRepository;
         this.userService = userService;
         this.requestIdentityService = requestIdentityService;
+        this.notificationRepository = notificationRepository;
     }
 
     @Transactional
@@ -241,6 +247,13 @@ public class ReviewQueueService {
                 .limit(5)
                 .toList();
 
+        InboxRecommendation recommendation = recommendedInboxAction(
+                organizationId,
+                attention,
+                overdueCount + syntheticOverdueCount,
+                highPriorityCount + syntheticHighPriorityCount,
+                openTasks.size() + syntheticAttention.size());
+
         return new WorkflowInboxSummary(
                 "workflow-inbox",
                 openTasks.size() + syntheticAttention.size(),
@@ -249,10 +262,10 @@ public class ReviewQueueService {
                 Math.toIntExact(highPriorityCount + syntheticHighPriorityCount),
                 Math.toIntExact(unassignedCount + syntheticUnassignedCount),
                 Math.toIntExact(assignedToCurrentUserCount + syntheticAssignedToCurrentUserCount),
-                recommendedInboxAction(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
-                recommendedInboxActionKey(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
-                recommendedInboxActionPath(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
-                recommendedInboxActionUrgency(overdueCount + syntheticOverdueCount, highPriorityCount + syntheticHighPriorityCount, openTasks.size() + syntheticAttention.size()),
+                recommendation != null ? recommendation.label() : null,
+                recommendation != null ? recommendation.key() : null,
+                recommendation != null ? recommendation.path() : null,
+                recommendation != null ? recommendation.urgency() : null,
                 attention);
     }
 
@@ -366,16 +379,24 @@ public class ReviewQueueService {
             return java.util.Optional.empty();
         }
 
+        CloseControlDisposition disposition = latestCloseControlDisposition(organizationId, taskId)
+                .orElse(defaultDisposition(taskType));
+        LocalDate effectiveDueDate = effectiveCloseControlDueDate(disposition, dueDate);
+        boolean effectiveOverdue = effectiveDueDate.isBefore(today);
+        String effectivePriority = effectiveCloseControlPriority(taskType, disposition);
+        String effectiveTitle = effectiveCloseControlTitle(title, month, disposition);
+        String effectiveDescription = effectiveCloseControlDescription(description, month, disposition, assignedUserName);
+
         return java.util.Optional.of(new ReviewTaskSummary(
                 taskId,
                 null,
                 null,
                 taskType,
-                priority,
-                overdue,
-                title,
-                description,
-                dueDate,
+                effectivePriority,
+                effectiveOverdue,
+                effectiveTitle,
+                effectiveDescription,
+                effectiveDueDate,
                 assignedUserId,
                 assignedUserName,
                 null,
@@ -391,6 +412,61 @@ public class ReviewQueueService {
                 null,
                 latestResolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
                 latestResolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null)));
+    }
+
+    private Optional<CloseControlDisposition> latestCloseControlDisposition(UUID organizationId, UUID taskId) {
+        return notificationRepository
+                .findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                        organizationId,
+                        "close_control_follow_up_escalation",
+                        taskId.toString())
+                .map(Notification::getCloseControlDisposition);
+    }
+
+    private CloseControlDisposition defaultDisposition(String taskType) {
+        if ("FORCE_CLOSE_REVIEW".equals(taskType)) {
+            return CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS;
+        }
+        return CloseControlDisposition.WAITING_ON_APPROVER;
+    }
+
+    private LocalDate effectiveCloseControlDueDate(CloseControlDisposition disposition, LocalDate baseDueDate) {
+        if (disposition == CloseControlDisposition.REVISIT_TOMORROW) {
+            return LocalDate.now().plusDays(1);
+        }
+        return baseDueDate;
+    }
+
+    private String effectiveCloseControlPriority(String taskType, CloseControlDisposition disposition) {
+        if (disposition == CloseControlDisposition.REVISIT_TOMORROW) {
+            return "MEDIUM";
+        }
+        if ("FORCE_CLOSE_REVIEW".equals(taskType) && disposition == CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS) {
+            return "MEDIUM";
+        }
+        return "HIGH";
+    }
+
+    private String effectiveCloseControlTitle(String title, YearMonth month, CloseControlDisposition disposition) {
+        return switch (disposition) {
+            case WAITING_ON_APPROVER -> title;
+            case OVERRIDE_DOCS_IN_PROGRESS -> "Finish override documentation for " + month;
+            case REVISIT_TOMORROW -> "Revisit close follow-up tomorrow for " + month;
+        };
+    }
+
+    private String effectiveCloseControlDescription(String description,
+                                                    YearMonth month,
+                                                    CloseControlDisposition disposition,
+                                                    String assignedUserName) {
+        return switch (disposition) {
+            case WAITING_ON_APPROVER -> assignedUserName != null
+                    ? description + " Keep " + assignedUserName + " moving so " + month + " can clear final attestation."
+                    : description;
+            case OVERRIDE_DOCS_IN_PROGRESS -> "Owner review already confirmed that override support is being documented for " + month
+                    + ". Finish the close memo, evidence, and rationale before treating the month as settled.";
+            case REVISIT_TOMORROW -> "Owner review intentionally deferred this close-control follow-up until tomorrow. Keep the plan visible, but avoid sending the team back into the month early unless risk changes.";
+        };
     }
 
     private Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestCloseControlAction(UUID organizationId,
@@ -557,46 +633,65 @@ public class ReviewQueueService {
         };
     }
 
-    private String recommendedInboxAction(long overdueCount, long highPriorityCount, int openCount) {
+    private InboxRecommendation recommendedInboxAction(UUID organizationId,
+                                                       List<ReviewTaskSummary> attentionTasks,
+                                                       long overdueCount,
+                                                       long highPriorityCount,
+                                                       int openCount) {
+        Optional<InboxRecommendation> closeControlRecommendation = recommendedCloseControlAction(organizationId, attentionTasks);
+        if (closeControlRecommendation.isPresent()) {
+            return closeControlRecommendation.get();
+        }
         if (overdueCount > 0) {
-            return "Resolve overdue bookkeeping tasks";
+            return new InboxRecommendation(
+                    "Resolve overdue bookkeeping tasks",
+                    "RESOLVE_OVERDUE_TASKS",
+                    "/workflows/inbox",
+                    DashboardActionUrgency.HIGH);
         }
         if (highPriorityCount > 0) {
-            return "Review high-priority bookkeeping tasks";
+            return new InboxRecommendation(
+                    "Review high-priority bookkeeping tasks",
+                    "REVIEW_HIGH_PRIORITY_TASKS",
+                    "/workflows/inbox",
+                    DashboardActionUrgency.HIGH);
         }
         if (openCount > 0) {
-            return "Review pending bookkeeping tasks";
+            return new InboxRecommendation(
+                    "Review pending bookkeeping tasks",
+                    "REVIEW_PENDING_TASKS",
+                    "/workflows/inbox",
+                    DashboardActionUrgency.NORMAL);
         }
         return null;
     }
 
-    private String recommendedInboxActionKey(long overdueCount, long highPriorityCount, int openCount) {
-        if (overdueCount > 0) {
-            return "RESOLVE_OVERDUE_TASKS";
-        }
-        if (highPriorityCount > 0) {
-            return "REVIEW_HIGH_PRIORITY_TASKS";
-        }
-        if (openCount > 0) {
-            return "REVIEW_PENDING_TASKS";
-        }
-        return null;
-    }
-
-    private String recommendedInboxActionPath(long overdueCount, long highPriorityCount, int openCount) {
-        if (overdueCount > 0 || highPriorityCount > 0 || openCount > 0) {
-            return "/workflows/inbox";
-        }
-        return null;
-    }
-
-    private DashboardActionUrgency recommendedInboxActionUrgency(long overdueCount, long highPriorityCount, int openCount) {
-        if (overdueCount > 0 || highPriorityCount > 0) {
-            return DashboardActionUrgency.HIGH;
-        }
-        if (openCount > 0) {
-            return DashboardActionUrgency.NORMAL;
-        }
-        return null;
+    private Optional<InboxRecommendation> recommendedCloseControlAction(UUID organizationId,
+                                                                       List<ReviewTaskSummary> attentionTasks) {
+        return attentionTasks.stream()
+                .filter(task -> "CLOSE_ATTESTATION_FOLLOW_UP".equals(task.taskType())
+                        || "FORCE_CLOSE_REVIEW".equals(task.taskType()))
+                .findFirst()
+                .map(task -> {
+                    CloseControlDisposition disposition = latestCloseControlDisposition(organizationId, task.taskId())
+                            .orElse(defaultDisposition(task.taskType()));
+                    return switch (disposition) {
+                        case WAITING_ON_APPROVER -> new InboxRecommendation(
+                                "Push approver follow-through",
+                                "PUSH_APPROVER_FOLLOW_THROUGH",
+                                task.actionPath() != null ? task.actionPath() : "/close",
+                                DashboardActionUrgency.HIGH);
+                        case OVERRIDE_DOCS_IN_PROGRESS -> new InboxRecommendation(
+                                "Finish override documentation",
+                                "FINISH_OVERRIDE_DOCUMENTATION",
+                                task.actionPath() != null ? task.actionPath() : "/close",
+                                DashboardActionUrgency.NORMAL);
+                        case REVISIT_TOMORROW -> new InboxRecommendation(
+                                "Queue tomorrow's close follow-up",
+                                "QUEUE_TOMORROWS_CLOSE_FOLLOW_UP",
+                                task.actionPath() != null ? task.actionPath() : "/close",
+                                DashboardActionUrgency.NORMAL);
+                    };
+                });
     }
 }
