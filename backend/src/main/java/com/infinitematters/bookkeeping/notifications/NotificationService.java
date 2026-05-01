@@ -74,7 +74,7 @@ public class NotificationService {
 
         List<NotificationSummary> closeControlCreated = reviewQueueService.listCloseControlAttentionTasks(organizationId)
                 .stream()
-                .filter(task -> needsCloseControlReminder(organizationId, task))
+                .filter(task -> needsCloseControlReminder(organizationId, task, today))
                 .filter(task -> !notificationRepository.existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(
                         organizationId,
                         CLOSE_CONTROL_REFERENCE_TYPE,
@@ -547,7 +547,7 @@ public class NotificationService {
                 || task.getPriority() == WorkflowTaskPriority.CRITICAL;
     }
 
-    private boolean needsCloseControlReminder(UUID organizationId, ReviewTaskSummary task) {
+    private boolean needsCloseControlReminder(UUID organizationId, ReviewTaskSummary task, LocalDate today) {
         if (task.assignedToUserId() == null) {
             return false;
         }
@@ -555,9 +555,13 @@ public class NotificationService {
             return false;
         }
         if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(task.taskType())) {
-            return task.acknowledgedAt() != null && task.resolvedAt() == null;
+            return task.acknowledgedAt() != null
+                    && task.resolvedAt() == null
+                    && closeControlReminderDue(task, today);
         }
-        return "FORCE_CLOSE_REVIEW".equals(task.taskType()) && task.resolvedAt() == null;
+        return "FORCE_CLOSE_REVIEW".equals(task.taskType())
+                && task.resolvedAt() == null
+                && closeControlReminderDue(task, today);
     }
 
     private boolean hasRecentAcknowledgedCloseControlEscalation(UUID organizationId, UUID taskId) {
@@ -600,6 +604,8 @@ public class NotificationService {
     private NotificationSummary createCloseControlReminder(UUID organizationId,
                                                            ReviewTaskSummary task,
                                                            LocalDate today) {
+        CloseControlDisposition disposition = latestCloseControlDisposition(organizationId, task.taskId())
+                .orElse(defaultDisposition(task));
         Notification notification = new Notification();
         notification.setOrganization(organizationService.get(organizationId));
         notification.setCategory(NotificationCategory.WORKFLOW);
@@ -611,7 +617,8 @@ public class NotificationService {
         notification.setReferenceId(task.taskId().toString());
         notification.setScheduledFor(Instant.now());
         notification.setSentAt(Instant.now());
-        notification.setMessage(buildCloseControlReminderMessage(task, today));
+        notification.setCloseControlDisposition(disposition);
+        notification.setMessage(buildCloseControlReminderMessage(task, today, disposition));
         notification = notificationRepository.save(notification);
         auditService.record(organizationId,
                 "CLOSE_CONTROL_REMINDER_SENT",
@@ -626,13 +633,43 @@ public class NotificationService {
         return urgency + ": " + task.getTitle();
     }
 
-    private String buildCloseControlReminderMessage(ReviewTaskSummary task, LocalDate today) {
+    private String buildCloseControlReminderMessage(ReviewTaskSummary task,
+                                                    LocalDate today,
+                                                    CloseControlDisposition disposition) {
         String urgency = task.dueDate() != null && task.dueDate().isBefore(today) ? "Overdue" : "Attention needed";
         String month = extractTaskMonth(task);
-        if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(task.taskType())) {
-            return urgency + ": final attestation confirmation is still missing for " + month;
+        if (disposition == CloseControlDisposition.REVISIT_TOMORROW) {
+            return urgency + ": revisit the close-control follow-up for " + month + " in today's review window";
         }
-        return urgency + ": force-close review still needs owner follow-up for " + month;
+        if (disposition == CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS) {
+            return urgency + ": override documentation still needs owner follow-through for " + month;
+        }
+        return urgency + ": final attestation confirmation is still missing for " + month;
+    }
+
+    private boolean closeControlReminderDue(ReviewTaskSummary task, LocalDate today) {
+        if (task.dueDate() == null) {
+            return true;
+        }
+        if (!task.dueDate().isAfter(today)) {
+            return true;
+        }
+        return "HIGH".equals(task.priority()) || "CRITICAL".equals(task.priority());
+    }
+
+    private CloseControlDisposition defaultDisposition(ReviewTaskSummary task) {
+        return "FORCE_CLOSE_REVIEW".equals(task.taskType())
+                ? CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS
+                : CloseControlDisposition.WAITING_ON_APPROVER;
+    }
+
+    private java.util.Optional<CloseControlDisposition> latestCloseControlDisposition(UUID organizationId, UUID taskId) {
+        return notificationRepository
+                .findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                        organizationId,
+                        CLOSE_CONTROL_ESCALATION_REFERENCE_TYPE,
+                        taskId.toString())
+                .map(Notification::getCloseControlDisposition);
     }
 
     private String extractTaskMonth(ReviewTaskSummary task) {

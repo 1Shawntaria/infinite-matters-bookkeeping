@@ -269,6 +269,193 @@ class NotificationServiceTests {
     }
 
     @Test
+    void generatesOwnerReminderForOverrideDocumentationFollowUp() {
+        UUID organizationId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+
+        AppUser owner = new AppUser();
+        setId(owner, ownerUserId);
+
+        when(workflowTaskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
+                .thenReturn(List.of());
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId))
+                .thenReturn(List.of(new ReviewTaskSummary(
+                        taskId,
+                        null,
+                        null,
+                        "FORCE_CLOSE_REVIEW",
+                        "MEDIUM",
+                        false,
+                        "Finish override documentation for 2026-04",
+                        "Owner review already confirmed that override support is being documented for 2026-04.",
+                        LocalDate.now(),
+                        ownerUserId,
+                        "Acme Owner",
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.0,
+                        null,
+                        "/close?month=2026-04",
+                        null,
+                        ownerUserId,
+                        Instant.now().minusSeconds(60),
+                        null,
+                        null,
+                        null)));
+        Notification escalation = new Notification();
+        escalation.setReferenceType("close_control_follow_up_escalation");
+        escalation.setReferenceId(taskId.toString());
+        escalation.setCloseControlDisposition(CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS);
+        when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString()))
+                .thenReturn(Optional.of(escalation));
+        when(notificationRepository.existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(
+                eq(organizationId),
+                eq("close_control_follow_up"),
+                eq(taskId.toString()),
+                eq(NotificationStatus.SENT),
+                any()))
+                .thenReturn(false);
+        when(userService.get(ownerUserId)).thenReturn(owner);
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            setId(notification, UUID.randomUUID());
+            return notification;
+        });
+
+        ReminderRunResult result = notificationService.generateTaskReminders(organizationId);
+
+        assertThat(result.createdCount()).isEqualTo(1);
+        assertThat(result.notifications()).hasSize(1);
+        assertThat(result.notifications().get(0).userId()).isEqualTo(ownerUserId);
+        assertThat(result.notifications().get(0).closeControlDisposition()).isEqualTo(CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS);
+        assertThat(result.notifications().get(0).message()).contains("override documentation still needs owner follow-through");
+    }
+
+    @Test
+    void revisitTomorrowReminderWaitsUntilDueDate() {
+        UUID organizationId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+
+        when(workflowTaskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
+                .thenReturn(List.of());
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId))
+                .thenReturn(List.of(new ReviewTaskSummary(
+                        taskId,
+                        null,
+                        null,
+                        "CLOSE_ATTESTATION_FOLLOW_UP",
+                        "MEDIUM",
+                        false,
+                        "Revisit close follow-up tomorrow for 2026-04",
+                        "Owner review intentionally deferred this close-control follow-up until tomorrow.",
+                        LocalDate.now().plusDays(1),
+                        ownerUserId,
+                        "Acme Owner",
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.0,
+                        null,
+                        "/close?month=2026-04",
+                        null,
+                        ownerUserId,
+                        Instant.now().minusSeconds(60),
+                        null,
+                        null,
+                        null)));
+        Notification escalation = new Notification();
+        escalation.setReferenceType("close_control_follow_up_escalation");
+        escalation.setReferenceId(taskId.toString());
+        escalation.setCloseControlDisposition(CloseControlDisposition.REVISIT_TOMORROW);
+        when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString()))
+                .thenReturn(Optional.of(escalation));
+
+        ReminderRunResult result = notificationService.generateTaskReminders(organizationId);
+
+        assertThat(result.createdCount()).isZero();
+        assertThat(result.notifications()).isEmpty();
+        verify(notificationRepository, never()).save(any(Notification.class));
+    }
+
+    @Test
+    void revisitTomorrowReminderResumesOnDueDate() {
+        UUID organizationId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+        AppUser owner = new AppUser();
+        setId(owner, ownerUserId);
+
+        when(workflowTaskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
+                .thenReturn(List.of());
+        when(reviewQueueService.listCloseControlAttentionTasks(organizationId))
+                .thenReturn(List.of(new ReviewTaskSummary(
+                        taskId,
+                        null,
+                        null,
+                        "CLOSE_ATTESTATION_FOLLOW_UP",
+                        "MEDIUM",
+                        false,
+                        "Revisit close follow-up tomorrow for 2026-04",
+                        "Owner review intentionally deferred this close-control follow-up until tomorrow.",
+                        LocalDate.now(),
+                        ownerUserId,
+                        "Acme Owner",
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.0,
+                        null,
+                        "/close?month=2026-04",
+                        null,
+                        ownerUserId,
+                        Instant.now().minusSeconds(60),
+                        null,
+                        null,
+                        null)));
+        Notification escalation = new Notification();
+        escalation.setReferenceType("close_control_follow_up_escalation");
+        escalation.setReferenceId(taskId.toString());
+        escalation.setCloseControlDisposition(CloseControlDisposition.REVISIT_TOMORROW);
+        when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString()))
+                .thenReturn(Optional.of(escalation));
+        when(notificationRepository.existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(
+                eq(organizationId),
+                eq("close_control_follow_up"),
+                eq(taskId.toString()),
+                eq(NotificationStatus.SENT),
+                any()))
+                .thenReturn(false);
+        when(userService.get(ownerUserId)).thenReturn(owner);
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            setId(notification, UUID.randomUUID());
+            return notification;
+        });
+
+        ReminderRunResult result = notificationService.generateTaskReminders(organizationId);
+
+        assertThat(result.createdCount()).isEqualTo(1);
+        assertThat(result.notifications()).hasSize(1);
+        assertThat(result.notifications().get(0).message()).contains("revisit the close-control follow-up for 2026-04");
+        assertThat(result.notifications().get(0).closeControlDisposition()).isEqualTo(CloseControlDisposition.REVISIT_TOMORROW);
+    }
+
+    @Test
     void suppressesCloseControlReminderForRevisitTomorrowWindow() {
         UUID organizationId = UUID.randomUUID();
         UUID taskId = UUID.randomUUID();

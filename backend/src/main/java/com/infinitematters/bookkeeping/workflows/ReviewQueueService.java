@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
@@ -35,6 +36,9 @@ import java.util.Optional;
 
 @Service
 public class ReviewQueueService {
+    private static final String CLOSE_CONTROL_TASK_ACKNOWLEDGED_EVENT = "CLOSE_CONTROL_TASK_ACKNOWLEDGED";
+    private static final String CLOSE_CONTROL_TASK_RESOLVED_EVENT = "CLOSE_CONTROL_TASK_RESOLVED";
+    private static final String CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT = "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED";
     private final WorkflowTaskRepository taskRepository;
     private final CategorizationDecisionRepository decisionRepository;
     private final OrganizationService organizationService;
@@ -358,32 +362,26 @@ public class ReviewQueueService {
 
         AccountingPeriod period = accountingPeriodRepository.findPeriodContaining(organizationId, month.atDay(1))
                 .orElse(null);
-        UUID assignedUserId = null;
-        String assignedUserName = null;
-        if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(taskType) && period != null && period.getCloseApproverUser() != null) {
-            assignedUserId = period.getCloseApproverUser().getId();
-            assignedUserName = period.getCloseApproverUser().getFullName();
-        } else if (period != null && period.getCloseOwnerUser() != null) {
-            assignedUserId = period.getCloseOwnerUser().getId();
-            assignedUserName = period.getCloseOwnerUser().getFullName();
-        }
-
         LocalDate dueDate = event.createdAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate().plusDays(1);
-        boolean overdue = dueDate.isBefore(today);
         UUID taskId = UUID.nameUUIDFromBytes((taskType + ":" + organizationId + ":" + event.entityId()).getBytes(StandardCharsets.UTF_8));
         Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestAcknowledgement =
-                latestCloseControlAction(organizationId, "CLOSE_CONTROL_TASK_ACKNOWLEDGED", taskId, event.createdAt());
+                latestCloseControlAction(organizationId, CLOSE_CONTROL_TASK_ACKNOWLEDGED_EVENT, taskId, event.createdAt());
         Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestResolution =
-                latestCloseControlAction(organizationId, "CLOSE_CONTROL_TASK_RESOLVED", taskId, event.createdAt());
+                latestCloseControlAction(organizationId, CLOSE_CONTROL_TASK_RESOLVED_EVENT, taskId, event.createdAt());
         if ("FORCE_CLOSE_REVIEW".equals(taskType) && latestResolution.isPresent()) {
             return java.util.Optional.empty();
         }
 
         CloseControlDisposition disposition = latestCloseControlDisposition(organizationId, taskId)
                 .orElse(defaultDisposition(taskType));
-        LocalDate effectiveDueDate = effectiveCloseControlDueDate(disposition, dueDate);
+        Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestEscalationAcknowledgement =
+                latestCloseControlAction(organizationId, CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT, taskId, event.createdAt());
+        LocalDate effectiveDueDate = effectiveCloseControlDueDate(disposition, dueDate, latestEscalationAcknowledgement);
         boolean effectiveOverdue = effectiveDueDate.isBefore(today);
         String effectivePriority = effectiveCloseControlPriority(taskType, disposition);
+        AppUser assignedUser = resolveCloseControlAssignee(period, taskType, disposition);
+        UUID assignedUserId = assignedUser != null ? assignedUser.getId() : null;
+        String assignedUserName = assignedUser != null ? assignedUser.getFullName() : null;
         String effectiveTitle = effectiveCloseControlTitle(title, month, disposition);
         String effectiveDescription = effectiveCloseControlDescription(description, month, disposition, assignedUserName);
 
@@ -430,9 +428,33 @@ public class ReviewQueueService {
         return CloseControlDisposition.WAITING_ON_APPROVER;
     }
 
-    private LocalDate effectiveCloseControlDueDate(CloseControlDisposition disposition, LocalDate baseDueDate) {
-        if (disposition == CloseControlDisposition.REVISIT_TOMORROW) {
-            return LocalDate.now().plusDays(1);
+    private AppUser resolveCloseControlAssignee(AccountingPeriod period,
+                                                String taskType,
+                                                CloseControlDisposition disposition) {
+        if (period == null) {
+            return null;
+        }
+        if (disposition == CloseControlDisposition.WAITING_ON_APPROVER
+                && "CLOSE_ATTESTATION_FOLLOW_UP".equals(taskType)
+                && period.getCloseApproverUser() != null) {
+            return period.getCloseApproverUser();
+        }
+        if (period.getCloseOwnerUser() != null) {
+            return period.getCloseOwnerUser();
+        }
+        return period.getCloseApproverUser();
+    }
+
+    private LocalDate effectiveCloseControlDueDate(
+            CloseControlDisposition disposition,
+            LocalDate baseDueDate,
+            Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestEscalationAcknowledgement) {
+        if (disposition == CloseControlDisposition.REVISIT_TOMORROW && latestEscalationAcknowledgement.isPresent()) {
+            return latestEscalationAcknowledgement.get()
+                    .createdAt()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate()
+                    .plusDays(1);
         }
         return baseDueDate;
     }
