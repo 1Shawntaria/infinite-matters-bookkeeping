@@ -465,7 +465,8 @@ public class DashboardService {
                         + (month != null ? month : "the focus month")
                         + " is intentionally paused until "
                         + scheduledFollowUp.dueDate().format(DASHBOARD_DATE_FORMAT)
-                        + ".";
+                        + ". "
+                        + scheduledCloseControlReason(scheduledFollowUp);
             }
             return "The close-control review is intentionally paused until the next scheduled follow-up window.";
         }
@@ -512,6 +513,17 @@ public class DashboardService {
             return null;
         }
         return actionPath.substring(monthIndex + "month=".length());
+    }
+
+    private String scheduledCloseControlReason(ReviewTaskSummary scheduledFollowUp) {
+        if ("FORCE_CLOSE_REVIEW".equals(scheduledFollowUp.taskType())) {
+            return scheduledFollowUp.overdue()
+                    ? "The system kept the next touch on the nearest review day because the override review is already overdue."
+                    : "The system gave override documentation extra time before pulling the month back into active review.";
+        }
+        return scheduledFollowUp.overdue()
+                ? "The system kept the next touch on the nearest review day because final attestation follow-through is already behind."
+                : "The system aligned the next touch to the attestation due date so the approver handoff stays on track without extra churn.";
     }
 
     private Long periodPrimaryCount(DashboardPeriodSnapshot period) {
