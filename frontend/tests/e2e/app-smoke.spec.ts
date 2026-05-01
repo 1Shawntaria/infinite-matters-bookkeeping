@@ -2118,6 +2118,8 @@ test("login stores organization context and lands on dashboard", async ({ page }
   await expect(page.getByText("$15234.12")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Escalated attestation is queued for tomorrow" })).toBeVisible();
   await expect(page.getByText("Owner/admin review is already on record for 2026-04. The workflow is intentionally parked until Apr 30, 2026: Owner reviewed the escalation and queued the next touch for tomorrow.")).toBeVisible();
+  await expect(page.getByText("Planned next touch: Apr 30, 2026")).toBeVisible();
+  await expect(page.getByText("This suggestion follows the attestation due date so the approver handoff stays on track without creating extra churn.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review the latest override month" })).toBeVisible();
   await page.getByRole("link", { name: "Open follow-up month" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
@@ -2295,6 +2297,8 @@ test("readiness workspace gives an owner-level pre-close summary", async ({ page
   await expect(page.getByText("Month attestation", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Escalation reviewed, revisit tomorrow" })).toBeVisible();
   await expect(page.getByText("Owner/admin review is already on record for 2026-04. The workflow is intentionally parked until Apr 30, 2026: Owner reviewed the escalation and queued the next touch for tomorrow.")).toBeVisible();
+  await expect(page.getByText("Planned next touch: Apr 30, 2026")).toBeVisible();
+  await expect(page.getByText("This suggestion follows the attestation due date so the approver handoff stays on track without creating extra churn.")).toBeVisible();
   await page.getByRole("link", { name: "Open follow-up month" }).click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");

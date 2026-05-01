@@ -12,6 +12,8 @@ export type FollowUpAction = {
     primaryLabel: string;
     secondaryHref: string;
     secondaryLabel: string;
+    nextTouchLabel?: string;
+    nextTouchReason?: string;
 };
 
 export type EscalatedCloseControlAction = {
@@ -88,13 +90,17 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
         const reviewedDisposition = normalizeCloseControlDisposition(
             focusMonthEscalation.closeControlDisposition
         );
+        const reviewedNextTouchDate = getCloseControlNextTouchDate(
+            focusMonthEscalation,
+            workflowAttentionTasks
+        );
         return {
             title: reviewedEscalationTitle(reviewedDisposition, context),
             message: reviewedEscalationMessage(
                 focusMonth,
                 reviewedDisposition,
                 focusMonthEscalation.closeControlAcknowledgementNote,
-                getCloseControlNextTouchDate(focusMonthEscalation, workflowAttentionTasks)
+                reviewedNextTouchDate
             ),
             primaryHref:
                 focusMonthEscalation.referenceId
@@ -103,6 +109,15 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
             primaryLabel: reviewedEscalationPrimaryLabel(reviewedDisposition),
             secondaryHref: "/notifications",
             secondaryLabel: reviewedEscalationSecondaryLabel(reviewedDisposition),
+            nextTouchLabel: reviewedEscalationNextTouchLabel(
+                reviewedDisposition,
+                reviewedNextTouchDate
+            ),
+            nextTouchReason: reviewedEscalationNextTouchReason(
+                reviewedDisposition,
+                focusMonthEscalation,
+                workflowAttentionTasks
+            ),
         };
     }
 
@@ -391,6 +406,41 @@ function reviewedEscalationSecondaryLabel(
         return "Review follow-up timing";
     }
     return "Review escalation note";
+}
+
+function reviewedEscalationNextTouchLabel(
+    disposition: CloseControlDisposition,
+    nextTouchDate?: string | null
+): string | undefined {
+    if (disposition !== "REVISIT_TOMORROW" || !nextTouchDate) {
+        return undefined;
+    }
+    return `Planned next touch: ${formatCalendarDate(nextTouchDate)}`;
+}
+
+function reviewedEscalationNextTouchReason(
+    disposition: CloseControlDisposition,
+    notification: Pick<
+        NotificationSummaryItem,
+        "referenceId" | "message" | "closeControlDisposition"
+    >,
+    workflowAttentionTasks: WorkflowAttentionTask[]
+): string | undefined {
+    if (disposition !== "REVISIT_TOMORROW") {
+        return undefined;
+    }
+    const matchedTask = matchingEscalatedCloseControlTask(notification, workflowAttentionTasks);
+    if (!matchedTask) {
+        return "The system queued the next review window automatically so this escalation stays visible without restarting the work early.";
+    }
+    if (matchedTask.taskType === "FORCE_CLOSE_REVIEW") {
+        return matchedTask.overdue
+            ? "This suggestion stays on the next review day because the override review is already overdue and still needs owner follow-through."
+            : "This suggestion gives override documentation time to finish before the month gets pulled back into active review.";
+    }
+    return matchedTask.overdue
+        ? "This suggestion keeps attestation follow-through on the next review day because the month is already behind on final confirmation."
+        : "This suggestion follows the attestation due date so the approver handoff stays on track without creating extra churn.";
 }
 
 function notificationMonth(

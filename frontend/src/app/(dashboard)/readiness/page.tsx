@@ -490,6 +490,14 @@ export default function CloseReadinessPage() {
                 >
                     <div className="rounded-lg border border-emerald-400/20 bg-emerald-300/10 p-5">
                         <p className="text-sm leading-6 text-zinc-100">{readinessFollowUp.message}</p>
+                        {readinessFollowUp.nextTouchLabel ? (
+                            <div className="mt-3 space-y-1 text-sm">
+                                <p className="text-emerald-100">{readinessFollowUp.nextTouchLabel}</p>
+                                {readinessFollowUp.nextTouchReason ? (
+                                    <p className="text-zinc-300">{readinessFollowUp.nextTouchReason}</p>
+                                ) : null}
+                            </div>
+                        ) : null}
                         <div className="mt-4 flex flex-wrap gap-3">
                             <Link
                                 href={readinessFollowUp.primaryHref}
