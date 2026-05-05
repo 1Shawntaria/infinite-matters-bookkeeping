@@ -393,7 +393,8 @@ export function buildAuditCloseControlFollowUp(
     closeControlEvents: AuditEventSummary[],
     workflowAttentionTasks: WorkflowAttentionTask[] = []
 ): FollowUpAction | null {
-    const latestForceCloseTask = workflowAttentionTasks.find(
+    const sortedCloseControlTasks = sortCloseControlTasks(workflowAttentionTasks);
+    const latestForceCloseTask = sortedCloseControlTasks.find(
         (task) => task.taskType === "FORCE_CLOSE_REVIEW"
     );
     if (latestForceCloseTask) {
@@ -419,7 +420,7 @@ export function buildAuditCloseControlFollowUp(
         };
     }
 
-    const latestUnconfirmedAttestationTask = workflowAttentionTasks.find(
+    const latestUnconfirmedAttestationTask = sortedCloseControlTasks.find(
         (task) => task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP"
     );
     if (latestUnconfirmedAttestationTask) {
@@ -525,6 +526,94 @@ export function closeControlTaskSeverity(
             : task.taskType === "FORCE_CLOSE_REVIEW"
               ? "escalated"
               : "routine");
+}
+
+export function isCloseControlTask(
+    task: Pick<WorkflowAttentionTask, "taskType">
+): boolean {
+    return task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP" || task.taskType === "FORCE_CLOSE_REVIEW";
+}
+
+export function compareFollowUpSeverity(
+    left: FollowUpSeverity,
+    right: FollowUpSeverity
+): number {
+    return followUpSeverityRank(left) - followUpSeverityRank(right);
+}
+
+export function sortCloseControlTasks<T extends WorkflowAttentionTask>(tasks: T[]): T[] {
+    return [...tasks].sort((left, right) => {
+        const leftIsCloseControl = isCloseControlTask(left);
+        const rightIsCloseControl = isCloseControlTask(right);
+        if (leftIsCloseControl && rightIsCloseControl) {
+            const severityComparison = compareFollowUpSeverity(
+                closeControlTaskSeverity(left),
+                closeControlTaskSeverity(right)
+            );
+            if (severityComparison !== 0) {
+                return severityComparison;
+            }
+            const dueDateComparison = compareIsoDates(left.dueDate, right.dueDate);
+            if (dueDateComparison !== 0) {
+                return dueDateComparison;
+            }
+        } else if (leftIsCloseControl !== rightIsCloseControl) {
+            return leftIsCloseControl ? -1 : 1;
+        }
+
+        const overdueComparison = compareBooleans(right.overdue, left.overdue);
+        if (overdueComparison !== 0) {
+            return overdueComparison;
+        }
+
+        return compareStrings(left.title, right.title);
+    });
+}
+
+export function sortEscalatedCloseControlNotifications<T extends NotificationSummaryItem>(
+    notifications: T[],
+    workflowAttentionTasks: WorkflowAttentionTask[] = []
+): T[] {
+    return [...notifications].sort((left, right) => {
+        const severityComparison = compareFollowUpSeverity(
+            closeControlEscalationSeverity(left),
+            closeControlEscalationSeverity(right)
+        );
+        if (severityComparison !== 0) {
+            return severityComparison;
+        }
+
+        const dateComparison = compareIsoDates(
+            closeControlNotificationDate(left, workflowAttentionTasks),
+            closeControlNotificationDate(right, workflowAttentionTasks)
+        );
+        if (dateComparison !== 0) {
+            return dateComparison;
+        }
+
+        return compareDescendingTimestamps(left.createdAt, right.createdAt);
+    });
+}
+
+export function sortNotificationsWithCloseControlPriority<T extends NotificationSummaryItem>(
+    notifications: T[],
+    workflowAttentionTasks: WorkflowAttentionTask[] = []
+): T[] {
+    return [...notifications].sort((left, right) => {
+        const leftIsEscalation = isEscalatedCloseControlNotification(left);
+        const rightIsEscalation = isEscalatedCloseControlNotification(right);
+        if (leftIsEscalation && rightIsEscalation) {
+            const ordered = sortEscalatedCloseControlNotifications(
+                [left, right],
+                workflowAttentionTasks
+            );
+            return ordered[0]?.id === left.id ? -1 : 1;
+        }
+        if (leftIsEscalation !== rightIsEscalation) {
+            return leftIsEscalation ? -1 : 1;
+        }
+        return compareDescendingTimestamps(left.createdAt, right.createdAt);
+    });
 }
 
 function normalizeCloseControlDisposition(
@@ -670,6 +759,18 @@ function matchingEscalatedCloseControlTask(
     return workflowAttentionTasks.find((task) => task.taskId === notification.referenceId) ?? null;
 }
 
+function closeControlNotificationDate(
+    notification: Pick<
+        NotificationSummaryItem,
+        "referenceId" | "message" | "closeControlDisposition" | "closeControlNextTouchOn"
+    >,
+    workflowAttentionTasks: WorkflowAttentionTask[]
+): string | null {
+    return getCloseControlNextTouchDate(notification, workflowAttentionTasks)
+        ?? matchingEscalatedCloseControlTask(notification, workflowAttentionTasks)?.dueDate
+        ?? null;
+}
+
 function formatCalendarDate(value: string): string {
     return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
         month: "short",
@@ -694,4 +795,40 @@ export function workflowTaskMonth(task: WorkflowAttentionTask): string | null {
 
     const titleMatch = task.title.match(/\b(\d{4}-\d{2})\b/);
     return titleMatch ? titleMatch[1] : null;
+}
+
+function compareIsoDates(left: string | null | undefined, right: string | null | undefined): number {
+    if (left && right) {
+        return left.localeCompare(right);
+    }
+    if (left) {
+        return -1;
+    }
+    if (right) {
+        return 1;
+    }
+    return 0;
+}
+
+function compareDescendingTimestamps(left: string, right: string): number {
+    return new Date(right).getTime() - new Date(left).getTime();
+}
+
+function compareStrings(left: string, right: string): number {
+    return left.localeCompare(right);
+}
+
+function compareBooleans(left: boolean, right: boolean): number {
+    return Number(left) - Number(right);
+}
+
+function followUpSeverityRank(severity: FollowUpSeverity): number {
+    switch (severity) {
+        case "escalated":
+            return 0;
+        case "scheduled":
+            return 1;
+        default:
+            return 2;
+    }
 }

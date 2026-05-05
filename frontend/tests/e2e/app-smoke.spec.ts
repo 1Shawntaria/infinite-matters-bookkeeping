@@ -73,6 +73,7 @@ function defaultWorkflowAttentionTasks() {
       snoozedUntil: null,
       resolvedByUserId: null,
       resolvedAt: null,
+      closeControlSeverity: "SCHEDULED",
     },
     {
       taskId: "close-follow-up-2",
@@ -100,6 +101,7 @@ function defaultWorkflowAttentionTasks() {
       snoozedUntil: null,
       resolvedByUserId: null,
       resolvedAt: null,
+      closeControlSeverity: "ESCALATED",
     },
   ];
 }
@@ -258,6 +260,7 @@ function dashboardSnapshot(organizationId: string) {
         closeControlResolutionNote: null,
         closeControlResolvedAt: null,
         closeControlResolvedByUserId: null,
+        closeControlSeverity: "SCHEDULED",
         scheduledFor: "2026-04-29T15:00:00Z",
         lastAttemptedAt: null,
         sentAt: "2026-04-29T15:00:00Z",
@@ -1049,6 +1052,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       closeControlResolutionNote: null,
       closeControlResolvedAt: null,
       closeControlResolvedByUserId: null,
+      closeControlSeverity: "SCHEDULED",
       scheduledFor: "2026-04-29T15:00:00Z",
       lastAttemptedAt: null,
       sentAt: "2026-04-29T15:00:00Z",
@@ -1085,6 +1089,7 @@ async function mockApi(page: Parameters<typeof test>[0]["page"]) {
       closeControlResolutionNote: null,
       closeControlResolvedAt: null,
       closeControlResolvedByUserId: null,
+      closeControlSeverity: "ESCALATED",
       scheduledFor: "2026-04-29T15:20:00Z",
       lastAttemptedAt: null,
       sentAt: "2026-04-29T15:20:00Z",
@@ -2222,6 +2227,16 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.getByText("Mailbox unavailable").first()).toBeVisible();
   await expect(page.locator("span").filter({ hasText: "Attention" }).first()).toBeVisible();
   await expect(page.getByText("Monthly close escalation entered dead-letter handling.").first()).toBeVisible();
+  await expect(
+    page.locator("div.rounded-lg").filter({
+      has: page.getByText("Escalated force-close review"),
+    }).first()
+  ).toContainText("Escalated force-close review");
+  await expect(
+    page.locator("div.rounded-lg").filter({
+      has: page.getByText("Review force-close controls for 2026-02"),
+    }).first()
+  ).toContainText("Review force-close controls for 2026-02");
 
   await page.getByRole("link", { name: "Revisit attestation on Apr 30" }).first().click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);
@@ -2247,9 +2262,9 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   ).toBeVisible();
   await expect(page.getByText(`Next touch ${suggestedDateLabel}`)).toBeVisible();
 
-  await page.getByRole("button", { name: "Resolve escalation" }).last().click();
+  await forceCloseEscalationCard.getByRole("button", { name: "Resolve escalation" }).click();
   await expect(page.getByText("Escalated close-control review resolved.")).toBeVisible();
-  await expect(page.getByText("Escalated force-close review")).toHaveCount(0);
+  await expect(forceCloseEscalationCard).toHaveCount(0);
 
   await page.getByRole("link", { name: "Revisit attestation on Apr 30" }).first().click();
   await expect(page).toHaveURL(/\/close\?month=2026-04/);

@@ -31,6 +31,9 @@ import {
     closeFollowUpSeverityLabel,
     getCloseControlNextTouchDate,
     isEscalatedCloseControlNotification,
+    sortCloseControlTasks,
+    sortEscalatedCloseControlNotifications,
+    sortNotificationsWithCloseControlPriority,
 } from "@/lib/close-follow-up";
 
 type NotificationFilter = "ALL" | "AUTH" | "WORKFLOW" | "ATTENTION";
@@ -243,13 +246,20 @@ export default function NotificationsPage() {
         resolvedDeadLetterNotificationsQuery.error?.message ??
         "";
 
+    const workflowAttentionTasks = useMemo(
+        () => sortCloseControlTasks(workflowInboxQuery.data?.attentionTasks ?? []),
+        [workflowInboxQuery.data?.attentionTasks]
+    );
     const mergedNotifications = useMemo<NotificationEntry[]>(
         () =>
-            [
-                ...(authNotificationsQuery.data ?? []).map((item) => ({ ...item, source: "AUTH" as const })),
-                ...(workflowNotificationsQuery.data ?? []).map((item) => ({ ...item, source: "WORKFLOW" as const })),
-            ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
-        [authNotificationsQuery.data, workflowNotificationsQuery.data]
+            sortNotificationsWithCloseControlPriority(
+                [
+                    ...(authNotificationsQuery.data ?? []).map((item) => ({ ...item, source: "AUTH" as const })),
+                    ...(workflowNotificationsQuery.data ?? []).map((item) => ({ ...item, source: "WORKFLOW" as const })),
+                ],
+                workflowAttentionTasks
+            ),
+        [authNotificationsQuery.data, workflowAttentionTasks, workflowNotificationsQuery.data]
     );
 
     const attentionIds = new Set((attentionNotificationsQuery.data ?? []).map((item) => item.id));
@@ -263,11 +273,15 @@ export default function NotificationsPage() {
     const deliveryIssues = mergedNotifications.filter(
         (item) => item.deliveryState === "FAILED" || item.deliveryState === "DEAD_LETTER"
     );
-    const workflowAttentionTasks = workflowInboxQuery.data?.attentionTasks ?? [];
     const deadLetterNotifications = deadLetterNotificationsQuery.data ?? [];
     const resolvedDeadLetters = resolvedDeadLetterNotificationsQuery.data ?? [];
-    const escalatedCloseControlNotifications = (attentionNotificationsQuery.data ?? []).filter(
-        isEscalatedCloseControlNotification
+    const escalatedCloseControlNotifications = useMemo(
+        () =>
+            sortEscalatedCloseControlNotifications(
+                (attentionNotificationsQuery.data ?? []).filter(isEscalatedCloseControlNotification),
+                workflowAttentionTasks
+            ),
+        [attentionNotificationsQuery.data, workflowAttentionTasks]
     );
 
     async function refreshNotificationData() {

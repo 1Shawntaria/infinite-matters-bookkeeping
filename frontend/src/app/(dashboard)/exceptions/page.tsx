@@ -29,6 +29,8 @@ import {
     closeFollowUpSeverityLabel,
     getCloseControlNextTouchDate,
     isEscalatedCloseControlNotification,
+    sortCloseControlTasks,
+    sortEscalatedCloseControlNotifications,
 } from "@/lib/close-follow-up";
 
 function toneForCount(count: number) {
@@ -105,9 +107,12 @@ export default function ExceptionsPage() {
     const blockingChecklistItems = checklistItems.filter((item) => !item.complete);
     const attentionNotifications = attentionNotificationsQuery.data ?? [];
     const deadLetters = deadLetterNotificationsQuery.data ?? [];
-    const workflowAttentionTasks = dashboardQuery.data?.workflowInbox.attentionTasks ?? [];
-    const escalatedCloseControlNotifications = attentionNotifications.filter(
-        isEscalatedCloseControlNotification
+    const workflowAttentionTasks = sortCloseControlTasks(
+        dashboardQuery.data?.workflowInbox.attentionTasks ?? []
+    );
+    const escalatedCloseControlNotifications = sortEscalatedCloseControlNotifications(
+        attentionNotifications.filter(isEscalatedCloseControlNotification),
+        workflowAttentionTasks
     );
     const deliveryAttentionNotifications = attentionNotifications.filter(
         (item) => !isEscalatedCloseControlNotification(item)
