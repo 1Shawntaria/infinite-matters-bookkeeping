@@ -1,5 +1,7 @@
 package com.infinitematters.bookkeeping.notifications;
 
+import com.infinitematters.bookkeeping.workflows.CloseFollowUpSeverity;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -34,6 +36,7 @@ public record NotificationSummary(
         String closeControlResolutionNote,
         Instant closeControlResolvedAt,
         UUID closeControlResolvedByUserId,
+        CloseFollowUpSeverity closeControlSeverity,
         Instant scheduledFor,
         Instant lastAttemptedAt,
         Instant sentAt,
@@ -69,6 +72,7 @@ public record NotificationSummary(
                 null,
                 null,
                 null,
+                null,
                 notification.getScheduledFor(),
                 notification.getLastAttemptedAt(),
                 notification.getSentAt(),
@@ -83,7 +87,8 @@ public record NotificationSummary(
                                            LocalDate closeControlNextTouchOn,
                                            String closeControlResolutionNote,
                                            Instant closeControlResolvedAt,
-                                           UUID closeControlResolvedByUserId) {
+                                           UUID closeControlResolvedByUserId,
+                                           CloseFollowUpSeverity closeControlSeverity) {
         return new NotificationSummary(
                 notification.getId(),
                 notification.getWorkflowTask() != null ? notification.getWorkflowTask().getId() : null,
@@ -114,6 +119,7 @@ public record NotificationSummary(
                 closeControlResolutionNote,
                 closeControlResolvedAt,
                 closeControlResolvedByUserId,
+                closeControlSeverity,
                 notification.getScheduledFor(),
                 notification.getLastAttemptedAt(),
                 notification.getSentAt(),

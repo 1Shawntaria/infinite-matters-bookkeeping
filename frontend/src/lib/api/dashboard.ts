@@ -94,6 +94,7 @@ export type NotificationSummaryItem = {
     closeControlResolutionNote: string | null;
     closeControlResolvedAt: string | null;
     closeControlResolvedByUserId: string | null;
+    closeControlSeverity?: string | null;
     scheduledFor: string | null;
     lastAttemptedAt: string | null;
     sentAt: string | null;

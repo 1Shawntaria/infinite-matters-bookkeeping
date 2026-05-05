@@ -7,6 +7,7 @@ import com.infinitematters.bookkeeping.users.AppUser;
 import com.infinitematters.bookkeeping.users.UserService;
 import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
 import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
+import com.infinitematters.bookkeeping.workflows.CloseFollowUpSeverity;
 import com.infinitematters.bookkeeping.workflows.WorkflowTask;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskPriority;
 import com.infinitematters.bookkeeping.workflows.WorkflowTaskRepository;
@@ -173,7 +174,8 @@ class NotificationServiceTests {
                         Instant.now().minusSeconds(60),
                         null,
                         null,
-                        null)));
+                        null,
+                        CloseFollowUpSeverity.SCHEDULED)));
         when(notificationRepository.existsByOrganizationIdAndReferenceTypeAndReferenceIdAndStatusAndScheduledForAfter(
                 eq(organizationId),
                 eq("close_control_follow_up"),
@@ -236,7 +238,8 @@ class NotificationServiceTests {
                         Instant.now().minusSeconds(60),
                         null,
                         null,
-                        null)));
+                        null,
+                        CloseFollowUpSeverity.SCHEDULED)));
         Notification escalation = new Notification();
         escalation.setReferenceType("close_control_follow_up_escalation");
         escalation.setReferenceId(taskId.toString());
@@ -304,7 +307,8 @@ class NotificationServiceTests {
                         Instant.now().minusSeconds(60),
                         null,
                         null,
-                        null)));
+                        null,
+                        CloseFollowUpSeverity.SCHEDULED)));
         Notification escalation = new Notification();
         escalation.setReferenceType("close_control_follow_up_escalation");
         escalation.setReferenceId(taskId.toString());
@@ -370,7 +374,8 @@ class NotificationServiceTests {
                         Instant.now().minusSeconds(60),
                         null,
                         null,
-                        null)));
+                        null,
+                        CloseFollowUpSeverity.SCHEDULED)));
         Notification escalation = new Notification();
         escalation.setReferenceType("close_control_follow_up_escalation");
         escalation.setReferenceId(taskId.toString());
@@ -423,7 +428,8 @@ class NotificationServiceTests {
                         Instant.now().minusSeconds(60),
                         null,
                         null,
-                        null)));
+                        null,
+                        CloseFollowUpSeverity.SCHEDULED)));
         Notification escalation = new Notification();
         escalation.setReferenceType("close_control_follow_up_escalation");
         escalation.setReferenceId(taskId.toString());
@@ -488,7 +494,8 @@ class NotificationServiceTests {
                         Instant.now().minusSeconds(60),
                         null,
                         null,
-                        null)));
+                        null,
+                        CloseFollowUpSeverity.SCHEDULED)));
         Notification escalation = new Notification();
         escalation.setReferenceType("close_control_follow_up_escalation");
         escalation.setReferenceId(taskId.toString());

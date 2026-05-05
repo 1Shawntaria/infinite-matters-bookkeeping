@@ -69,6 +69,19 @@ export function closeFollowUpSeverityLabel(severity: FollowUpSeverity): string {
     }
 }
 
+export function normalizeFollowUpSeverity(
+    severity: string | null | undefined
+): FollowUpSeverity | null {
+    if (!severity) {
+        return null;
+    }
+    const normalized = severity.toLowerCase();
+    if (normalized === "routine" || normalized === "scheduled" || normalized === "escalated") {
+        return normalized;
+    }
+    return null;
+}
+
 export function closeFollowUpSeverityTone(
     severity: FollowUpSeverity
 ): "success" | "warning" | "error" {
@@ -116,9 +129,13 @@ export function closeFollowUpSeverityClasses(severity: FollowUpSeverity): {
 export function closeControlEscalationSeverity(
     notification: Pick<
         NotificationSummaryItem,
-        "closeControlAcknowledgedAt" | "closeControlDisposition"
+        "closeControlAcknowledgedAt" | "closeControlDisposition" | "closeControlSeverity"
     >
 ): FollowUpSeverity {
+    const providedSeverity = normalizeFollowUpSeverity(notification.closeControlSeverity);
+    if (providedSeverity) {
+        return providedSeverity;
+    }
     if (!notification.closeControlAcknowledgedAt) {
         return "escalated";
     }
@@ -361,12 +378,13 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
 function resolveRecommendedSeverity(
     fallbackSeverity: FollowUpSeverity,
-    recommendedSeverity: FollowUpSeverity | null,
+    recommendedSeverity: FollowUpSeverity | string | null,
     recommendedActionPath: string | null,
     actionHref: string
 ): FollowUpSeverity {
-    if (recommendedSeverity && recommendedActionPath && recommendedActionPath === actionHref) {
-        return recommendedSeverity;
+    const normalizedSeverity = normalizeFollowUpSeverity(recommendedSeverity);
+    if (normalizedSeverity && recommendedActionPath && recommendedActionPath === actionHref) {
+        return normalizedSeverity;
     }
     return fallbackSeverity;
 }
@@ -381,7 +399,7 @@ export function buildAuditCloseControlFollowUp(
     if (latestForceCloseTask) {
         const nextTouchDate = latestForceCloseTask.dueDate;
         return {
-            severity: latestForceCloseTask.acknowledgedAt ? "scheduled" : "escalated",
+            severity: closeControlTaskSeverity(latestForceCloseTask),
             title: latestForceCloseTask.acknowledgedAt
                 ? "Force-close review is already in motion"
                 : "Review the latest override month",
@@ -407,7 +425,7 @@ export function buildAuditCloseControlFollowUp(
     if (latestUnconfirmedAttestationTask) {
         const nextTouchDate = latestUnconfirmedAttestationTask.dueDate;
         return {
-            severity: latestUnconfirmedAttestationTask.acknowledgedAt ? "scheduled" : "routine",
+            severity: closeControlTaskSeverity(latestUnconfirmedAttestationTask),
             title: latestUnconfirmedAttestationTask.acknowledgedAt
                 ? "Attestation follow-through is being worked"
                 : "Finish attestation follow-through",
@@ -496,6 +514,17 @@ export function buildCloseControlTaskActionLabel(
             : "Revisit attestation";
     }
     return "Open workflow task";
+}
+
+export function closeControlTaskSeverity(
+    task: Pick<WorkflowAttentionTask, "acknowledgedAt" | "closeControlSeverity" | "taskType">
+): FollowUpSeverity {
+    return normalizeFollowUpSeverity(task.closeControlSeverity)
+        ?? (task.acknowledgedAt
+            ? "scheduled"
+            : task.taskType === "FORCE_CLOSE_REVIEW"
+              ? "escalated"
+              : "routine");
 }
 
 function normalizeCloseControlDisposition(

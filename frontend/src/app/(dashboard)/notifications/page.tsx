@@ -25,6 +25,10 @@ import { useOrganizationSession } from "@/lib/auth/session";
 import {
     buildEscalatedCloseControlAction,
     buildCloseControlTaskActionLabel,
+    closeControlEscalationSeverity,
+    closeControlTaskSeverity,
+    closeFollowUpSeverityClasses,
+    closeFollowUpSeverityLabel,
     getCloseControlNextTouchDate,
     isEscalatedCloseControlNotification,
 } from "@/lib/close-follow-up";
@@ -543,6 +547,8 @@ export default function NotificationsPage() {
                                 notification,
                                 workflowAttentionTasks
                             );
+                            const severity = closeControlEscalationSeverity(notification);
+                            const severityStyles = closeFollowUpSeverityClasses(severity);
                             const nextTouchDate = getCloseControlNextTouchDate(
                                 notification,
                                 workflowAttentionTasks
@@ -573,14 +579,14 @@ export default function NotificationsPage() {
                             return (
                                 <div
                                     key={`escalation-${notification.id}`}
-                                    className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-4"
+                                    className={`rounded-lg px-4 py-4 ${severityStyles.card}`}
                                 >
                                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div className="space-y-1">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <p className="text-sm font-semibold text-white">{action.title}</p>
-                                                <span className="rounded-full border border-rose-300/40 bg-rose-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-rose-100">
-                                                    Escalated
+                                                <span className={`rounded-full px-2 py-1 text-[11px] uppercase tracking-[0.14em] ${severityStyles.badge}`}>
+                                                    {closeFollowUpSeverityLabel(severity)}
                                                 </span>
                                                 <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-amber-100">
                                                     Owner/Admin
@@ -610,7 +616,7 @@ export default function NotificationsPage() {
                                                 </p>
                                             ) : null}
                                             {nextTouchDate ? (
-                                                <p className="text-xs text-zinc-400">
+                                                <p className={`text-xs ${severityStyles.nextTouch}`}>
                                                     Next touch {formatCalendarDate(nextTouchDate)}
                                                 </p>
                                             ) : null}
@@ -718,7 +724,7 @@ export default function NotificationsPage() {
                                         <div className="flex shrink-0 flex-wrap gap-2">
                                             <Link
                                                 href={action.primaryHref}
-                                                className="rounded-md bg-rose-200 px-3 py-2 text-sm font-semibold text-black hover:bg-rose-100"
+                                                className={`rounded-md px-3 py-2 text-sm font-semibold ${severityStyles.primaryButton}`}
                                             >
                                                 {action.primaryLabel}
                                             </Link>
@@ -771,6 +777,8 @@ export default function NotificationsPage() {
                                 task.actionPath ??
                                 (task.transactionId ? "/review-queue" : workflowInboxQuery.data?.recommendedActionPath) ??
                                 "/dashboard";
+                            const severity = closeControlTaskSeverity(task);
+                            const severityStyles = closeFollowUpSeverityClasses(severity);
                             const actionLabel = buildCloseControlTaskActionLabel(
                                 task.taskType,
                                 task.dueDate
@@ -781,12 +789,17 @@ export default function NotificationsPage() {
                             return (
                                 <div
                                     key={task.taskId}
-                                    className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4"
+                                    className={`rounded-lg px-4 py-4 ${task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP" || task.taskType === "FORCE_CLOSE_REVIEW" ? severityStyles.card : "border border-white/10 bg-white/[0.03]"}`}
                                 >
                                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div className="space-y-1">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <p className="text-sm font-semibold text-white">{task.title}</p>
+                                                {(task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP" || task.taskType === "FORCE_CLOSE_REVIEW") ? (
+                                                    <span className={`rounded-full px-2 py-1 text-[11px] uppercase tracking-[0.14em] ${severityStyles.badge}`}>
+                                                        {closeFollowUpSeverityLabel(severity)}
+                                                    </span>
+                                                ) : null}
                                                 <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-zinc-300">
                                                     {titleCase(task.priority)}
                                                 </span>
@@ -826,7 +839,7 @@ export default function NotificationsPage() {
                                         <div className="flex shrink-0 flex-wrap gap-2">
                                             <Link
                                                 href={actionPath}
-                                                className="rounded-md bg-emerald-300 px-3 py-2 text-sm font-semibold text-black hover:bg-emerald-200"
+                                                className={`rounded-md px-3 py-2 text-sm font-semibold ${task.taskType === "CLOSE_ATTESTATION_FOLLOW_UP" || task.taskType === "FORCE_CLOSE_REVIEW" ? severityStyles.primaryButton : "bg-emerald-300 text-black hover:bg-emerald-200"}`}
                                             >
                                                 {actionLabel}
                                             </Link>

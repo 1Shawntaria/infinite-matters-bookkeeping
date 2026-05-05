@@ -31,6 +31,7 @@ export type WorkflowAttentionTask = {
     snoozedUntil: string | null;
     resolvedByUserId: string | null;
     resolvedAt: string | null;
+    closeControlSeverity?: string | null;
 };
 
 export type WorkflowInboxSummary = {

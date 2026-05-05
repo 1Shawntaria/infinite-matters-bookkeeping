@@ -128,7 +128,8 @@ public class ReviewQueueService {
                                 task.getAcknowledgedAt(),
                                 task.getSnoozedUntil(),
                                 task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
-                                task.getResolvedAt());
+                                task.getResolvedAt(),
+                                null);
                     }
                     CategorizationDecision decision = latestDecision(task.getTransaction().getId());
                     BookkeepingTransaction transaction = task.getTransaction();
@@ -156,7 +157,8 @@ public class ReviewQueueService {
                             task.getAcknowledgedAt(),
                             task.getSnoozedUntil(),
                             task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
-                            task.getResolvedAt());
+                            task.getResolvedAt(),
+                            null);
                 })
                 .toList();
     }
@@ -377,6 +379,7 @@ public class ReviewQueueService {
 
         CloseControlDisposition disposition = latestCloseControlDisposition(organizationId, taskId)
                 .orElse(defaultDisposition(taskType));
+        CloseFollowUpSeverity closeControlSeverity = closeControlSeverity(organizationId, taskId, disposition, latestAcknowledgement);
         Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestEscalationAcknowledgement =
                 latestCloseControlAction(organizationId, CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT, taskId, event.createdAt());
         Optional<LocalDate> latestNextTouchOn = latestCloseControlNextTouchOn(organizationId, taskId);
@@ -422,7 +425,8 @@ public class ReviewQueueService {
                 latestAcknowledgement.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
                 null,
                 latestResolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
-                latestResolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null)));
+                latestResolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
+                closeControlSeverity));
     }
 
     private Optional<CloseControlDisposition> latestCloseControlDisposition(UUID organizationId, UUID taskId) {
@@ -611,7 +615,8 @@ public class ReviewQueueService {
                     task.getAcknowledgedAt(),
                     task.getSnoozedUntil(),
                     task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
-                    task.getResolvedAt());
+                    task.getResolvedAt(),
+                    null);
         }
         CategorizationDecision decision = latestDecision(task.getTransaction().getId());
         BookkeepingTransaction transaction = task.getTransaction();
@@ -639,7 +644,8 @@ public class ReviewQueueService {
                 task.getAcknowledgedAt(),
                 task.getSnoozedUntil(),
                 task.getResolvedByUser() != null ? task.getResolvedByUser().getId() : null,
-                task.getResolvedAt());
+                task.getResolvedAt(),
+                null);
     }
 
     private WorkflowTask getOpenTask(UUID organizationId, UUID taskId) {
@@ -732,7 +738,11 @@ public class ReviewQueueService {
                 .map(task -> {
                     CloseControlDisposition disposition = latestCloseControlDisposition(organizationId, task.taskId())
                             .orElse(defaultDisposition(task.taskType()));
-                    CloseFollowUpSeverity severity = closeControlSeverity(organizationId, task, disposition);
+                    CloseFollowUpSeverity severity = closeControlSeverity(
+                            organizationId,
+                            task.taskId(),
+                            disposition,
+                            Optional.empty());
                     return switch (disposition) {
                         case WAITING_ON_APPROVER -> new InboxRecommendation(
                                 "Push approver follow-through",
@@ -757,16 +767,17 @@ public class ReviewQueueService {
     }
 
     private CloseFollowUpSeverity closeControlSeverity(UUID organizationId,
-                                                       ReviewTaskSummary task,
-                                                       CloseControlDisposition disposition) {
-        if (task.acknowledgedAt() != null) {
+                                                       UUID taskId,
+                                                       CloseControlDisposition disposition,
+                                                       Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestAcknowledgement) {
+        if (latestAcknowledgement.isPresent()) {
             return CloseFollowUpSeverity.SCHEDULED;
         }
-        Optional<Notification> latestEscalation = latestCloseControlNotification(organizationId, task.taskId());
+        Optional<Notification> latestEscalation = latestCloseControlNotification(organizationId, taskId);
         if (latestEscalation.isEmpty()) {
             return CloseFollowUpSeverity.ROUTINE;
         }
-        if (latestCloseControlEscalationAcknowledgement(organizationId, task.taskId()).isPresent()
+        if (latestCloseControlEscalationAcknowledgement(organizationId, taskId).isPresent()
                 && disposition == CloseControlDisposition.REVISIT_TOMORROW) {
             return CloseFollowUpSeverity.SCHEDULED;
         }

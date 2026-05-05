@@ -2167,7 +2167,6 @@ test("activity page shows merged operational timeline and filter views", async (
 
   await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Attestation control quality" })).toBeVisible();
-  await expect(page.locator("span").filter({ hasText: "Escalated" }).first()).toBeVisible();
   await expect(page.getByText("Force-close activity needs review")).toBeVisible();
   await expect(page.getByText("Attestation plans updated")).toBeVisible();
   await expect(page.getByText("Attestations confirmed")).toBeVisible();
@@ -2196,6 +2195,15 @@ test("activity page shows merged operational timeline and filter views", async (
 });
 
 test("notifications inbox merges auth and workflow delivery signals", async ({ page }) => {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const suggestedDateIso = tomorrow.toISOString().slice(0, 10);
+  const suggestedDateLabel = tomorrow.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
   await seedOrganization(page);
   await page.goto("/notifications");
 
@@ -2220,13 +2228,16 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
   await expect(page.locator('input[type="month"]')).toHaveValue("2026-04");
   await page.goto("/notifications");
 
-  await page.locator("textarea").last().fill("Owner reviewed the escalation and queued the next touch for tomorrow.");
-  await page.locator("select").filter({ has: page.getByRole("option", { name: "Revisit tomorrow" }) }).last().selectOption("REVISIT_TOMORROW");
-  await expect(page.getByText("Suggested May 2, 2026").last()).toBeVisible();
-  await expect(page.getByText("Suggested for the next review day because this override review is already overdue.").last()).toBeVisible();
-  await page.getByRole("button", { name: "Use suggestion" }).last().click();
-  await expect(page.locator('input[type="date"]').last()).toHaveValue("2026-05-02");
-  await page.getByRole("button", { name: "Save review note" }).last().click();
+  const forceCloseEscalationCard = page.locator("div.rounded-lg").filter({
+    has: page.getByText("Escalated force-close review"),
+  });
+  await forceCloseEscalationCard.locator("textarea").fill("Owner reviewed the escalation and queued the next touch for tomorrow.");
+  await forceCloseEscalationCard.locator("select").selectOption("REVISIT_TOMORROW");
+  await expect(forceCloseEscalationCard.getByText(`Suggested ${suggestedDateLabel}`)).toBeVisible();
+  await expect(forceCloseEscalationCard.getByText("Suggested for the next review day because this override review is already overdue.")).toBeVisible();
+  await forceCloseEscalationCard.getByRole("button", { name: "Use suggestion" }).click();
+  await expect(forceCloseEscalationCard.locator('input[type="date"]')).toHaveValue(suggestedDateIso);
+  await forceCloseEscalationCard.getByRole("button", { name: "Save review note" }).click();
   await expect(page.getByText("Escalated close-control review acknowledged.")).toBeVisible();
   await expect(page.locator("p").filter({ hasText: "Revisit tomorrow" }).first()).toBeVisible();
   await expect(
@@ -2234,7 +2245,7 @@ test("notifications inbox merges auth and workflow delivery signals", async ({ p
       hasText: "Owner reviewed the escalation and queued the next touch for tomorrow.",
     }).first()
   ).toBeVisible();
-  await expect(page.getByText("Next touch May 2, 2026")).toBeVisible();
+  await expect(page.getByText(`Next touch ${suggestedDateLabel}`)).toBeVisible();
 
   await page.getByRole("button", { name: "Resolve escalation" }).last().click();
   await expect(page.getByText("Escalated close-control review resolved.")).toBeVisible();

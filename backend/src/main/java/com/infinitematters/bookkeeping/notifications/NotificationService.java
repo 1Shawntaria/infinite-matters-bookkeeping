@@ -3,6 +3,7 @@ package com.infinitematters.bookkeeping.notifications;
 import com.infinitematters.bookkeeping.audit.AuditService;
 import com.infinitematters.bookkeeping.organization.OrganizationService;
 import com.infinitematters.bookkeeping.users.AppUser;
+import com.infinitematters.bookkeeping.workflows.CloseFollowUpSeverity;
 import com.infinitematters.bookkeeping.users.UserService;
 import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
 import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
@@ -739,7 +740,23 @@ public class NotificationService {
                 notification.getCloseControlNextTouchOn(),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::details).orElse(null),
                 resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt).orElse(null),
-                resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null));
+                resolution.map(com.infinitematters.bookkeeping.audit.AuditEventSummary::actorUserId).orElse(null),
+                closeControlNotificationSeverity(
+                        notification.getCloseControlDisposition(),
+                        acknowledgement.isPresent(),
+                        resolution.isPresent()));
+    }
+
+    private CloseFollowUpSeverity closeControlNotificationSeverity(CloseControlDisposition disposition,
+                                                                   boolean acknowledged,
+                                                                   boolean resolved) {
+        if (resolved) {
+            return null;
+        }
+        if (acknowledged && disposition == CloseControlDisposition.REVISIT_TOMORROW) {
+            return CloseFollowUpSeverity.SCHEDULED;
+        }
+        return CloseFollowUpSeverity.ESCALATED;
     }
 
     private CloseControlDisposition normalizeCloseControlDisposition(CloseControlDisposition disposition) {

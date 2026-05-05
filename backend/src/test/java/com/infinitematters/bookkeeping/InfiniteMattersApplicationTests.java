@@ -745,6 +745,13 @@ class InfiniteMattersApplicationTests {
                 .path("id")
                 .asText();
 
+        LocalDate nextTouchOn = LocalDate.now().plusDays(1);
+        String nextTouchOnIso = nextTouchOn.toString();
+        String nextTouchOnLabel = nextTouchOn.getMonth().name().substring(0, 1)
+                + nextTouchOn.getMonth().name().substring(1, 3).toLowerCase()
+                + " "
+                + nextTouchOn.getDayOfMonth();
+
         mockMvc.perform(post("/api/workflows/notifications/" + escalationNotificationId + "/close-control-escalation/acknowledge")
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))
@@ -754,21 +761,21 @@ class InfiniteMattersApplicationTests {
                                 {
                                   "note":"Owner reviewed the escalation and scheduled the next touch.",
                                   "disposition":"REVISIT_TOMORROW",
-                                  "nextTouchOn":"2026-05-02"
+                                  "nextTouchOn":"%s"
                                 }
-                                """))
+                                """.formatted(nextTouchOnIso)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.closeControlAcknowledgedAt").isNotEmpty())
                 .andExpect(jsonPath("$.closeControlAcknowledgementNote").value("Owner reviewed the escalation and scheduled the next touch."))
                 .andExpect(jsonPath("$.closeControlDisposition").value("REVISIT_TOMORROW"))
-                .andExpect(jsonPath("$.closeControlNextTouchOn").value("2026-05-02"));
+                .andExpect(jsonPath("$.closeControlNextTouchOn").value(nextTouchOnIso));
 
         mockMvc.perform(get("/api/workflows/inbox")
                         .header(ORG_HEADER, organizationId)
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recommendedActionLabel").value("Revisit attestation on May 2"))
+                .andExpect(jsonPath("$.recommendedActionLabel").value("Revisit attestation on " + nextTouchOnLabel))
                 .andExpect(jsonPath("$.recommendedActionKey").value("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP"))
                 .andExpect(jsonPath("$.recommendedActionPath").value("/close?month=2026-04"))
                 .andExpect(jsonPath("$.recommendedActionUrgency").value("NORMAL"))
@@ -779,8 +786,14 @@ class InfiniteMattersApplicationTests {
                         .header("Authorization", bearerToken(ownerTokens.accessToken()))
                         .param("organizationId", organizationId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.primaryAction.label").value("Revisit attestation on May 2"))
-                .andExpect(jsonPath("$.primaryAction.reason").value("The close-control review for 2026-04 is intentionally paused until May 2, 2026. The system aligned the next touch to the attestation due date so the approver handoff stays on track without extra churn."))
+                .andExpect(jsonPath("$.primaryAction.label").value("Revisit attestation on " + nextTouchOnLabel))
+                .andExpect(jsonPath("$.primaryAction.reason").value("The close-control review for 2026-04 is intentionally paused until " + nextTouchOn.getMonth().name().substring(0, 1)
+                        + nextTouchOn.getMonth().name().substring(1, 3).toLowerCase()
+                        + " "
+                        + nextTouchOn.getDayOfMonth()
+                        + ", "
+                        + nextTouchOn.getYear()
+                        + ". The system aligned the next touch to the attestation due date so the approver handoff stays on track without extra churn."))
                 .andExpect(jsonPath("$.primaryAction.urgency").value("NORMAL"))
                 .andExpect(jsonPath("$.primaryAction.severity").value("SCHEDULED"));
 

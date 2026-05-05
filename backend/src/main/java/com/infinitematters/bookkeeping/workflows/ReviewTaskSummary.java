@@ -31,5 +31,6 @@ public record ReviewTaskSummary(
         Instant acknowledgedAt,
         LocalDate snoozedUntil,
         UUID resolvedByUserId,
-        Instant resolvedAt) {
+        Instant resolvedAt,
+        CloseFollowUpSeverity closeControlSeverity) {
 }

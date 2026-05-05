@@ -197,7 +197,7 @@ class DashboardServiceTests {
                         UUID.randomUUID(), UUID.randomUUID(), userId, NotificationCategory.WORKFLOW, NotificationChannel.IN_APP,
                         NotificationStatus.SENT, NotificationDeliveryState.DELIVERED, "msg", "workflow_task", UUID.randomUUID().toString(),
                         "member@acme.test", null, null, 0, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), Instant.now(), Instant.now())));
+                        null, null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), Instant.now(), Instant.now())));
         when(notificationService.operationsSummary(organizationId))
                 .thenReturn(new com.infinitematters.bookkeeping.notifications.NotificationOperationsSummary(
                         1,
@@ -211,7 +211,7 @@ class DashboardServiceTests {
                                 NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "failed", "workflow_task", UUID.randomUUID().toString(),
                                 "member@acme.test", "test-provider", "provider-message-1", 3, "provider unavailable", "PROVIDER_REJECTED",
                                 DeadLetterResolutionStatus.OPEN, null, "Investigating", Instant.now(), userId,
-                                null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())),
+                                null, null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())),
                         new com.infinitematters.bookkeeping.notifications.DeadLetterOperationsSummary(
                                 1,
                                 1,
@@ -221,7 +221,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "failed", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "test-provider", "provider-message-2", 3, "resolved", "PROVIDER_REJECTED",
                                         DeadLetterResolutionStatus.RESOLVED, com.infinitematters.bookkeeping.notifications.DeadLetterResolutionReasonCode.DELIVERY_NO_LONGER_REQUIRED, "Handled", Instant.now(), userId,
-                                        null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())))));
+                                        null, null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now())))));
         when(notificationService.deadLetterQueue(organizationId))
                 .thenReturn(new DeadLetterQueueSummary(
                         List.of(new DeadLetterQueueItem(
@@ -230,7 +230,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "retry", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "test-provider", "provider-message-3", 1, "provider unavailable", "PROVIDER_REJECTED",
                                         DeadLetterResolutionStatus.OPEN, null, "Retry recommended", Instant.now(), userId,
-                                        null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
+                                        null, null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
                                 DeadLetterRecommendedAction.RETRY_DELIVERY,
                                 false,
                                 null,
@@ -241,7 +241,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "suppressed", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "sendgrid", "provider-message-4", 2, "recipient suppressed", "RECIPIENT_SUPPRESSED",
                                         DeadLetterResolutionStatus.OPEN, null, "Unsuppress first", Instant.now(), userId,
-                                        null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
+                                        null, null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
                                 DeadLetterRecommendedAction.UNSUPPRESS_AND_RETRY,
                                 true,
                                 null,
@@ -252,7 +252,7 @@ class DashboardServiceTests {
                                         NotificationStatus.FAILED, NotificationDeliveryState.FAILED, "ack", "workflow_task", UUID.randomUUID().toString(),
                                         "member@acme.test", "test-provider", "provider-message-5", 1, "acknowledged", "PROVIDER_REJECTED",
                                         DeadLetterResolutionStatus.ACKNOWLEDGED, null, "Waiting", Instant.now(), userId,
-                                        null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
+                                        null, null, null, null, null, null, null, null, null, Instant.now(), Instant.now(), null, Instant.now()),
                                 DeadLetterRecommendedAction.REVIEW_ACKNOWLEDGED,
                                 false,
                                 null,
@@ -385,6 +385,7 @@ class DashboardServiceTests {
                         null,
                         null,
                         null,
+                        null,
                         null));
         when(reviewQueueService.toSummary(urgentIgnoredTask))
                 .thenReturn(new com.infinitematters.bookkeeping.workflows.ReviewTaskSummary(
@@ -404,6 +405,7 @@ class DashboardServiceTests {
                         null,
                         null,
                         0.0,
+                        null,
                         null,
                         null,
                         null,

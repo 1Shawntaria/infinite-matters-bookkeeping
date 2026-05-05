@@ -6,6 +6,7 @@ import com.infinitematters.bookkeeping.organization.OrganizationService;
 import com.infinitematters.bookkeeping.users.AppUser;
 import com.infinitematters.bookkeeping.users.UserRole;
 import com.infinitematters.bookkeeping.users.UserService;
+import com.infinitematters.bookkeeping.workflows.CloseFollowUpSeverity;
 import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
 import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,7 +89,8 @@ class CloseControlEscalationServiceTests {
                 Instant.now().minusSeconds(60),
                 null,
                 null,
-                null);
+                null,
+                CloseFollowUpSeverity.SCHEDULED);
 
         when(organizationService.get(organizationId)).thenReturn(organization);
         when(reviewQueueService.listCloseControlAttentionTasks(organizationId)).thenReturn(List.of(task));
