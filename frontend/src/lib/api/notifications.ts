@@ -45,6 +45,7 @@ export type WorkflowInboxSummary = {
     recommendedActionKey: string | null;
     recommendedActionPath: string | null;
     recommendedActionUrgency: string | null;
+    recommendedActionSeverity: "routine" | "scheduled" | "escalated" | null;
     attentionTasks: WorkflowAttentionTask[];
 };
 

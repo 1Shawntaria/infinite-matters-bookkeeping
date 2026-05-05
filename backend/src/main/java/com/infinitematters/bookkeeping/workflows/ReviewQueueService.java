@@ -272,6 +272,7 @@ public class ReviewQueueService {
                 recommendation != null ? recommendation.key() : null,
                 recommendation != null ? recommendation.path() : null,
                 recommendation != null ? recommendation.urgency() : null,
+                recommendation != null ? recommendation.severity() : null,
                 attention);
     }
 
@@ -700,21 +701,24 @@ public class ReviewQueueService {
                     "Resolve overdue bookkeeping tasks",
                     "RESOLVE_OVERDUE_TASKS",
                     "/workflows/inbox",
-                    DashboardActionUrgency.HIGH);
+                    DashboardActionUrgency.HIGH,
+                    null);
         }
         if (highPriorityCount > 0) {
             return new InboxRecommendation(
                     "Review high-priority bookkeeping tasks",
                     "REVIEW_HIGH_PRIORITY_TASKS",
                     "/workflows/inbox",
-                    DashboardActionUrgency.HIGH);
+                    DashboardActionUrgency.HIGH,
+                    null);
         }
         if (openCount > 0) {
             return new InboxRecommendation(
                     "Review pending bookkeeping tasks",
                     "REVIEW_PENDING_TASKS",
                     "/workflows/inbox",
-                    DashboardActionUrgency.NORMAL);
+                    DashboardActionUrgency.NORMAL,
+                    null);
         }
         return null;
     }
@@ -728,24 +732,62 @@ public class ReviewQueueService {
                 .map(task -> {
                     CloseControlDisposition disposition = latestCloseControlDisposition(organizationId, task.taskId())
                             .orElse(defaultDisposition(task.taskType()));
+                    CloseFollowUpSeverity severity = closeControlSeverity(organizationId, task, disposition);
                     return switch (disposition) {
                         case WAITING_ON_APPROVER -> new InboxRecommendation(
                                 "Push approver follow-through",
                                 "PUSH_APPROVER_FOLLOW_THROUGH",
                                 task.actionPath() != null ? task.actionPath() : "/close",
-                                DashboardActionUrgency.HIGH);
+                                DashboardActionUrgency.HIGH,
+                                severity);
                         case OVERRIDE_DOCS_IN_PROGRESS -> new InboxRecommendation(
                                 "Finish override documentation",
                                 "FINISH_OVERRIDE_DOCUMENTATION",
                                 task.actionPath() != null ? task.actionPath() : "/close",
-                                DashboardActionUrgency.NORMAL);
+                                DashboardActionUrgency.NORMAL,
+                                severity);
                         case REVISIT_TOMORROW -> new InboxRecommendation(
                                 scheduledCloseControlLabel(task),
                                 "QUEUE_TOMORROWS_CLOSE_FOLLOW_UP",
                                 task.actionPath() != null ? task.actionPath() : "/close",
-                                DashboardActionUrgency.NORMAL);
+                                DashboardActionUrgency.NORMAL,
+                                severity);
                     };
                 });
+    }
+
+    private CloseFollowUpSeverity closeControlSeverity(UUID organizationId,
+                                                       ReviewTaskSummary task,
+                                                       CloseControlDisposition disposition) {
+        if (task.acknowledgedAt() != null) {
+            return CloseFollowUpSeverity.SCHEDULED;
+        }
+        Optional<Notification> latestEscalation = latestCloseControlNotification(organizationId, task.taskId());
+        if (latestEscalation.isEmpty()) {
+            return CloseFollowUpSeverity.ROUTINE;
+        }
+        if (latestCloseControlEscalationAcknowledgement(organizationId, task.taskId()).isPresent()
+                && disposition == CloseControlDisposition.REVISIT_TOMORROW) {
+            return CloseFollowUpSeverity.SCHEDULED;
+        }
+        return CloseFollowUpSeverity.ESCALATED;
+    }
+
+    private Optional<Notification> latestCloseControlNotification(UUID organizationId, UUID taskId) {
+        return notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString());
+    }
+
+    private Optional<com.infinitematters.bookkeeping.audit.AuditEventSummary> latestCloseControlEscalationAcknowledgement(UUID organizationId,
+                                                                                                                           UUID taskId) {
+        return auditService.listForOrganizationByEventTypeAndEntity(
+                        organizationId,
+                        CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED_EVENT,
+                        taskId.toString())
+                .stream()
+                .max(Comparator.comparing(com.infinitematters.bookkeeping.audit.AuditEventSummary::createdAt));
     }
 
     private String scheduledCloseControlLabel(ReviewTaskSummary task) {

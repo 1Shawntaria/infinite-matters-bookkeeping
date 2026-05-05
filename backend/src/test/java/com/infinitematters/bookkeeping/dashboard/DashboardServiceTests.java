@@ -175,6 +175,7 @@ class DashboardServiceTests {
                         "REVIEW_HIGH_PRIORITY_TASKS",
                         "/workflows/inbox",
                         DashboardActionUrgency.HIGH,
+                        null,
                         List.of()));
         when(closeChecklistService.checklist(organizationId, YearMonth.of(2026, 4)))
                 .thenReturn(new CloseChecklistSummary(
@@ -584,6 +585,7 @@ class DashboardServiceTests {
                         null,
                         null,
                         null,
+                        null,
                         List.of()));
         when(closeChecklistService.checklist(organizationId, YearMonth.now()))
                 .thenReturn(new CloseChecklistSummary(
@@ -684,6 +686,7 @@ class DashboardServiceTests {
                         0,
                         0,
                         0,
+                        null,
                         null,
                         null,
                         null,
@@ -792,6 +795,7 @@ class DashboardServiceTests {
                         0,
                         0,
                         0,
+                        null,
                         null,
                         null,
                         null,

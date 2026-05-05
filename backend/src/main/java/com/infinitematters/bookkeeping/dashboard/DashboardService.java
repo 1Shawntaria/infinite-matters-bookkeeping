@@ -404,6 +404,7 @@ public class DashboardService {
                             ? "1 urgent support risk requires owner attention."
                             : urgentRiskTaskCount + " urgent support risks require owner attention.",
                     DashboardActionUrgency.CRITICAL,
+                    null,
                     "SUPPORT_PERFORMANCE");
         }
         if (period.recommendedActionLabel() != null
@@ -417,6 +418,7 @@ public class DashboardService {
                     periodPrimaryCount(period),
                     periodPrimaryReason(period),
                     DashboardActionUrgency.HIGH,
+                    null,
                     "PERIOD_CLOSE");
         }
         if (inbox.recommendedActionLabel() != null
@@ -430,6 +432,7 @@ public class DashboardService {
                     inboxPrimaryCount(inbox),
                     inboxPrimaryReason(inbox),
                     inboxPrimaryUrgency(inbox),
+                    inbox.recommendedActionSeverity(),
                     "WORKFLOW_INBOX");
         }
         return null;

@@ -771,7 +771,8 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.recommendedActionLabel").value("Revisit attestation on May 2"))
                 .andExpect(jsonPath("$.recommendedActionKey").value("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP"))
                 .andExpect(jsonPath("$.recommendedActionPath").value("/close?month=2026-04"))
-                .andExpect(jsonPath("$.recommendedActionUrgency").value("NORMAL"));
+                .andExpect(jsonPath("$.recommendedActionUrgency").value("NORMAL"))
+                .andExpect(jsonPath("$.recommendedActionSeverity").value("SCHEDULED"));
 
         mockMvc.perform(get("/api/dashboard/snapshot")
                         .header(ORG_HEADER, organizationId)
@@ -780,7 +781,8 @@ class InfiniteMattersApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.primaryAction.label").value("Revisit attestation on May 2"))
                 .andExpect(jsonPath("$.primaryAction.reason").value("The close-control review for 2026-04 is intentionally paused until May 2, 2026. The system aligned the next touch to the attestation due date so the approver handoff stays on track without extra churn."))
-                .andExpect(jsonPath("$.primaryAction.urgency").value("NORMAL"));
+                .andExpect(jsonPath("$.primaryAction.urgency").value("NORMAL"))
+                .andExpect(jsonPath("$.primaryAction.severity").value("SCHEDULED"));
 
         mockMvc.perform(post("/api/workflows/reminders/run")
                         .header(ORG_HEADER, organizationId)

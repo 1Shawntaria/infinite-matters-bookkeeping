@@ -1,6 +1,8 @@
 import { apiFetch } from "./client";
 import type { WorkflowAttentionTask } from "./notifications";
 
+export type FollowUpSeverity = "routine" | "scheduled" | "escalated";
+
 export type PrimaryAction = {
     cardId: string;
     label: string;
@@ -9,6 +11,7 @@ export type PrimaryAction = {
     itemCount: number;
     reason: string;
     urgency: string;
+    severity: FollowUpSeverity | null;
     source: string;
 };
 
@@ -23,6 +26,7 @@ export type WorkflowInbox = {
     recommendedActionKey: string | null;
     recommendedActionPath: string | null;
     recommendedActionUrgency: string | null;
+    recommendedActionSeverity: FollowUpSeverity | null;
     attentionTasks: WorkflowAttentionTask[];
 };
 

@@ -6,5 +6,6 @@ public record InboxRecommendation(
         String label,
         String key,
         String path,
-        DashboardActionUrgency urgency) {
+        DashboardActionUrgency urgency,
+        CloseFollowUpSeverity severity) {
 }

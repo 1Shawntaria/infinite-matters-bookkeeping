@@ -16,5 +16,6 @@ public record WorkflowInboxSummary(
         String recommendedActionKey,
         String recommendedActionPath,
         DashboardActionUrgency recommendedActionUrgency,
+        CloseFollowUpSeverity recommendedActionSeverity,
         List<ReviewTaskSummary> attentionTasks) {
 }

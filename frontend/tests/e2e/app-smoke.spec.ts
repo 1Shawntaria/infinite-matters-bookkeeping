@@ -122,6 +122,7 @@ function dashboardSnapshot(organizationId: string) {
         recommendedActionKey: null,
         recommendedActionPath: null,
         recommendedActionUrgency: null,
+        recommendedActionSeverity: null,
         attentionTasks: [],
       },
       period: {
@@ -131,6 +132,7 @@ function dashboardSnapshot(organizationId: string) {
         recommendedActionKey: null,
         recommendedActionPath: null,
         recommendedActionUrgency: null,
+        recommendedActionSeverity: null,
       },
       expenseCategories: [],
       staleAccounts: [],
@@ -155,6 +157,7 @@ function dashboardSnapshot(organizationId: string) {
         recommendedActionKey: null,
         recommendedActionPath: null,
         recommendedActionUrgency: null,
+        recommendedActionSeverity: null,
         attentionTasks: [],
       },
       period: {
@@ -164,6 +167,7 @@ function dashboardSnapshot(organizationId: string) {
         recommendedActionKey: null,
         recommendedActionPath: null,
         recommendedActionUrgency: null,
+        recommendedActionSeverity: null,
       },
       expenseCategories: [],
       staleAccounts: [],
@@ -183,6 +187,7 @@ function dashboardSnapshot(organizationId: string) {
       itemCount: 1,
       reason: "1 account still needs reconciliation before close.",
       urgency: "HIGH",
+      severity: null,
       source: "PERIOD_CLOSE",
     },
     workflowInbox: {
@@ -196,6 +201,7 @@ function dashboardSnapshot(organizationId: string) {
       recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
       recommendedActionPath: "/workflows/inbox",
       recommendedActionUrgency: "HIGH",
+      recommendedActionSeverity: null,
       attentionTasks: defaultWorkflowAttentionTasks(),
     },
     period: {
@@ -205,6 +211,7 @@ function dashboardSnapshot(organizationId: string) {
       recommendedActionKey: "FINISH_RECONCILIATIONS",
       recommendedActionPath: "/reconciliation",
       recommendedActionUrgency: "HIGH",
+      recommendedActionSeverity: null,
     },
     expenseCategories: [
       {
@@ -279,6 +286,7 @@ function workflowInboxSummary(
       recommendedActionKey: null,
       recommendedActionPath: null,
       recommendedActionUrgency: null,
+      recommendedActionSeverity: null,
       attentionTasks,
     };
   }
@@ -296,6 +304,7 @@ function workflowInboxSummary(
       recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
       recommendedActionPath: "/review-queue",
       recommendedActionUrgency: "NORMAL",
+      recommendedActionSeverity: null,
       attentionTasks,
     };
   }
@@ -312,6 +321,7 @@ function workflowInboxSummary(
     recommendedActionKey: "REVIEW_HIGH_PRIORITY_TASKS",
     recommendedActionPath: "/review-queue",
     recommendedActionUrgency: "HIGH",
+    recommendedActionSeverity: null,
     attentionTasks,
   };
 }

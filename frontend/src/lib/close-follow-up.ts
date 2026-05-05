@@ -43,6 +43,8 @@ type FocusMonthFollowUpInput = {
     closeReady?: boolean;
     unreconciledAccountCount?: number;
     attentionNotifications?: NotificationSummaryItem[];
+    recommendedActionSeverity?: FollowUpSeverity | null;
+    recommendedActionPath?: string | null;
 };
 
 const CLOSE_CONTROL_EVENT_TYPES = new Set([
@@ -140,6 +142,8 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
         closeReady = false,
         unreconciledAccountCount = 0,
         attentionNotifications = [],
+        recommendedActionSeverity = null,
+        recommendedActionPath = null,
     } = input;
 
     if (!focusMonth) {
@@ -167,7 +171,14 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
             workflowAttentionTasks
         );
         return {
-            severity: reviewedDisposition === "REVISIT_TOMORROW" ? "scheduled" : "escalated",
+            severity: resolveRecommendedSeverity(
+                reviewedDisposition === "REVISIT_TOMORROW" ? "scheduled" : "escalated",
+                recommendedActionSeverity,
+                recommendedActionPath,
+                focusMonthEscalation.referenceId
+                    ? buildEscalatedCloseControlAction(focusMonthEscalation, workflowAttentionTasks).primaryHref
+                    : `/close?month=${encodeURIComponent(focusMonth)}`
+            ),
             title: reviewedEscalationTitle(reviewedDisposition, context),
             message: reviewedEscalationMessage(
                 focusMonth,
@@ -196,7 +207,14 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
 
     if (focusMonthEscalation) {
         return {
-            severity: "escalated",
+            severity: resolveRecommendedSeverity(
+                "escalated",
+                recommendedActionSeverity,
+                recommendedActionPath,
+                focusMonthEscalation.referenceId
+                    ? buildEscalatedCloseControlAction(focusMonthEscalation, workflowAttentionTasks).primaryHref
+                    : `/close?month=${encodeURIComponent(focusMonth)}`
+            ),
             title:
                 context === "dashboard"
                     ? "Escalated attestation needs owner follow-through"
@@ -215,7 +233,12 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
     if (focusMonthAttestationTask) {
         if (focusMonthAttestationTask.acknowledgedAt) {
             return {
-                severity: "scheduled",
+                severity: resolveRecommendedSeverity(
+                    "scheduled",
+                    recommendedActionSeverity,
+                    recommendedActionPath,
+                    focusMonthAttestationTask.actionPath ?? `/close?month=${encodeURIComponent(focusMonth)}`
+                ),
                 title:
                     context === "dashboard"
                         ? "Final attestation is waiting on approval"
@@ -231,7 +254,12 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
         }
 
         return {
-            severity: "routine",
+            severity: resolveRecommendedSeverity(
+                "routine",
+                recommendedActionSeverity,
+                recommendedActionPath,
+                focusMonthAttestationTask.actionPath ?? `/close?month=${encodeURIComponent(focusMonth)}`
+            ),
             title:
                 context === "dashboard"
                     ? "Push attestation through final approval"
@@ -329,6 +357,18 @@ export function buildFocusMonthFollowUp(input: FocusMonthFollowUpInput): FollowU
         secondaryHref: "/activity",
         secondaryLabel: "Review control history",
     };
+}
+
+function resolveRecommendedSeverity(
+    fallbackSeverity: FollowUpSeverity,
+    recommendedSeverity: FollowUpSeverity | null,
+    recommendedActionPath: string | null,
+    actionHref: string
+): FollowUpSeverity {
+    if (recommendedSeverity && recommendedActionPath && recommendedActionPath === actionHref) {
+        return recommendedSeverity;
+    }
+    return fallbackSeverity;
 }
 
 export function buildAuditCloseControlFollowUp(

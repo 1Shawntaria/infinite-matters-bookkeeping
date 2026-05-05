@@ -199,6 +199,8 @@ export default function DashboardPage() {
         requireOwnerSignoffBeforeClose: false,
         workflowAttentionTasks: data?.workflowInbox?.attentionTasks ?? [],
         attentionNotifications: recentNotifications,
+        recommendedActionSeverity: data?.workflowInbox?.recommendedActionSeverity ?? data?.primaryAction?.severity ?? null,
+        recommendedActionPath: data?.workflowInbox?.recommendedActionPath ?? data?.primaryAction?.actionPath ?? null,
         context: "dashboard",
         closeReady: data?.period?.closeReady ?? false,
         unreconciledAccountCount: data?.period?.unreconciledAccountCount ?? 0,
