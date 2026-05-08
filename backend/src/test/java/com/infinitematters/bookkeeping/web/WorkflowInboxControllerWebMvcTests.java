@@ -180,6 +180,94 @@ class WorkflowInboxControllerWebMvcTests {
     }
 
     @Test
+    void acknowledgeInboxAttentionTaskForwardsNoteAndMapsSummary() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        ReviewTaskSummary summary = new ReviewTaskSummary(
+                taskId,
+                null,
+                null,
+                "CLOSE_CONTROL_FOLLOW_UP",
+                "HIGH",
+                false,
+                "Resume override review",
+                "Owner asked to revisit tomorrow.",
+                LocalDate.of(2026, 4, 23),
+                actorUserId,
+                "Owner Example",
+                "Acme Software",
+                BigDecimal.valueOf(131.56),
+                LocalDate.of(2026, 4, 20),
+                Category.SOFTWARE,
+                0.99,
+                "exceptions",
+                "/exceptions?filter=requires_override_follow_up",
+                "Revisit tomorrow after owner acknowledgement.",
+                actorUserId,
+                Instant.parse("2026-04-22T16:00:00Z"),
+                LocalDate.of(2026, 4, 23),
+                null,
+                null,
+                CloseFollowUpSeverity.SCHEDULED);
+
+        when(tenantAccessService.requireAccess(organizationId)).thenReturn(actorUserId);
+        when(reviewQueueService.acknowledgeCloseControlTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                "Revisit tomorrow after owner acknowledgement.")).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/inbox/attention-tasks/" + taskId + "/acknowledge")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Revisit tomorrow after owner acknowledgement."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(taskId.toString()))
+                .andExpect(jsonPath("$.resolutionComment").value("Revisit tomorrow after owner acknowledgement."))
+                .andExpect(jsonPath("$.acknowledgedByUserId").value(actorUserId.toString()))
+                .andExpect(jsonPath("$.closeControlSeverity").value("SCHEDULED"));
+
+        verify(tenantAccessService).requireAccess(organizationId);
+        verify(reviewQueueService).acknowledgeCloseControlTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                "Revisit tomorrow after owner acknowledgement.");
+    }
+
+    @Test
+    void resolveInboxAttentionTaskForwardsNoteToRoleProtectedAction() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+
+        mockMvc.perform(post("/api/workflows/inbox/attention-tasks/" + taskId + "/resolve")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Resolved after documenting the override disposition."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").doesNotExist());
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(reviewQueueService).resolveCloseControlTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                "Resolved after documenting the override disposition.");
+    }
+
+    @Test
     void acknowledgeCloseControlEscalationForwardsDispositionAndNextTouchOn() throws Exception {
         UUID organizationId = UUID.randomUUID();
         UUID actorUserId = UUID.randomUUID();
