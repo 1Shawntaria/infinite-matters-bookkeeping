@@ -6,8 +6,11 @@ import com.infinitematters.bookkeeping.notifications.CloseControlDisposition;
 import com.infinitematters.bookkeeping.notifications.CloseControlEscalationService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionReasonCode;
 import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionStatus;
+import com.infinitematters.bookkeeping.notifications.DeadLetterEscalationRunResult;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorRunResult;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskFilter;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskQueueSummary;
+import com.infinitematters.bookkeeping.notifications.DeadLetterTaskRunResult;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEscalationService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterWorkflowTaskService;
@@ -15,11 +18,13 @@ import com.infinitematters.bookkeeping.notifications.NotificationCategory;
 import com.infinitematters.bookkeeping.notifications.NotificationChannel;
 import com.infinitematters.bookkeeping.notifications.NotificationDeliveryState;
 import com.infinitematters.bookkeeping.notifications.NotificationService;
+import com.infinitematters.bookkeeping.notifications.CloseControlEscalationRunResult;
 import com.infinitematters.bookkeeping.notifications.NotificationRequeueResult;
 import com.infinitematters.bookkeeping.notifications.NotificationStatus;
 import com.infinitematters.bookkeeping.notifications.NotificationSummary;
 import com.infinitematters.bookkeeping.notifications.NotificationSuppressionSummary;
 import com.infinitematters.bookkeeping.notifications.NotificationSuppressionService;
+import com.infinitematters.bookkeeping.notifications.ReminderRunResult;
 import com.infinitematters.bookkeeping.security.BearerTokenAuthenticationFilter;
 import com.infinitematters.bookkeeping.security.CsrfProtectionFilter;
 import com.infinitematters.bookkeeping.security.RequestIdentityFilter;
@@ -53,6 +58,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -644,5 +650,144 @@ class WorkflowInboxControllerWebMvcTests {
 
         verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
         verify(deadLetterSupportPerformanceMonitorService).queueSummary(organizationId);
+    }
+
+    @Test
+    void runRemindersMapsCreatedCountAndNotificationsIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary notification = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.PENDING,
+                NotificationDeliveryState.PENDING,
+                "Reminder queued for outstanding workflow task.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "owner@acme.test",
+                "sendgrid",
+                null,
+                0,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T09:00:00Z"),
+                null,
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+        ReminderRunResult result = new ReminderRunResult(1, List.of(notification));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.generateTaskReminders(organizationId)).thenReturn(result);
+
+        mockMvc.perform(post("/api/workflows/reminders/run")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.notifications[0].id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.notifications[0].scheduledFor").value("2026-04-23T09:00:00Z"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).generateTaskReminders(organizationId);
+    }
+
+    @Test
+    void runDeadLetterOperationalEndpointsMapResultCountsIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary notification = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.PENDING,
+                NotificationDeliveryState.PENDING,
+                "Escalation queued for unresolved dead-letter issue.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                null,
+                0,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                null,
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.syncOrganization(organizationId))
+                .thenReturn(new DeadLetterSupportPerformanceMonitorRunResult(2, 1, 1));
+        when(deadLetterWorkflowTaskService.syncOrganization(organizationId))
+                .thenReturn(new DeadLetterTaskRunResult(3, 1));
+        when(deadLetterSupportEscalationService.run(organizationId))
+                .thenReturn(new DeadLetterEscalationRunResult(1, List.of(notification)));
+        when(closeControlEscalationService.run(organizationId))
+                .thenReturn(new CloseControlEscalationRunResult(1, List.of(notification)));
+
+        mockMvc.perform(post("/api/workflows/notifications/dead-letter/performance/run")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(2))
+                .andExpect(jsonPath("$.closedCount").value(1))
+                .andExpect(jsonPath("$.escalatedCount").value(1));
+
+        mockMvc.perform(post("/api/workflows/notifications/dead-letter/tasks/run")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(3))
+                .andExpect(jsonPath("$.closedCount").value(1));
+
+        mockMvc.perform(post("/api/workflows/notifications/dead-letter/escalations/run")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.notifications[0].id").value(notificationId.toString()));
+
+        mockMvc.perform(post("/api/workflows/close-control/escalations/run")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.notifications[0].id").value(notificationId.toString()));
+
+        verify(tenantAccessService, times(4)).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).syncOrganization(organizationId);
+        verify(deadLetterWorkflowTaskService).syncOrganization(organizationId);
+        verify(deadLetterSupportEscalationService).run(organizationId);
+        verify(closeControlEscalationService).run(organizationId);
     }
 }
