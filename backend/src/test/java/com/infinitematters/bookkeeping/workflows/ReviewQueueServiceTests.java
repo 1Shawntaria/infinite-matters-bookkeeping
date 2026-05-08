@@ -83,7 +83,12 @@ class ReviewQueueServiceTests {
         Instant attestationUpdatedAt = Instant.parse("2026-04-21T12:00:00Z");
         UUID taskId = closeControlTaskId("CLOSE_ATTESTATION_FOLLOW_UP", organizationId, month);
 
-        stubBaseInboxDependencies(organizationId, month, attestationUpdatedAt);
+        stubBaseInboxDependencies(
+                organizationId,
+                month,
+                "PERIOD_CLOSE_ATTESTATION_UPDATED",
+                attestationUpdatedAt,
+                "CLOSE_ATTESTATION_FOLLOW_UP");
         when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
                 organizationId,
                 "close_control_follow_up_escalation",
@@ -111,7 +116,12 @@ class ReviewQueueServiceTests {
         Instant attestationUpdatedAt = Instant.parse("2026-04-21T12:00:00Z");
         UUID taskId = closeControlTaskId("CLOSE_ATTESTATION_FOLLOW_UP", organizationId, month);
 
-        stubBaseInboxDependencies(organizationId, month, attestationUpdatedAt);
+        stubBaseInboxDependencies(
+                organizationId,
+                month,
+                "PERIOD_CLOSE_ATTESTATION_UPDATED",
+                attestationUpdatedAt,
+                "CLOSE_ATTESTATION_FOLLOW_UP");
         when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
                 organizationId,
                 "close_control_follow_up_escalation",
@@ -142,7 +152,12 @@ class ReviewQueueServiceTests {
         UUID taskId = closeControlTaskId("CLOSE_ATTESTATION_FOLLOW_UP", organizationId, month);
         LocalDate nextTouchOn = LocalDate.of(2026, 4, 30);
 
-        stubBaseInboxDependencies(organizationId, month, attestationUpdatedAt);
+        stubBaseInboxDependencies(
+                organizationId,
+                month,
+                "PERIOD_CLOSE_ATTESTATION_UPDATED",
+                attestationUpdatedAt,
+                "CLOSE_ATTESTATION_FOLLOW_UP");
         when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
                 organizationId,
                 "close_control_follow_up_escalation",
@@ -180,40 +195,142 @@ class ReviewQueueServiceTests {
         });
     }
 
-    private void stubBaseInboxDependencies(UUID organizationId, String month, Instant attestationUpdatedAt) {
+    @Test
+    void inboxRecommendsOverrideDocumentationWhenForceCloseNeedsNormalFollowUp() {
+        UUID organizationId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        String month = "2026-02";
+        Instant forceClosedAt = Instant.parse("2026-02-22T12:00:00Z");
+        UUID taskId = closeControlTaskId("FORCE_CLOSE_REVIEW", organizationId, month);
+
+        stubBaseInboxDependencies(
+                organizationId,
+                month,
+                "PERIOD_FORCE_CLOSED",
+                forceClosedAt,
+                "FORCE_CLOSE_REVIEW");
+        when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString()))
+                .thenReturn(Optional.empty());
+
+        WorkflowInboxSummary inbox = reviewQueueService.inbox(organizationId, currentUserId);
+
+        assertThat(inbox.recommendedActionLabel()).isEqualTo("Finish override documentation");
+        assertThat(inbox.recommendedActionKey()).isEqualTo("FINISH_OVERRIDE_DOCUMENTATION");
+        assertThat(inbox.recommendedActionPath()).isEqualTo("/close?month=2026-02");
+        assertThat(inbox.recommendedActionUrgency()).isEqualTo(DashboardActionUrgency.NORMAL);
+        assertThat(inbox.recommendedActionSeverity()).isEqualTo(CloseFollowUpSeverity.ROUTINE);
+        assertThat(inbox.attentionTasks()).singleElement().satisfies(task -> {
+            assertThat(task.taskId()).isEqualTo(taskId);
+            assertThat(task.priority()).isEqualTo("MEDIUM");
+            assertThat(task.closeControlSeverity()).isEqualTo(CloseFollowUpSeverity.ROUTINE);
+            assertThat(task.title()).isEqualTo("Finish override documentation for 2026-02");
+        });
+    }
+
+    @Test
+    void inboxRecommendsScheduledOverrideReviewWhenForceCloseEscalationWasAcknowledged() {
+        UUID organizationId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        String month = "2026-02";
+        Instant forceClosedAt = Instant.parse("2026-02-22T12:00:00Z");
+        UUID taskId = closeControlTaskId("FORCE_CLOSE_REVIEW", organizationId, month);
+        LocalDate nextTouchOn = LocalDate.of(2026, 4, 23);
+
+        stubBaseInboxDependencies(
+                organizationId,
+                month,
+                "PERIOD_FORCE_CLOSED",
+                forceClosedAt,
+                "FORCE_CLOSE_REVIEW");
+        when(notificationRepository.findTopByOrganizationIdAndReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                organizationId,
+                "close_control_follow_up_escalation",
+                taskId.toString()))
+                .thenReturn(Optional.of(closeControlEscalation(
+                        organizationId,
+                        taskId,
+                        CloseControlDisposition.REVISIT_TOMORROW,
+                        nextTouchOn)));
+        when(auditService.listForOrganizationByEventTypeAndEntity(
+                organizationId,
+                "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
+                taskId.toString()))
+                .thenReturn(List.of(new AuditEventSummary(
+                        UUID.randomUUID(),
+                        organizationId,
+                        currentUserId,
+                        "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
+                        "workflow_task",
+                        taskId.toString(),
+                        "Owner reviewed the escalation and queued the next touch for tomorrow.",
+                        forceClosedAt.plusSeconds(3600))));
+
+        WorkflowInboxSummary inbox = reviewQueueService.inbox(organizationId, currentUserId);
+
+        assertThat(inbox.recommendedActionLabel()).isEqualTo("Resume override review on Apr 23");
+        assertThat(inbox.recommendedActionKey()).isEqualTo("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP");
+        assertThat(inbox.recommendedActionPath()).isEqualTo("/close?month=2026-02");
+        assertThat(inbox.recommendedActionUrgency()).isEqualTo(DashboardActionUrgency.NORMAL);
+        assertThat(inbox.recommendedActionSeverity()).isEqualTo(CloseFollowUpSeverity.SCHEDULED);
+        assertThat(inbox.attentionTasks()).singleElement().satisfies(task -> {
+            assertThat(task.closeControlSeverity()).isEqualTo(CloseFollowUpSeverity.SCHEDULED);
+            assertThat(task.priority()).isEqualTo("MEDIUM");
+            assertThat(task.dueDate()).isEqualTo(nextTouchOn);
+            assertThat(task.title()).isEqualTo("Revisit close follow-up on 2026-04-23 for 2026-02");
+        });
+    }
+
+    private void stubBaseInboxDependencies(UUID organizationId,
+                                           String month,
+                                           String triggeringEventType,
+                                           Instant triggeringEventAt,
+                                           String closeControlTaskType) {
         when(organizationService.get(organizationId)).thenReturn(null);
         when(taskRepository.findByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, WorkflowTaskStatus.OPEN))
                 .thenReturn(List.of());
         when(accountingPeriodRepository.findPeriodContaining(organizationId, LocalDate.parse(month + "-01")))
                 .thenReturn(Optional.empty());
-        when(auditService.listRecentForOrganizationByEventType(organizationId, "PERIOD_CLOSE_ATTESTATION_UPDATED", 5))
+        when(auditService.listRecentForOrganizationByEventType(organizationId, triggeringEventType, 5))
                 .thenReturn(List.of(new AuditEventSummary(
                         UUID.randomUUID(),
                         organizationId,
                         UUID.randomUUID(),
-                        "PERIOD_CLOSE_ATTESTATION_UPDATED",
+                        triggeringEventType,
                         "accounting_period",
                         month,
-                        "Attestation routing updated",
-                        attestationUpdatedAt)));
-        when(auditService.listRecentForOrganizationByEventType(organizationId, "PERIOD_FORCE_CLOSED", 5))
+                        "Trigger close-control follow-up",
+                        triggeringEventAt)));
+        when(auditService.listRecentForOrganizationByEventType(
+                organizationId,
+                "PERIOD_CLOSE_ATTESTATION_UPDATED".equals(triggeringEventType)
+                        ? "PERIOD_FORCE_CLOSED"
+                        : "PERIOD_CLOSE_ATTESTATION_UPDATED",
+                5))
                 .thenReturn(List.of());
-        when(auditService.listForOrganizationByEventTypeAndEntity(eq(organizationId), anyString(), eq(month)))
-                .thenReturn(List.of());
+        if ("CLOSE_ATTESTATION_FOLLOW_UP".equals(closeControlTaskType)) {
+            when(auditService.listForOrganizationByEventTypeAndEntity(
+                    eq(organizationId),
+                    anyString(),
+                    eq(month)))
+                    .thenReturn(List.of());
+        }
         when(auditService.listForOrganizationByEventTypeAndEntity(
                 organizationId,
                 "CLOSE_CONTROL_TASK_ACKNOWLEDGED",
-                closeControlTaskId("CLOSE_ATTESTATION_FOLLOW_UP", organizationId, month).toString()))
+                closeControlTaskId(closeControlTaskType, organizationId, month).toString()))
                 .thenReturn(List.of());
         when(auditService.listForOrganizationByEventTypeAndEntity(
                 organizationId,
                 "CLOSE_CONTROL_TASK_RESOLVED",
-                closeControlTaskId("CLOSE_ATTESTATION_FOLLOW_UP", organizationId, month).toString()))
+                closeControlTaskId(closeControlTaskType, organizationId, month).toString()))
                 .thenReturn(List.of());
         when(auditService.listForOrganizationByEventTypeAndEntity(
                 organizationId,
                 "CLOSE_CONTROL_ESCALATION_ACKNOWLEDGED",
-                closeControlTaskId("CLOSE_ATTESTATION_FOLLOW_UP", organizationId, month).toString()))
+                closeControlTaskId(closeControlTaskType, organizationId, month).toString()))
                 .thenReturn(List.of());
     }
 
