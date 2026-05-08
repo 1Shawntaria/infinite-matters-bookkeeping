@@ -13,8 +13,10 @@ import com.infinitematters.bookkeeping.notifications.NotificationCategory;
 import com.infinitematters.bookkeeping.notifications.NotificationChannel;
 import com.infinitematters.bookkeeping.notifications.NotificationDeliveryState;
 import com.infinitematters.bookkeeping.notifications.NotificationService;
+import com.infinitematters.bookkeeping.notifications.NotificationRequeueResult;
 import com.infinitematters.bookkeeping.notifications.NotificationStatus;
 import com.infinitematters.bookkeeping.notifications.NotificationSummary;
+import com.infinitematters.bookkeeping.notifications.NotificationSuppressionSummary;
 import com.infinitematters.bookkeeping.notifications.NotificationSuppressionService;
 import com.infinitematters.bookkeeping.security.BearerTokenAuthenticationFilter;
 import com.infinitematters.bookkeeping.security.CsrfProtectionFilter;
@@ -463,5 +465,92 @@ class WorkflowInboxControllerWebMvcTests {
                 actorUserId,
                 DeadLetterResolutionReasonCode.DELIVERY_NO_LONGER_REQUIRED,
                 "Handled externally; no resend needed.");
+    }
+
+    @Test
+    void suppressionsMapsActiveSuppressionResponseIntoBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID suppressionId = UUID.randomUUID();
+        UUID sourceNotificationId = UUID.randomUUID();
+        NotificationSuppressionSummary summary = new NotificationSuppressionSummary(
+                suppressionId,
+                "suppressed@example.test",
+                "sendgrid",
+                "BOUNCED",
+                sourceNotificationId,
+                Instant.parse("2026-04-22T17:00:00Z"),
+                Instant.parse("2026-04-22T16:30:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(UUID.randomUUID());
+        when(suppressionService.listActiveSuppressions(organizationId)).thenReturn(List.of(summary));
+
+        mockMvc.perform(get("/api/workflows/notifications/suppressions")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].suppressionId").value(suppressionId.toString()))
+                .andExpect(jsonPath("$[0].email").value("suppressed@example.test"))
+                .andExpect(jsonPath("$[0].providerName").value("sendgrid"))
+                .andExpect(jsonPath("$[0].reason").value("BOUNCED"))
+                .andExpect(jsonPath("$[0].sourceNotificationId").value(sourceNotificationId.toString()));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(suppressionService).listActiveSuppressions(organizationId);
+    }
+
+    @Test
+    void requeueFailedNotificationsMapsRecoverySummaryIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary notification = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.PENDING,
+                NotificationDeliveryState.PENDING,
+                "Queued again after dead-letter review.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "owner@acme.test",
+                "sendgrid",
+                "provider-123",
+                3,
+                null,
+                null,
+                DeadLetterResolutionStatus.OPEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-22T18:00:00Z"),
+                null,
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+        NotificationRequeueResult result = new NotificationRequeueResult(1, List.of(notification));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.requeueFailedNotifications(organizationId)).thenReturn(result);
+
+        mockMvc.perform(post("/api/workflows/notifications/requeue-failed")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requeuedCount").value(1))
+                .andExpect(jsonPath("$.notifications[0].id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.notifications[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.notifications[0].deliveryState").value("PENDING"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).requeueFailedNotifications(organizationId);
     }
 }
