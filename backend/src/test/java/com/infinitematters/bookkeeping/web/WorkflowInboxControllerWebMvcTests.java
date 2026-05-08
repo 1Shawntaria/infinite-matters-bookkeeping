@@ -7,6 +7,7 @@ import com.infinitematters.bookkeeping.notifications.CloseControlEscalationServi
 import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionReasonCode;
 import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionStatus;
 import com.infinitematters.bookkeeping.notifications.DeadLetterEscalationRunResult;
+import com.infinitematters.bookkeeping.notifications.DeadLetterQueueItem;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorRunResult;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskFilter;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskQueueSummary;
@@ -17,6 +18,8 @@ import com.infinitematters.bookkeeping.notifications.DeadLetterWorkflowTaskServi
 import com.infinitematters.bookkeeping.notifications.NotificationCategory;
 import com.infinitematters.bookkeeping.notifications.NotificationChannel;
 import com.infinitematters.bookkeeping.notifications.NotificationDeliveryState;
+import com.infinitematters.bookkeeping.notifications.DeadLetterQueueSummary;
+import com.infinitematters.bookkeeping.notifications.DeadLetterRecommendedAction;
 import com.infinitematters.bookkeeping.notifications.NotificationService;
 import com.infinitematters.bookkeeping.notifications.CloseControlEscalationRunResult;
 import com.infinitematters.bookkeeping.notifications.NotificationRequeueResult;
@@ -789,5 +792,143 @@ class WorkflowInboxControllerWebMvcTests {
         verify(deadLetterWorkflowTaskService).syncOrganization(organizationId);
         verify(deadLetterSupportEscalationService).run(organizationId);
         verify(closeControlEscalationService).run(organizationId);
+    }
+
+    @Test
+    void deadLetterQueueMapsNestedRecommendationShapeIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        UUID suppressionId = UUID.randomUUID();
+        NotificationSummary notification = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.FAILED,
+                NotificationDeliveryState.FAILED,
+                "Delivery failed for workflow task reminder.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                null,
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.OPEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+        NotificationSuppressionSummary suppression = new NotificationSuppressionSummary(
+                suppressionId,
+                "ops@acme.test",
+                "sendgrid",
+                "BOUNCED",
+                notificationId,
+                Instant.parse("2026-04-22T16:00:00Z"),
+                Instant.parse("2026-04-22T15:30:00Z"));
+        DeadLetterQueueSummary queue = new DeadLetterQueueSummary(
+                List.of(new DeadLetterQueueItem(
+                        notification,
+                        DeadLetterRecommendedAction.RETRY_DELIVERY,
+                        false,
+                        null,
+                        "Retry is safe because the recipient is not suppressed.")),
+                List.of(new DeadLetterQueueItem(
+                        notification,
+                        DeadLetterRecommendedAction.UNSUPPRESS_AND_RETRY,
+                        true,
+                        suppression,
+                        "Unsuppress before retrying delivery.")),
+                List.of(),
+                List.of());
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.deadLetterQueue(organizationId)).thenReturn(queue);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/queue")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.needsRetry[0].recommendedAction").value("RETRY_DELIVERY"))
+                .andExpect(jsonPath("$.needsRetry[0].recipientSuppressed").value(false))
+                .andExpect(jsonPath("$.needsRetry[0].notification.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.needsUnsuppress[0].recommendedAction").value("UNSUPPRESS_AND_RETRY"))
+                .andExpect(jsonPath("$.needsUnsuppress[0].suppression.suppressionId").value(suppressionId.toString()))
+                .andExpect(jsonPath("$.needsUnsuppress[0].recommendationReason").value("Unsuppress before retrying delivery."));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).deadLetterQueue(organizationId);
+    }
+
+    @Test
+    void resolvedDeadLetterHistoryMapsNotificationListIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary notification = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.FAILED,
+                NotificationDeliveryState.FAILED,
+                "Dead-letter resolved without resend.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                null,
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.RESOLVED,
+                DeadLetterResolutionReasonCode.DELIVERY_NO_LONGER_REQUIRED,
+                "Handled externally; no resend needed.",
+                Instant.parse("2026-04-22T17:00:00Z"),
+                actorUserId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.resolvedDeadLetters(organizationId)).thenReturn(List.of(notification));
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/history")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(notificationId.toString()))
+                .andExpect(jsonPath("$[0].deadLetterResolutionStatus").value("RESOLVED"))
+                .andExpect(jsonPath("$[0].deadLetterResolutionReasonCode").value("DELIVERY_NO_LONGER_REQUIRED"))
+                .andExpect(jsonPath("$[0].deadLetterResolutionNote").value("Handled externally; no resend needed."));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).resolvedDeadLetters(organizationId);
     }
 }
