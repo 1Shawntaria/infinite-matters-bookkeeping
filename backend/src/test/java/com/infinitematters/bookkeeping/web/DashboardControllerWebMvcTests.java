@@ -6,12 +6,21 @@ import com.infinitematters.bookkeeping.dashboard.DashboardHomeResponse;
 import com.infinitematters.bookkeeping.dashboard.DashboardHomeSnapshot;
 import com.infinitematters.bookkeeping.dashboard.DashboardHomeContractTestFixtures;
 import com.infinitematters.bookkeeping.dashboard.DashboardHomeVersionsResponse;
+import com.infinitematters.bookkeeping.dashboard.DashboardActionUrgency;
+import com.infinitematters.bookkeeping.dashboard.DashboardNotificationHealthSnapshot;
+import com.infinitematters.bookkeeping.dashboard.DashboardPeriodSnapshot;
+import com.infinitematters.bookkeeping.dashboard.DashboardPrimaryAction;
 import com.infinitematters.bookkeeping.dashboard.DashboardService;
+import com.infinitematters.bookkeeping.dashboard.DashboardSnapshot;
+import com.infinitematters.bookkeeping.periods.AccountingPeriodStatus;
+import com.infinitematters.bookkeeping.periods.PeriodCloseMethod;
 import com.infinitematters.bookkeeping.security.BearerTokenAuthenticationFilter;
 import com.infinitematters.bookkeeping.security.CsrfProtectionFilter;
 import com.infinitematters.bookkeeping.security.RequestIdentityFilter;
 import com.infinitematters.bookkeeping.security.RequestLoggingFilter;
 import com.infinitematters.bookkeeping.security.TenantAccessService;
+import com.infinitematters.bookkeeping.workflows.CloseFollowUpSeverity;
+import com.infinitematters.bookkeeping.workflows.WorkflowInboxSummary;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
@@ -178,6 +187,89 @@ class DashboardControllerWebMvcTests {
                 .andExpect(jsonPath("$.path").value("/api/dashboard/home"));
 
         assertNoNegotiatedHomeHeaders(result);
+    }
+
+    @Test
+    void snapshotMapsRecommendationSeverityFieldsIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        DashboardSnapshot snapshot = new DashboardSnapshot(
+                YearMonth.of(2026, 4),
+                BigDecimal.ZERO,
+                0,
+                new DashboardPrimaryAction(
+                        "workflow-inbox",
+                        "Resume override review on Apr 23",
+                        "review_override_follow_up",
+                        "/exceptions?filter=requires_override_follow_up",
+                        1L,
+                        "A force-close reminder is scheduled for tomorrow.",
+                        DashboardActionUrgency.HIGH,
+                        CloseFollowUpSeverity.SCHEDULED,
+                        "workflowInbox"),
+                new WorkflowInboxSummary(
+                        "workflow-inbox",
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                        1,
+                        "Resume override review on Apr 23",
+                        "review_override_follow_up",
+                        "/exceptions?filter=requires_override_follow_up",
+                        DashboardActionUrgency.HIGH,
+                        CloseFollowUpSeverity.SCHEDULED,
+                        List.of()),
+                new DashboardPeriodSnapshot(
+                        "close-readiness",
+                        true,
+                        0,
+                        "Review close readiness",
+                        "review_close_readiness",
+                        "/readiness",
+                        DashboardActionUrgency.NORMAL,
+                        AccountingPeriodStatus.CLOSED,
+                        PeriodCloseMethod.CHECKLIST,
+                        null),
+                new DashboardNotificationHealthSnapshot(
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of()),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of());
+
+        when(tenantAccessService.requireAccess(organizationId)).thenReturn(userId);
+        when(dashboardService.snapshot(organizationId, userId)).thenReturn(snapshot);
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.focusMonth").value("2026-04"))
+                .andExpect(jsonPath("$.primaryAction.label").value("Resume override review on Apr 23"))
+                .andExpect(jsonPath("$.primaryAction.severity").value("SCHEDULED"))
+                .andExpect(jsonPath("$.workflowInbox.recommendedActionLabel").value("Resume override review on Apr 23"))
+                .andExpect(jsonPath("$.workflowInbox.recommendedActionKey").value("review_override_follow_up"))
+                .andExpect(jsonPath("$.workflowInbox.recommendedActionPath").value("/exceptions?filter=requires_override_follow_up"))
+                .andExpect(jsonPath("$.workflowInbox.recommendedActionSeverity").value("SCHEDULED"));
+
+        verify(tenantAccessService).requireAccess(organizationId);
+        verify(dashboardService).snapshot(organizationId, userId);
     }
 
     private DashboardHomeContractMetadata metadata() {
