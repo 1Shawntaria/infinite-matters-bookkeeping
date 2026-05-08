@@ -6,6 +6,8 @@ import com.infinitematters.bookkeeping.notifications.CloseControlDisposition;
 import com.infinitematters.bookkeeping.notifications.CloseControlEscalationService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionReasonCode;
 import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionStatus;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskFilter;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskQueueSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEscalationService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterWorkflowTaskService;
@@ -27,6 +29,7 @@ import com.infinitematters.bookkeeping.users.UserRole;
 import com.infinitematters.bookkeeping.workflows.CloseFollowUpSeverity;
 import com.infinitematters.bookkeeping.workflows.ReviewQueueService;
 import com.infinitematters.bookkeeping.workflows.ReviewTaskSummary;
+import com.infinitematters.bookkeeping.workflows.WorkflowTask;
 import com.infinitematters.bookkeeping.workflows.WorkflowInboxSummary;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -552,5 +555,94 @@ class WorkflowInboxControllerWebMvcTests {
 
         verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
         verify(notificationService).requeueFailedNotifications(organizationId);
+    }
+
+    @Test
+    void deadLetterSupportPerformanceTasksForwardsFilterAndMapsTaskSummary() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        WorkflowTask task = new WorkflowTask();
+        ReviewTaskSummary summary = new ReviewTaskSummary(
+                taskId,
+                null,
+                null,
+                "DEAD_LETTER_SUPPORT_PERFORMANCE",
+                "CRITICAL",
+                true,
+                "Acknowledged performance risk",
+                "Owner is already working this",
+                LocalDate.of(2026, 4, 22),
+                actorUserId,
+                "Owner Example",
+                null,
+                null,
+                null,
+                null,
+                0.0,
+                "workflows",
+                "/workflows/notifications/dead-letter/performance/tasks",
+                null,
+                actorUserId,
+                Instant.parse("2026-04-22T16:00:00Z"),
+                null,
+                null,
+                null,
+                null);
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.listOpenRiskTasks(
+                organizationId,
+                DeadLetterSupportPerformanceTaskFilter.ACKNOWLEDGED)).thenReturn(List.of(task));
+        when(reviewQueueService.toSummary(task)).thenReturn(summary);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks")
+                        .param("organizationId", organizationId.toString())
+                        .param("filter", "ACKNOWLEDGED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].taskId").value(taskId.toString()))
+                .andExpect(jsonPath("$[0].taskType").value("DEAD_LETTER_SUPPORT_PERFORMANCE"))
+                .andExpect(jsonPath("$[0].title").value("Acknowledged performance risk"))
+                .andExpect(jsonPath("$[0].acknowledgedByUserId").value(actorUserId.toString()));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).listOpenRiskTasks(
+                organizationId,
+                DeadLetterSupportPerformanceTaskFilter.ACKNOWLEDGED);
+        verify(reviewQueueService).toSummary(task);
+    }
+
+    @Test
+    void deadLetterSupportPerformanceSummaryMapsQueueCountsIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        DeadLetterSupportPerformanceTaskQueueSummary summary = new DeadLetterSupportPerformanceTaskQueueSummary(
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0);
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.queueSummary(organizationId)).thenReturn(summary);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/summary")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openTaskCount").value(2))
+                .andExpect(jsonPath("$.assignedTaskCount").value(1))
+                .andExpect(jsonPath("$.unassignedTaskCount").value(1))
+                .andExpect(jsonPath("$.acknowledgedTaskCount").value(1))
+                .andExpect(jsonPath("$.unacknowledgedTaskCount").value(1))
+                .andExpect(jsonPath("$.reactivatedNeedsAttentionCount").value(1));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).queueSummary(organizationId);
     }
 }
