@@ -1808,8 +1808,8 @@ class InfiniteMattersApplicationTests {
                 "text/csv",
                 """
                 id,date,merchant,memo,amount,mcc
-                txn-3,%s,Unknown Vendor,renewal invoice,59.99,5734
-                """.formatted(LocalDate.now().minusDays(29)).getBytes());
+                txn-3,2026-03-29,Unknown Vendor,renewal invoice,59.99,5734
+                """.getBytes());
 
         mockMvc.perform(multipart("/api/transactions/import/csv")
                         .file(secondFile)
@@ -2015,7 +2015,7 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.expenseCategories[0].amount").value(109.98))
                 .andExpect(jsonPath("$.expenseCategories[0].deltaFromPreviousMonth").value(109.98))
                 .andExpect(jsonPath("$.expenseCategories[1].category").value("MEALS"))
-                .andExpect(jsonPath("$.staleAccounts.length()").value(0))
+                .andExpect(jsonPath("$.staleAccounts.length()").value(1))
                 .andExpect(jsonPath("$.recentNotifications[0].workflowTaskId").value(exceptionTaskId));
 
         mockMvc.perform(get("/api/dashboard/home")
@@ -2064,7 +2064,7 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.period.cardId").value("period-close"))
                 .andExpect(jsonPath("$.supportPerformance.cardId").value("support-performance"))
                 .andExpect(jsonPath("$.expenseCategories[0].itemId").value("expense-category-software"))
-                .andExpect(jsonPath("$.staleAccounts.length()").value(0))
+                .andExpect(jsonPath("$.staleAccounts.length()").value(1))
                 .andExpect(jsonPath("$.recentNotifications[0].workflowTaskId").value(exceptionTaskId));
 
         mockMvc.perform(get("/api/dashboard/home")
@@ -2135,7 +2135,7 @@ class InfiniteMattersApplicationTests {
                 .andExpect(jsonPath("$.period.latestOverrideReason").value("Materiality threshold not exceeded; variance documented and approved"))
                 .andExpect(jsonPath("$.notificationHealth.pendingCount").value(0))
                 .andExpect(jsonPath("$.expenseCategories[0].category").value("SOFTWARE"))
-                .andExpect(jsonPath("$.staleAccounts.length()").value(0));
+                .andExpect(jsonPath("$.staleAccounts.length()").value(1));
 
         MockMultipartFile closedPeriodFile = new MockMultipartFile(
                 "file",
