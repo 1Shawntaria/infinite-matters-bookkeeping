@@ -4,6 +4,8 @@ import com.infinitematters.bookkeeping.dashboard.DashboardActionUrgency;
 import com.infinitematters.bookkeeping.domain.Category;
 import com.infinitematters.bookkeeping.notifications.CloseControlDisposition;
 import com.infinitematters.bookkeeping.notifications.CloseControlEscalationService;
+import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionReasonCode;
+import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionStatus;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEscalationService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterWorkflowTaskService;
@@ -315,5 +317,151 @@ class WorkflowInboxControllerWebMvcTests {
                 "Escalation resolved after documenting the owner disposition.",
                 CloseControlDisposition.OVERRIDE_DOCS_IN_PROGRESS,
                 null);
+    }
+
+    @Test
+    void retryDeadLetterForwardsRecipientOverrideAndNote() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.PENDING,
+                NotificationDeliveryState.PENDING,
+                "Retry this dead-letter notification with the corrected destination.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops-updated@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                null,
+                null,
+                DeadLetterResolutionStatus.OPEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-22T15:00:00Z"),
+                null,
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.retryDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                "ops-updated@acme.test",
+                "Retry with the corrected mailbox.")).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/" + notificationId + "/dead-letter/retry")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recipientEmail":"ops-updated@acme.test",
+                                  "note":"Retry with the corrected mailbox."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.recipientEmail").value("ops-updated@acme.test"))
+                .andExpect(jsonPath("$.deliveryState").value("PENDING"))
+                .andExpect(jsonPath("$.deadLetterResolutionStatus").value("OPEN"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).retryDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                "ops-updated@acme.test",
+                "Retry with the corrected mailbox.");
+    }
+
+    @Test
+    void resolveDeadLetterNoResendForwardsReasonCodeAndNote() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.SENT,
+                NotificationDeliveryState.FAILED,
+                "Delivery no longer required after external correction.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.RESOLVED,
+                DeadLetterResolutionReasonCode.DELIVERY_NO_LONGER_REQUIRED,
+                "Handled externally; no resend needed.",
+                Instant.parse("2026-04-22T17:00:00Z"),
+                actorUserId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-22T15:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.resolveDeadLetterNoResend(
+                organizationId,
+                notificationId,
+                actorUserId,
+                DeadLetterResolutionReasonCode.DELIVERY_NO_LONGER_REQUIRED,
+                "Handled externally; no resend needed.")).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/" + notificationId + "/dead-letter/no-resend")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonCode":"DELIVERY_NO_LONGER_REQUIRED",
+                                  "note":"Handled externally; no resend needed."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.deadLetterResolutionStatus").value("RESOLVED"))
+                .andExpect(jsonPath("$.deadLetterResolutionReasonCode").value("DELIVERY_NO_LONGER_REQUIRED"))
+                .andExpect(jsonPath("$.deadLetterResolutionNote").value("Handled externally; no resend needed."));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).resolveDeadLetterNoResend(
+                organizationId,
+                notificationId,
+                actorUserId,
+                DeadLetterResolutionReasonCode.DELIVERY_NO_LONGER_REQUIRED,
+                "Handled externally; no resend needed.");
     }
 }
