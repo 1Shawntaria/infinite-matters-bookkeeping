@@ -829,6 +829,174 @@ class InfiniteMattersApplicationTests {
     }
 
     @Test
+    void repeatedForceCloseRemindersDriveScheduledOverrideReviewRecommendations() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "fc-escalation-" + suffix + "@example.test";
+        String approverEmail = "fc-approver-" + suffix + "@example.test";
+        String password = "password123";
+
+        String ownerUserId = createUser(ownerEmail, "Force Close Escalation Owner", password);
+        String approverUserId = createUser(approverEmail, "Force Close Approver", password);
+        String organizationId = createOrganization("Force Close Escalation Workspace", ownerUserId);
+        AuthTokens ownerTokens = issueToken(ownerEmail, password);
+        addMembership(organizationId, approverUserId, ownerTokens.accessToken());
+        UUID organizationUuid = UUID.fromString(organizationId);
+        UUID ownerUuid = UUID.fromString(ownerUserId);
+
+        mockMvc.perform(post("/api/periods/attestation")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-02",
+                                  "closeOwnerUserId":"%s",
+                                  "closeApproverUserId":"%s",
+                                  "summary":"February close used an override while the owner finalized documentation."
+                                }
+                                """.formatted(ownerUserId, approverUserId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/periods/attestation/confirm")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(issueToken(approverEmail, password).accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "month":"2026-02"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attested").value(true));
+
+        auditService.recordForUser(
+                ownerUuid,
+                organizationUuid,
+                "PERIOD_FORCE_CLOSED",
+                "accounting_period",
+                "2026-02",
+                "Force closed period 2026-02-01 through 2026-02-28 with reason: Banking statement arrived late.");
+
+        MvcResult inboxResult = mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attentionTasks[0].taskType").value("FORCE_CLOSE_REVIEW"))
+                .andReturn();
+
+        String taskId = objectMapper.readTree(inboxResult.getResponse().getContentAsString())
+                .path("attentionTasks")
+                .path(0)
+                .path("taskId")
+                .asText();
+
+        mockMvc.perform(post("/api/workflows/inbox/attention-tasks/" + taskId + "/acknowledge")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Owner is documenting the override support."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.acknowledgedByUserId").value(ownerUserId));
+
+        for (int daysAgo = 2; daysAgo >= 1; daysAgo--) {
+            Notification reminder = new Notification();
+            reminder.setOrganization(organizationService.get(organizationUuid));
+            reminder.setUser(userService.get(ownerUuid));
+            reminder.setCategory(NotificationCategory.WORKFLOW);
+            reminder.setChannel(NotificationChannel.IN_APP);
+            reminder.setStatus(NotificationStatus.SENT);
+            reminder.setDeliveryState(NotificationDeliveryState.DELIVERED);
+            reminder.setReferenceType("close_control_follow_up");
+            reminder.setReferenceId(taskId);
+            reminder.setRecipientEmail(ownerEmail);
+            reminder.setScheduledFor(java.time.Instant.now().minus(java.time.Duration.ofDays(daysAgo)));
+            reminder.setSentAt(java.time.Instant.now().minus(java.time.Duration.ofDays(daysAgo)));
+            reminder.setAttemptCount(0);
+            reminder.setMessage("Historical force-close follow-up reminder");
+            notificationRepository.save(reminder);
+        }
+
+        mockMvc.perform(post("/api/workflows/close-control/escalations/run")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.notifications[0].referenceType").value("close_control_follow_up_escalation"))
+                .andExpect(jsonPath("$.notifications[0].message").value(org.hamcrest.Matchers.containsString("force-close review for 2026-02")));
+
+        String escalationNotificationId = objectMapper.readTree(mockMvc.perform(get("/api/workflows/notifications/attention")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].referenceType").value("close_control_follow_up_escalation"))
+                .andExpect(jsonPath("$[0].message").value(org.hamcrest.Matchers.containsString("force-close review for 2026-02")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString())
+                .path(0)
+                .path("id")
+                .asText();
+
+        LocalDate nextTouchOn = LocalDate.now().plusDays(1);
+        String nextTouchOnIso = nextTouchOn.toString();
+        String nextTouchOnLabel = nextTouchOn.getMonth().name().substring(0, 1)
+                + nextTouchOn.getMonth().name().substring(1, 3).toLowerCase()
+                + " "
+                + nextTouchOn.getDayOfMonth();
+        String nextTouchOnCalendarLabel = nextTouchOnLabel + ", " + nextTouchOn.getYear();
+
+        mockMvc.perform(post("/api/workflows/notifications/" + escalationNotificationId + "/close-control-escalation/acknowledge")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Owner reviewed the escalation and queued the next touch for tomorrow.",
+                                  "disposition":"REVISIT_TOMORROW",
+                                  "nextTouchOn":"%s"
+                                }
+                                """.formatted(nextTouchOnIso)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closeControlAcknowledgedAt").isNotEmpty())
+                .andExpect(jsonPath("$.closeControlDisposition").value("REVISIT_TOMORROW"))
+                .andExpect(jsonPath("$.closeControlNextTouchOn").value(nextTouchOnIso));
+
+        mockMvc.perform(get("/api/workflows/inbox")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendedActionLabel").value("Resume override review on " + nextTouchOnLabel))
+                .andExpect(jsonPath("$.recommendedActionKey").value("QUEUE_TOMORROWS_CLOSE_FOLLOW_UP"))
+                .andExpect(jsonPath("$.recommendedActionPath").value("/close?month=2026-02"))
+                .andExpect(jsonPath("$.recommendedActionUrgency").value("NORMAL"))
+                .andExpect(jsonPath("$.recommendedActionSeverity").value("SCHEDULED"));
+
+        mockMvc.perform(get("/api/dashboard/snapshot")
+                        .header(ORG_HEADER, organizationId)
+                        .header("Authorization", bearerToken(ownerTokens.accessToken()))
+                        .param("organizationId", organizationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.primaryAction.label").value("Resume override review on " + nextTouchOnLabel))
+                .andExpect(jsonPath("$.primaryAction.reason").value("The close-control review for 2026-02 is intentionally paused until "
+                        + nextTouchOnCalendarLabel
+                        + ". The system gave override documentation extra time before pulling the month back into active review."))
+                .andExpect(jsonPath("$.primaryAction.urgency").value("NORMAL"))
+                .andExpect(jsonPath("$.primaryAction.severity").value("SCHEDULED"));
+    }
+
+    @Test
     void ownersCanUpdateFinancialAccounts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String ownerEmail = "account-owner-" + suffix + "@example.test";
