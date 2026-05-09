@@ -9,8 +9,12 @@ import com.infinitematters.bookkeeping.notifications.DeadLetterResolutionStatus;
 import com.infinitematters.bookkeeping.notifications.DeadLetterEscalationRunResult;
 import com.infinitematters.bookkeeping.notifications.DeadLetterQueueItem;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorRunResult;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEffectivenessBucket;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEffectivenessSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskFilter;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceTaskQueueSummary;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportTaskOperationsSummary;
+import com.infinitematters.bookkeeping.notifications.DeadLetterSupportTaskSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterTaskRunResult;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportEscalationService;
 import com.infinitematters.bookkeeping.notifications.DeadLetterSupportPerformanceMonitorService;
@@ -741,6 +745,123 @@ class WorkflowInboxControllerWebMvcTests {
 
         verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
         verify(deadLetterSupportPerformanceMonitorService).queueSummary(organizationId);
+    }
+
+    @Test
+    void deadLetterSupportTasksMapsOperationsSummaryIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        UUID assignedToUserId = UUID.randomUUID();
+        DeadLetterSupportTaskOperationsSummary summary = new DeadLetterSupportTaskOperationsSummary(
+                7,
+                2,
+                3,
+                4,
+                5,
+                1,
+                2,
+                3,
+                List.of(new DeadLetterSupportTaskSummary(
+                        taskId,
+                        notificationId,
+                        DeadLetterRecommendedAction.UNSUPPRESS_AND_RETRY,
+                        "Recipient is suppressed and needs manual review before retry.",
+                        "HIGH",
+                        true,
+                        true,
+                        true,
+                        false,
+                        false,
+                        9,
+                        2,
+                        Instant.parse("2026-04-22T12:00:00Z"),
+                        LocalDate.of(2026, 4, 20),
+                        assignedToUserId,
+                        "Owner Example",
+                        "ops@acme.test",
+                        "Suppressed delivery retry",
+                        "Bounce handling requires owner follow-up.")));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterWorkflowTaskService.operationsSummary(organizationId)).thenReturn(summary);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/tasks")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openCount").value(7))
+                .andExpect(jsonPath("$.unassignedCount").value(2))
+                .andExpect(jsonPath("$.overdueCount").value(3))
+                .andExpect(jsonPath("$.staleCount").value(4))
+                .andExpect(jsonPath("$.escalatedCount").value(5))
+                .andExpect(jsonPath("$.ignoredEscalationCount").value(1))
+                .andExpect(jsonPath("$.assignedAfterEscalationCount").value(2))
+                .andExpect(jsonPath("$.resolvedAfterEscalationCount").value(3))
+                .andExpect(jsonPath("$.oldestTasks[0].taskId").value(taskId.toString()))
+                .andExpect(jsonPath("$.oldestTasks[0].notificationId").value(notificationId.toString()))
+                .andExpect(jsonPath("$.oldestTasks[0].recommendedAction").value("UNSUPPRESS_AND_RETRY"))
+                .andExpect(jsonPath("$.oldestTasks[0].recommendationReason").value("Recipient is suppressed and needs manual review before retry."))
+                .andExpect(jsonPath("$.oldestTasks[0].priority").value("HIGH"))
+                .andExpect(jsonPath("$.oldestTasks[0].overdue").value(true))
+                .andExpect(jsonPath("$.oldestTasks[0].stale").value(true))
+                .andExpect(jsonPath("$.oldestTasks[0].ignoredEscalation").value(true))
+                .andExpect(jsonPath("$.oldestTasks[0].ageDays").value(9))
+                .andExpect(jsonPath("$.oldestTasks[0].escalationCount").value(2))
+                .andExpect(jsonPath("$.oldestTasks[0].dueDate").value("2026-04-20"))
+                .andExpect(jsonPath("$.oldestTasks[0].assignedToUserId").value(assignedToUserId.toString()))
+                .andExpect(jsonPath("$.oldestTasks[0].assignedToUserName").value("Owner Example"))
+                .andExpect(jsonPath("$.oldestTasks[0].recipientEmail").value("ops@acme.test"))
+                .andExpect(jsonPath("$.oldestTasks[0].title").value("Suppressed delivery retry"))
+                .andExpect(jsonPath("$.oldestTasks[0].description").value("Bounce handling requires owner follow-up."));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterWorkflowTaskService).operationsSummary(organizationId);
+    }
+
+    @Test
+    void deadLetterSupportEffectivenessForwardsWeeksAndMapsBucketsIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        DeadLetterSupportEffectivenessSummary summary = new DeadLetterSupportEffectivenessSummary(
+                LocalDate.of(2026, 3, 9),
+                LocalDate.of(2026, 5, 3),
+                8,
+                6,
+                2,
+                3,
+                4,
+                List.of(new DeadLetterSupportEffectivenessBucket(
+                        LocalDate.of(2026, 4, 27),
+                        LocalDate.of(2026, 5, 3),
+                        2,
+                        1,
+                        1,
+                        1)));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterWorkflowTaskService.effectivenessSummary(organizationId, 8)).thenReturn(summary);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/effectiveness")
+                        .param("organizationId", organizationId.toString())
+                        .param("weeks", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fromWeekStart").value("2026-03-09"))
+                .andExpect(jsonPath("$.toWeekEnd").value("2026-05-03"))
+                .andExpect(jsonPath("$.weeks").value(8))
+                .andExpect(jsonPath("$.escalatedCount").value(6))
+                .andExpect(jsonPath("$.ignoredEscalationCount").value(2))
+                .andExpect(jsonPath("$.assignedAfterEscalationCount").value(3))
+                .andExpect(jsonPath("$.resolvedAfterEscalationCount").value(4))
+                .andExpect(jsonPath("$.buckets[0].weekStart").value("2026-04-27"))
+                .andExpect(jsonPath("$.buckets[0].weekEnd").value("2026-05-03"))
+                .andExpect(jsonPath("$.buckets[0].escalatedCount").value(2))
+                .andExpect(jsonPath("$.buckets[0].ignoredEscalationCount").value(1))
+                .andExpect(jsonPath("$.buckets[0].assignedAfterEscalationCount").value(1))
+                .andExpect(jsonPath("$.buckets[0].resolvedAfterEscalationCount").value(1));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterWorkflowTaskService).effectivenessSummary(organizationId, 8);
     }
 
     @Test
