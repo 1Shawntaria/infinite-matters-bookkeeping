@@ -714,6 +714,56 @@ class WorkflowInboxControllerWebMvcTests {
     }
 
     @Test
+    void highPriorityDeadLetterSupportPerformanceTasksMapReviewTaskSummaries() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        WorkflowTask task = new WorkflowTask();
+        ReviewTaskSummary summary = new ReviewTaskSummary(
+                taskId,
+                null,
+                null,
+                "DEAD_LETTER_SUPPORT_PERFORMANCE",
+                "CRITICAL",
+                true,
+                "Unacknowledged dead-letter performance risk",
+                "Retry backlog keeps growing.",
+                LocalDate.of(2026, 4, 22),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0.0,
+                "workflows",
+                "/workflows/notifications/dead-letter/performance/tasks",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.listHighPriorityRiskTasks(organizationId)).thenReturn(List.of(task));
+        when(reviewQueueService.toSummary(task)).thenReturn(summary);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks/high-priority")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].taskId").value(taskId.toString()))
+                .andExpect(jsonPath("$[0].taskType").value("DEAD_LETTER_SUPPORT_PERFORMANCE"))
+                .andExpect(jsonPath("$[0].title").value("Unacknowledged dead-letter performance risk"))
+                .andExpect(jsonPath("$[0].actionPath").value("/workflows/notifications/dead-letter/performance/tasks"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).listHighPriorityRiskTasks(organizationId);
+        verify(reviewQueueService).toSummary(task);
+    }
+
+    @Test
     void deadLetterSupportPerformanceSummaryMapsQueueCountsIntoResponseBody() throws Exception {
         UUID organizationId = UUID.randomUUID();
         UUID actorUserId = UUID.randomUUID();
@@ -745,6 +795,200 @@ class WorkflowInboxControllerWebMvcTests {
 
         verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
         verify(deadLetterSupportPerformanceMonitorService).queueSummary(organizationId);
+    }
+
+    @Test
+    void acknowledgeDeadLetterSupportPerformanceTaskForwardsNoteAndMapsSummary() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        WorkflowTask task = new WorkflowTask();
+        ReviewTaskSummary summary = new ReviewTaskSummary(
+                taskId,
+                null,
+                null,
+                "DEAD_LETTER_SUPPORT_PERFORMANCE",
+                "CRITICAL",
+                true,
+                "Acknowledged dead-letter performance risk",
+                "Ops is already addressing the spike.",
+                LocalDate.of(2026, 4, 22),
+                actorUserId,
+                "Owner Example",
+                null,
+                null,
+                null,
+                null,
+                0.0,
+                "workflows",
+                "/workflows/notifications/dead-letter/performance/tasks",
+                "Monitoring delivery backlog while ops investigates.",
+                actorUserId,
+                Instant.parse("2026-04-22T16:00:00Z"),
+                null,
+                null,
+                null,
+                null);
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.acknowledgeRiskTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                "Monitoring delivery backlog while ops investigates.")).thenReturn(task);
+        when(reviewQueueService.toSummary(task)).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/dead-letter/performance/tasks/" + taskId + "/acknowledge")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Monitoring delivery backlog while ops investigates."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(taskId.toString()))
+                .andExpect(jsonPath("$.resolutionComment").value("Monitoring delivery backlog while ops investigates."))
+                .andExpect(jsonPath("$.acknowledgedByUserId").value(actorUserId.toString()));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).acknowledgeRiskTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                "Monitoring delivery backlog while ops investigates.");
+        verify(reviewQueueService).toSummary(task);
+    }
+
+    @Test
+    void snoozeDeadLetterSupportPerformanceTaskForwardsDateAndNoteAndMapsSummary() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        LocalDate snoozedUntil = LocalDate.of(2026, 4, 25);
+        WorkflowTask task = new WorkflowTask();
+        ReviewTaskSummary summary = new ReviewTaskSummary(
+                taskId,
+                null,
+                null,
+                "DEAD_LETTER_SUPPORT_PERFORMANCE",
+                "HIGH",
+                false,
+                "Snoozed dead-letter performance risk",
+                "Paused until the provider window closes.",
+                snoozedUntil,
+                actorUserId,
+                "Owner Example",
+                null,
+                null,
+                null,
+                null,
+                0.0,
+                "workflows",
+                "/workflows/notifications/dead-letter/performance/tasks",
+                "Wait for the provider maintenance window to finish.",
+                actorUserId,
+                Instant.parse("2026-04-22T16:15:00Z"),
+                snoozedUntil,
+                null,
+                null,
+                null);
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.snoozeRiskTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                snoozedUntil,
+                "Wait for the provider maintenance window to finish.")).thenReturn(task);
+        when(reviewQueueService.toSummary(task)).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/dead-letter/performance/tasks/" + taskId + "/snooze")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "snoozedUntil":"2026-04-25",
+                                  "note":"Wait for the provider maintenance window to finish."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(taskId.toString()))
+                .andExpect(jsonPath("$.acknowledgedByUserId").value(actorUserId.toString()))
+                .andExpect(jsonPath("$.snoozedUntil").value("2026-04-25"))
+                .andExpect(jsonPath("$.resolutionComment").value("Wait for the provider maintenance window to finish."));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).snoozeRiskTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                snoozedUntil,
+                "Wait for the provider maintenance window to finish.");
+        verify(reviewQueueService).toSummary(task);
+    }
+
+    @Test
+    void resolveDeadLetterSupportPerformanceTaskForwardsNoteAndMapsSummary() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        WorkflowTask task = new WorkflowTask();
+        ReviewTaskSummary summary = new ReviewTaskSummary(
+                taskId,
+                null,
+                null,
+                "DEAD_LETTER_SUPPORT_PERFORMANCE",
+                "HIGH",
+                false,
+                "Resolved dead-letter performance risk",
+                "Backlog returned to normal after provider recovery.",
+                LocalDate.of(2026, 4, 22),
+                actorUserId,
+                "Owner Example",
+                null,
+                null,
+                null,
+                null,
+                0.0,
+                "workflows",
+                "/workflows/notifications/dead-letter/performance/tasks",
+                "Resolved after the backlog normalized.",
+                actorUserId,
+                Instant.parse("2026-04-22T16:30:00Z"),
+                null,
+                null,
+                null,
+                null);
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.resolveRiskTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                "Resolved after the backlog normalized.")).thenReturn(task);
+        when(reviewQueueService.toSummary(task)).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/dead-letter/performance/tasks/" + taskId + "/resolve")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Resolved after the backlog normalized."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(taskId.toString()))
+                .andExpect(jsonPath("$.resolutionComment").value("Resolved after the backlog normalized."))
+                .andExpect(jsonPath("$.acknowledgedByUserId").value(actorUserId.toString()));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).resolveRiskTask(
+                organizationId,
+                taskId,
+                actorUserId,
+                "Resolved after the backlog normalized.");
+        verify(reviewQueueService).toSummary(task);
     }
 
     @Test
