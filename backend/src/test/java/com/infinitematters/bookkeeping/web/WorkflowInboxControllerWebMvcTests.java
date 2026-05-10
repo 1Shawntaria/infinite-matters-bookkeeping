@@ -426,6 +426,147 @@ class WorkflowInboxControllerWebMvcTests {
     }
 
     @Test
+    void acknowledgeDeadLetterForwardsNoteAndMapsResolutionFields() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.FAILED,
+                NotificationDeliveryState.FAILED,
+                "Delivery failed for workflow reminder.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.ACKNOWLEDGED,
+                null,
+                "Ops is already investigating this mailbox issue.",
+                Instant.parse("2026-04-22T17:15:00Z"),
+                actorUserId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.acknowledgeDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                "Ops is already investigating this mailbox issue.")).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/" + notificationId + "/dead-letter/acknowledge")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Ops is already investigating this mailbox issue."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.deadLetterResolutionStatus").value("ACKNOWLEDGED"))
+                .andExpect(jsonPath("$.deadLetterResolutionNote").value("Ops is already investigating this mailbox issue."))
+                .andExpect(jsonPath("$.deadLetterResolvedByUserId").value(actorUserId.toString()));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).acknowledgeDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                "Ops is already investigating this mailbox issue.");
+    }
+
+    @Test
+    void resolveDeadLetterForwardsNoteAndMapsResolutionFields() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.FAILED,
+                NotificationDeliveryState.FAILED,
+                "Delivery failed for workflow reminder.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.RESOLVED,
+                DeadLetterResolutionReasonCode.OTHER,
+                "Resolved after confirming no further action is needed.",
+                Instant.parse("2026-04-22T18:00:00Z"),
+                actorUserId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.resolveDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                "Resolved after confirming no further action is needed.")).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/" + notificationId + "/dead-letter/resolve")
+                        .param("organizationId", organizationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note":"Resolved after confirming no further action is needed."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.deadLetterResolutionStatus").value("RESOLVED"))
+                .andExpect(jsonPath("$.deadLetterResolutionReasonCode").value("OTHER"))
+                .andExpect(jsonPath("$.deadLetterResolutionNote").value("Resolved after confirming no further action is needed."))
+                .andExpect(jsonPath("$.deadLetterResolvedByUserId").value(actorUserId.toString()));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).resolveDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                "Resolved after confirming no further action is needed.");
+    }
+
+    @Test
     void retryDeadLetterForwardsRecipientOverrideAndNote() throws Exception {
         UUID organizationId = UUID.randomUUID();
         UUID actorUserId = UUID.randomUUID();
@@ -496,6 +637,62 @@ class WorkflowInboxControllerWebMvcTests {
                 actorUserId,
                 "ops-updated@acme.test",
                 "Retry with the corrected mailbox.");
+    }
+
+    @Test
+    void requeueSingleNotificationMapsRecoveryFieldsIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.PENDING,
+                NotificationDeliveryState.PENDING,
+                "Queued again after dead-letter review.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "owner@acme.test",
+                "sendgrid",
+                "provider-123",
+                3,
+                null,
+                null,
+                DeadLetterResolutionStatus.OPEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-22T18:00:00Z"),
+                null,
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.requeueFailedNotification(organizationId, notificationId)).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/" + notificationId + "/requeue")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.deliveryState").value("PENDING"))
+                .andExpect(jsonPath("$.deadLetterResolutionStatus").value("OPEN"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).requeueFailedNotification(organizationId, notificationId);
     }
 
     @Test
