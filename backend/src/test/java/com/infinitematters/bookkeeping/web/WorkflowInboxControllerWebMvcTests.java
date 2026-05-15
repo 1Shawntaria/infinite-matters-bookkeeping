@@ -674,6 +674,68 @@ class WorkflowInboxControllerWebMvcTests {
     }
 
     @Test
+    void acknowledgeDeadLetterAllowsMissingBodyAndForwardsNullNote() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.FAILED,
+                NotificationDeliveryState.FAILED,
+                "Delivery failed for workflow reminder.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.ACKNOWLEDGED,
+                null,
+                null,
+                Instant.parse("2026-04-22T17:15:00Z"),
+                actorUserId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.acknowledgeDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                null)).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/" + notificationId + "/dead-letter/acknowledge")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.deadLetterResolutionStatus").value("ACKNOWLEDGED"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).acknowledgeDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                null);
+    }
+
+    @Test
     void resolveDeadLetterForwardsNoteAndMapsResolutionFields() throws Exception {
         UUID organizationId = UUID.randomUUID();
         UUID actorUserId = UUID.randomUUID();
@@ -815,6 +877,71 @@ class WorkflowInboxControllerWebMvcTests {
                 actorUserId,
                 "ops-updated@acme.test",
                 "Retry with the corrected mailbox.");
+    }
+
+    @Test
+    void retryDeadLetterAllowsMissingBodyAndForwardsNullOverrides() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.PENDING,
+                NotificationDeliveryState.PENDING,
+                "Queued again without changing the destination.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                null,
+                null,
+                DeadLetterResolutionStatus.OPEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-22T18:00:00Z"),
+                null,
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.retryDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                null,
+                null)).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/" + notificationId + "/dead-letter/retry")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.deliveryState").value("PENDING"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).retryDeadLetter(
+                organizationId,
+                notificationId,
+                actorUserId,
+                null,
+                null);
     }
 
     @Test
@@ -1116,6 +1243,27 @@ class WorkflowInboxControllerWebMvcTests {
                 organizationId,
                 DeadLetterSupportPerformanceTaskFilter.ACKNOWLEDGED);
         verify(reviewQueueService).toSummary(task);
+    }
+
+    @Test
+    void deadLetterSupportPerformanceTasksDefaultsFilterToAllWhenOmitted() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterSupportPerformanceMonitorService.listOpenRiskTasks(
+                organizationId,
+                DeadLetterSupportPerformanceTaskFilter.ALL)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/performance/tasks")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterSupportPerformanceMonitorService).listOpenRiskTasks(
+                organizationId,
+                DeadLetterSupportPerformanceTaskFilter.ALL);
     }
 
     @Test
@@ -1511,6 +1659,33 @@ class WorkflowInboxControllerWebMvcTests {
 
         verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
         verify(deadLetterWorkflowTaskService).effectivenessSummary(organizationId, 8);
+    }
+
+    @Test
+    void deadLetterSupportEffectivenessDefaultsWeeksToSixWhenOmitted() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        DeadLetterSupportEffectivenessSummary summary = new DeadLetterSupportEffectivenessSummary(
+                LocalDate.of(2026, 3, 23),
+                LocalDate.of(2026, 5, 3),
+                6,
+                4,
+                1,
+                2,
+                3,
+                List.of());
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(deadLetterWorkflowTaskService.effectivenessSummary(organizationId, 6)).thenReturn(summary);
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter/effectiveness")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.weeks").value(6))
+                .andExpect(jsonPath("$.escalatedCount").value(4));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(deadLetterWorkflowTaskService).effectivenessSummary(organizationId, 6);
     }
 
     @Test
