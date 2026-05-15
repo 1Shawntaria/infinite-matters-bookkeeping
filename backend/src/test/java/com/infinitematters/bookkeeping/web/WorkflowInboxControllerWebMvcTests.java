@@ -22,6 +22,7 @@ import com.infinitematters.bookkeeping.notifications.DeadLetterWorkflowTaskServi
 import com.infinitematters.bookkeeping.notifications.NotificationCategory;
 import com.infinitematters.bookkeeping.notifications.NotificationChannel;
 import com.infinitematters.bookkeeping.notifications.NotificationDeliveryState;
+import com.infinitematters.bookkeeping.notifications.NotificationOperationsSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterQueueSummary;
 import com.infinitematters.bookkeeping.notifications.DeadLetterRecommendedAction;
 import com.infinitematters.bookkeeping.notifications.NotificationService;
@@ -269,6 +270,183 @@ class WorkflowInboxControllerWebMvcTests {
                 taskId,
                 actorUserId,
                 "Resolved after documenting the override disposition.");
+    }
+
+    @Test
+    void notificationsMapsNotificationListIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.PENDING,
+                NotificationDeliveryState.PENDING,
+                "Reminder queued for an open workflow task.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "owner@acme.test",
+                "sendgrid",
+                "provider-123",
+                1,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T09:00:00Z"),
+                null,
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireAccess(organizationId)).thenReturn(actorUserId);
+        when(notificationService.listForOrganization(organizationId)).thenReturn(List.of(summary));
+
+        mockMvc.perform(get("/api/workflows/notifications")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(notificationId.toString()))
+                .andExpect(jsonPath("$[0].status").value("PENDING"))
+                .andExpect(jsonPath("$[0].deliveryState").value("PENDING"))
+                .andExpect(jsonPath("$[0].recipientEmail").value("owner@acme.test"));
+
+        verify(tenantAccessService).requireAccess(organizationId);
+        verify(notificationService).listForOrganization(organizationId);
+    }
+
+    @Test
+    void attentionNotificationsMapOperationsSummaryListIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary attention = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.FAILED,
+                NotificationDeliveryState.FAILED,
+                "Delivery failed and needs operational review.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.OPEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+        NotificationOperationsSummary operationsSummary = new NotificationOperationsSummary(
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                List.of(attention),
+                null);
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.operationsSummary(organizationId)).thenReturn(operationsSummary);
+
+        mockMvc.perform(get("/api/workflows/notifications/attention")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(notificationId.toString()))
+                .andExpect(jsonPath("$[0].deliveryState").value("FAILED"))
+                .andExpect(jsonPath("$[0].deadLetterResolutionStatus").value("OPEN"))
+                .andExpect(jsonPath("$[0].lastFailureCode").value("550"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).operationsSummary(organizationId);
+    }
+
+    @Test
+    void deadLetterNotificationsMapOpenDeadLetterListIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+        NotificationSummary summary = new NotificationSummary(
+                notificationId,
+                null,
+                actorUserId,
+                NotificationCategory.WORKFLOW,
+                NotificationChannel.EMAIL,
+                NotificationStatus.FAILED,
+                NotificationDeliveryState.FAILED,
+                "Delivery failed for workflow reminder.",
+                "WORKFLOW_TASK",
+                "task-123",
+                "ops@acme.test",
+                "sendgrid",
+                "provider-123",
+                2,
+                "Mailbox unavailable",
+                "550",
+                DeadLetterResolutionStatus.OPEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-04-23T10:00:00Z"),
+                Instant.parse("2026-04-22T15:05:00Z"),
+                null,
+                Instant.parse("2026-04-22T14:55:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(notificationService.deadLetters(organizationId)).thenReturn(List.of(summary));
+
+        mockMvc.perform(get("/api/workflows/notifications/dead-letter")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(notificationId.toString()))
+                .andExpect(jsonPath("$[0].deliveryState").value("FAILED"))
+                .andExpect(jsonPath("$[0].deadLetterResolutionStatus").value("OPEN"))
+                .andExpect(jsonPath("$[0].recipientEmail").value("ops@acme.test"));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(notificationService).deadLetters(organizationId);
     }
 
     @Test
@@ -796,6 +974,36 @@ class WorkflowInboxControllerWebMvcTests {
 
         verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
         verify(suppressionService).listActiveSuppressions(organizationId);
+    }
+
+    @Test
+    void deactivateSuppressionMapsUpdatedSuppressionIntoResponseBody() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID actorUserId = UUID.randomUUID();
+        UUID suppressionId = UUID.randomUUID();
+        UUID sourceNotificationId = UUID.randomUUID();
+        NotificationSuppressionSummary summary = new NotificationSuppressionSummary(
+                suppressionId,
+                "suppressed@example.test",
+                "sendgrid",
+                "BOUNCED",
+                sourceNotificationId,
+                Instant.parse("2026-04-22T17:00:00Z"),
+                Instant.parse("2026-04-22T16:30:00Z"));
+
+        when(tenantAccessService.requireRole(organizationId, Set.of(UserRole.OWNER, UserRole.ADMIN))).thenReturn(actorUserId);
+        when(suppressionService.deactivate(organizationId, suppressionId)).thenReturn(summary);
+
+        mockMvc.perform(post("/api/workflows/notifications/suppressions/" + suppressionId + "/deactivate")
+                        .param("organizationId", organizationId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.suppressionId").value(suppressionId.toString()))
+                .andExpect(jsonPath("$.email").value("suppressed@example.test"))
+                .andExpect(jsonPath("$.providerName").value("sendgrid"))
+                .andExpect(jsonPath("$.sourceNotificationId").value(sourceNotificationId.toString()));
+
+        verify(tenantAccessService).requireRole(eq(organizationId), eq(Set.of(UserRole.OWNER, UserRole.ADMIN)));
+        verify(suppressionService).deactivate(organizationId, suppressionId);
     }
 
     @Test
